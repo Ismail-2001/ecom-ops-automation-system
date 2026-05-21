@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "ecommerce-ops-agent"
     
     # API Keys
-    DEEPSEEK_API_KEY: SecretStr
+    DEEPSEEK_API_KEY: Optional[SecretStr] = None
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com/v1"
     
     SHOPIFY_API_KEY: Optional[SecretStr] = None

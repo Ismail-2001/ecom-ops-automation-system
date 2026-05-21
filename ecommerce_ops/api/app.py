@@ -90,12 +90,19 @@ class SettingsUpdateBody(BaseModel):
 @app.on_event("startup")
 async def startup_event():
     # Setup Supervisor in App State
-    app.state.supervisor = Supervisor()
-    # Initialize DB schema
-    await init_db()
-    # Seed mock data
-    await seed_data_if_empty()
-    logger.info("Application startup and database initialization complete.")
+    try:
+        app.state.supervisor = Supervisor()
+    except Exception as e:
+        logger.error(f"Failed to initialize Supervisor: {e}")
+
+    try:
+        # Initialize DB schema
+        await init_db()
+        # Seed mock data
+        await seed_data_if_empty()
+        logger.info("Application startup and database initialization complete.")
+    except Exception as e:
+        logger.error(f"Database initialization failed on startup: {e}. Check your DATABASE_URL environment variable.")
 
 @app.get("/health")
 async def health():
