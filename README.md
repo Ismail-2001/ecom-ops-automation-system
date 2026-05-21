@@ -1,5 +1,8 @@
 <div align="center">
   <br />
+  <p>
+    <img src="dashboard/src/assets/hero.png" width="200" alt="Ecommerce Ops Agent Logo" />
+  </p>
 
   <h1>🛒 Ecommerce Operations AI Pipeline</h1>
   <p><b>Autonomous, revenue-generating operations layer for high-growth Shopify & DTC brands.</b></p>
@@ -50,7 +53,7 @@ Unlike rigid "If-This-Then-That" automation apps, this system uses an intelligen
 The AI agents don't just follow rules—they *think*, *reason*, and *act* contextually.
 
 <div align="center">
-  <img src="https://placehold.co/800x400/111111/FFFFFF/png?text=Agent+Architecture" alt="Agent Architecture" />
+  <img src="docs/assets/agent_architecture.png" alt="Agent Architecture" width="800" />
 </div>
 
 1. **The Fraud Specialist:** Evaluates order metadata, location mismatches, and payment velocity.
@@ -68,7 +71,7 @@ The AI agents don't just follow rules—they *think*, *reason*, and *act* contex
 We know founders can't afford rogue AI making $10,000 mistakes. That's why we built the **HITL Approval Dashboard**—a luxurious, Stripe-like command center where your operations team retains ultimate control.
 
 <div align="center">
-  <img src="https://placehold.co/800x450/111111/FFFFFF/png?text=Dashboard+Preview" alt="Dashboard Preview" />
+  <img src="docs/assets/dashboard_preview.png" alt="Dashboard Preview" width="800" />
 </div>
 
 ### Dashboard Features:
