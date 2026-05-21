@@ -1,6 +1,9 @@
 import React from 'react';
-import { Play, Loader2, Sparkles, Inbox } from 'lucide-react';
+import { Play, Loader2, Sparkles, Inbox, ShieldAlert } from 'lucide-react';
 import { useApprovalQueue } from '../../hooks/useApprovalQueue';
+import { Button } from '../ui/Button';
+import { Badge } from '../ui/Badge';
+import { cn } from '../../utils/cn';
 
 interface TopBarProps {
   isPipelineRunning: boolean;
@@ -29,36 +32,33 @@ export const TopBar: React.FC<TopBarProps> = ({ isPipelineRunning, onToast }) =>
   };
 
   return (
-    <header className="h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-8 select-none">
+    <header className="h-16 bg-card/40 backdrop-blur-md border-b border-white/5 flex items-center justify-between px-8 select-none z-20 sticky top-0">
       {/* Title & Stats */}
       <div className="flex items-center space-x-6">
-        <div>
-          <h2 className="text-base font-bold text-slate-100 flex items-center">
-            Agent Approvals Desk
-            {isPipelineRunning && (
-              <span className="ml-3 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                AGENTS ACTIVE
-              </span>
-            )}
+        <div className="flex items-center">
+          <h2 className="text-sm font-semibold text-white flex items-center tracking-tight">
+            Active Approval Queue
           </h2>
+          {isPipelineRunning && (
+            <Badge variant="outline" className="ml-3 bg-blue-500/10 text-blue-400 border-blue-500/20">
+              <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
+              AGENTS SYNCING
+            </Badge>
+          )}
         </div>
 
         {/* Stats chips */}
         <div className="hidden md:flex items-center space-x-3 text-xs">
-          <div className="bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-850 flex items-center">
-            <Inbox className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
-            <span className="text-slate-400 mr-1.5">Pending queue:</span>
-            <span className="font-semibold text-slate-200">{pendingCount}</span>
+          <div className="bg-black/20 px-3 py-1.5 rounded-full border border-white/5 flex items-center shadow-inner">
+            <Inbox className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
+            <span className="text-muted-foreground mr-1.5 font-medium">Pending Review:</span>
+            <span className="font-bold text-white">{pendingCount}</span>
           </div>
 
           {criticalCount > 0 && (
-            <div className="bg-orange-500/10 px-3 py-1.5 rounded-lg border border-orange-500/25 flex items-center">
-              <span className="relative flex h-2 w-2 mr-1.5">
-                <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
-              </span>
-              <span className="text-orange-400 font-medium">{criticalCount} high risk</span>
+            <div className="bg-amber-500/10 px-3 py-1.5 rounded-full border border-amber-500/20 flex items-center shadow-[0_0_15px_rgba(245,158,11,0.15)]">
+              <ShieldAlert className="w-3.5 h-3.5 mr-1.5 text-amber-500" />
+              <span className="text-amber-400 font-bold">{criticalCount} High Risk</span>
             </div>
           )}
         </div>
@@ -66,28 +66,28 @@ export const TopBar: React.FC<TopBarProps> = ({ isPipelineRunning, onToast }) =>
 
       {/* Trigger Button */}
       <div>
-        <button
+        <Button
           onClick={handleRunPipeline}
           disabled={isPipelineRunning || isPipelineTriggering}
-          className={`relative inline-flex items-center justify-center px-4 py-2 text-xs font-semibold rounded-lg text-white shadow-lg transition-all duration-200 ${
-            isPipelineRunning || isPipelineTriggering
-              ? 'bg-slate-800 text-slate-400 cursor-not-allowed border border-slate-700'
-              : 'bg-blue-600 hover:bg-blue-500 hover:scale-[1.02] active:scale-[0.98] shadow-blue-500/10 border border-blue-500/20'
-          }`}
+          variant={isPipelineRunning || isPipelineTriggering ? "secondary" : "default"}
+          className={cn(
+            "rounded-full px-5 py-2 text-xs",
+            (isPipelineRunning || isPipelineTriggering) && "opacity-70 cursor-not-allowed"
+          )}
         >
           {isPipelineRunning || isPipelineTriggering ? (
             <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin text-blue-400" />
+              <Loader2 className="w-4 h-4 mr-2 animate-spin text-muted-foreground" />
               <span>Agents Running...</span>
             </>
           ) : (
             <>
-              <Play className="w-4 h-4 mr-2 fill-current" />
-              <span>Run Operations Cycle</span>
-              <Sparkles className="w-3.5 h-3.5 ml-1.5 text-blue-200 animate-pulse" />
+              <Play className="w-3.5 h-3.5 mr-2 fill-current" />
+              <span>Force Operations Sync</span>
+              <Sparkles className="w-3.5 h-3.5 ml-2 text-white/70" />
             </>
           )}
-        </button>
+        </Button>
       </div>
     </header>
   );

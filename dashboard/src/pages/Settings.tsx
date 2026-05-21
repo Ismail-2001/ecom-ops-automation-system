@@ -9,6 +9,9 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { useSettings } from '../hooks/useSettings';
+import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { motion } from 'framer-motion';
 
 export const Settings: React.FC = () => {
   const { triggerToast } = useOutletContext<{ triggerToast: any }>();
@@ -35,8 +38,8 @@ export const Settings: React.FC = () => {
   if (isLoading || !settings) {
     return (
       <div className="space-y-6 animate-pulse select-none">
-        <div className="h-8 w-48 bg-slate-800 rounded" />
-        <div className="h-64 bg-slate-900 rounded-xl" />
+        <div className="h-8 w-48 bg-slate-800/50 rounded-lg" />
+        <Card className="h-64 bg-slate-900/30" />
       </div>
     );
   }
@@ -73,7 +76,7 @@ export const Settings: React.FC = () => {
     <div className="max-w-3xl space-y-6">
       {/* Page Header */}
       <div className="select-none">
-        <h1 className="text-xl font-black text-slate-100 flex items-center">
+        <h1 className="text-2xl font-black text-slate-100 flex items-center tracking-tight">
           <SettingsIcon className="w-6 h-6 mr-3 text-blue-500" />
           Safety Config & Thresholds
         </h1>
@@ -84,7 +87,7 @@ export const Settings: React.FC = () => {
 
       <form onSubmit={handleSave} className="space-y-6">
         {/* 1. Shadow Mode Control Banner */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
+        <Card className="bg-slate-900/40 border-white/5 p-6 space-y-4">
           <div className="flex items-start justify-between">
             <div className="space-y-1">
               <h3 className="text-sm font-bold text-slate-200 flex items-center">
@@ -100,11 +103,13 @@ export const Settings: React.FC = () => {
             <button
               type="button"
               onClick={() => setShadowMode(!shadowMode)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-1 focus:ring-amber-500/40 ${
                 shadowMode ? 'bg-amber-600' : 'bg-slate-800'
               }`}
             >
-              <span
+              <motion.span
+                layout
+                transition={{ type: "spring", stiffness: 700, damping: 30 }}
                 className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
                   shadowMode ? 'translate-x-6' : 'translate-x-1'
                 }`}
@@ -112,14 +117,14 @@ export const Settings: React.FC = () => {
             </button>
           </div>
 
-          <hr className="border-slate-850" />
+          <hr className="border-white/5" />
 
-          <div className={`p-4 rounded-lg border text-xs leading-relaxed flex items-start space-x-3 select-none ${
+          <div className={`p-4 rounded-xl border text-xs leading-relaxed flex items-start space-x-3 select-none transition-colors duration-300 ${
             shadowMode 
-              ? 'bg-amber-600/10 border-amber-500/20 text-amber-300' 
+              ? 'bg-amber-500/10 border-amber-500/20 text-amber-300' 
               : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
           }`}>
-            <AlertTriangle className="w-4.5 h-4.5 flex-shrink-0 mt-0.5" />
+            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <div>
               <span className="font-bold block uppercase tracking-wider mb-1">
                 {shadowMode ? 'Simulation Active' : 'Live Mode Active'}
@@ -131,21 +136,21 @@ export const Settings: React.FC = () => {
               </span>
             </div>
           </div>
-        </div>
+        </Card>
 
         {/* 2. Threshold Controls */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-6">
+        <Card className="bg-slate-900/40 border-white/5 p-6 space-y-6">
           <h3 className="text-sm font-bold text-slate-200 flex items-center select-none">
             <ShieldCheck className="w-4 h-4 mr-2 text-blue-500" />
             Agent Interception Thresholds
           </h3>
           
-          <hr className="border-slate-850" />
+          <hr className="border-white/5" />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Fraud threshold */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-350 block">
+              <label className="text-xs font-bold text-slate-300 block">
                 Fraud Score Intervention Threshold (Stripe)
               </label>
               <p className="text-[11px] text-slate-500">
@@ -158,9 +163,9 @@ export const Settings: React.FC = () => {
                   max="100"
                   value={fraudThreshold}
                   onChange={(e) => setFraudThreshold(parseInt(e.target.value))}
-                  className="flex-1 accent-blue-500"
+                  className="flex-1 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
                 />
-                <span className="w-12 text-center text-xs font-bold font-mono bg-slate-950 border border-slate-850 px-2 py-1.5 rounded-lg text-slate-300">
+                <span className="w-12 text-center text-xs font-bold font-mono bg-slate-950 border border-white/10 px-2 py-1.5 rounded-lg text-slate-350 select-none">
                   {fraudThreshold}%
                 </span>
               </div>
@@ -168,28 +173,28 @@ export const Settings: React.FC = () => {
 
             {/* Purchase order limit */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-350 block">
+              <label className="text-xs font-bold text-slate-300 block">
                 Purchase Order Authorization Limit (USD)
               </label>
               <p className="text-[11px] text-slate-500">
                 Automatically halt and queue any Inventory restocking orders whose total value exceeds this limit.
               </p>
               <div className="relative">
-                <span className="absolute left-3 top-2.5 text-xs text-slate-500">$</span>
+                <span className="absolute left-3 top-2.5 text-xs text-slate-500 select-none">$</span>
                 <input
                   type="number"
                   min="0"
                   step="100"
                   value={poLimit}
                   onChange={(e) => setPoLimit(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-slate-950 border border-slate-850 rounded-lg pl-6 pr-4 py-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-slate-950/80 border border-white/10 rounded-lg pl-8 pr-4 py-2 text-xs font-mono text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all"
                 />
               </div>
             </div>
 
             {/* Pricing Deviation */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-350 block">
+              <label className="text-xs font-bold text-slate-300 block">
                 Pricing Discrepancy Limit (%)
               </label>
               <p className="text-[11px] text-slate-500">
@@ -203,15 +208,15 @@ export const Settings: React.FC = () => {
                   step="0.5"
                   value={pricingLimit}
                   onChange={(e) => setPricingLimit(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-slate-950 border border-slate-850 rounded-lg px-3 py-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-slate-950/80 border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all"
                 />
-                <span className="absolute right-3 top-2.5 text-xs text-slate-500">%</span>
+                <span className="absolute right-3 top-2.5 text-xs text-slate-500 select-none">%</span>
               </div>
             </div>
 
             {/* Reviews threshold */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-350 block">
+              <label className="text-xs font-bold text-slate-300 block">
                 Review Rating Intercept Threshold
               </label>
               <p className="text-[11px] text-slate-500">
@@ -220,7 +225,7 @@ export const Settings: React.FC = () => {
               <select
                 value={reviewsThreshold}
                 onChange={(e) => setReviewsThreshold(parseInt(e.target.value))}
-                className="w-full bg-slate-950 border border-slate-850 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-blue-500"
+                className="w-full bg-slate-950/80 border border-white/10 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-all"
               >
                 <option value="1">1 Star or less</option>
                 <option value="2">2 Stars or less</option>
@@ -230,27 +235,28 @@ export const Settings: React.FC = () => {
               </select>
             </div>
           </div>
-        </div>
+        </Card>
 
         {/* 3. Submit Buttons */}
         <div className="flex justify-end space-x-3 select-none">
-          <button
+          <Button
             type="button"
+            variant="outline"
             onClick={handleReset}
             disabled={isUpdating}
-            className="px-4 py-2 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 border border-slate-700 transition-colors flex items-center"
+            className="flex items-center text-xs"
           >
             <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
             Reset Edits
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
             disabled={isUpdating}
-            className="px-5 py-2 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/10 border border-blue-500/20 transition-all flex items-center"
+            className="flex items-center text-xs"
           >
             <Save className="w-3.5 h-3.5 mr-1.5" />
             {isUpdating ? 'Saving Changes...' : 'Save Thresholds'}
-          </button>
+          </Button>
         </div>
       </form>
     </div>

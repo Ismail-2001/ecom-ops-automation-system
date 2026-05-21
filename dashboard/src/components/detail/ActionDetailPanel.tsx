@@ -1,9 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { X, Send, Award, Database, AlertCircle, Ban, ShieldCheck } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { useUIStore } from '../../store/uiStore';
 import { useApprovalQueue } from '../../hooks/useApprovalQueue';
-import { getAgentColors, getRiskColors, getAgentLabel, getActionTypeLabel } from '../../utils/riskColors';
+import { getAgentColors, getAgentLabel, getActionTypeLabel } from '../../utils/riskColors';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
+import { Button } from '../ui/Button';
+import { Badge } from '../ui/Badge';
+import { Card } from '../ui/Card';
+import { cn } from '../../utils/cn';
 
 import FraudDetail from './FraudDetail';
 import InventoryDetail from './InventoryDetail';
@@ -38,10 +43,16 @@ export const ActionDetailPanel: React.FC<ActionDetailPanelProps> = ({ onToast })
   if (!selectedActionId) return null;
   if (!action) {
     return (
-      <aside className="w-[480px] bg-slate-900 border-l border-slate-800 flex flex-col h-full shadow-2xl relative">
+      <motion.aside 
+        initial={{ x: 500, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: 500, opacity: 0 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+        className="w-[480px] bg-card/90 border-l border-white/5 flex flex-col h-full shadow-2xl relative z-30 backdrop-blur-xl"
+      >
         <button 
           onClick={() => setSelectedActionId(null)}
-          className="absolute top-4 right-4 text-slate-400 hover:text-slate-200"
+          className="absolute top-4 right-4 text-slate-400 hover:text-slate-200 transition-colors"
         >
           <X className="w-5 h-5" />
         </button>
@@ -49,12 +60,11 @@ export const ActionDetailPanel: React.FC<ActionDetailPanelProps> = ({ onToast })
           <AlertCircle className="w-6 h-6 mr-2" />
           <span>Action not found.</span>
         </div>
-      </aside>
+      </motion.aside>
     );
   }
 
   const agentColors = getAgentColors(action.agent);
-  const riskColors = getRiskColors(action.risk_level);
   const isPending = action.status === 'pending';
 
   const handleApprove = async () => {
@@ -120,20 +130,29 @@ export const ActionDetailPanel: React.FC<ActionDetailPanelProps> = ({ onToast })
   };
 
   return (
-    <aside className="w-[500px] bg-slate-900 border-l border-slate-800 flex flex-col h-full shadow-2xl relative z-30">
+    <motion.aside 
+      initial={{ x: 500, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      exit={{ x: 500, opacity: 0 }}
+      transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+      className="w-[500px] bg-card/90 border-l border-white/5 flex flex-col h-full shadow-2xl relative z-30 backdrop-blur-xl"
+    >
       {/* Slider Header */}
-      <div className="p-6 border-b border-slate-850 flex items-center justify-between select-none">
+      <div className="p-6 border-b border-white/5 flex items-center justify-between select-none">
         <div className="flex items-center space-x-3">
-          <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${agentColors.bg} ${agentColors.text} ${agentColors.border}`}>
+          <Badge variant="outline" className={cn("text-[10px] font-bold uppercase tracking-wider border px-2.5 py-0.5", agentColors.border, agentColors.text, "bg-white/5")}>
             {getAgentLabel(action.agent)}
-          </span>
-          <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${riskColors.bg} ${riskColors.text} ${riskColors.border}`}>
+          </Badge>
+          <Badge 
+            variant={action.risk_level === 'low' ? 'success' : action.risk_level === 'medium' ? 'warning' : 'destructive'}
+            className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5"
+          >
             {action.risk_level} risk
-          </span>
+          </Badge>
         </div>
         <button
           onClick={() => setSelectedActionId(null)}
-          className="text-slate-400 hover:text-slate-200 transition-colors"
+          className="text-slate-400 hover:text-white transition-colors"
         >
           <X className="w-5 h-5" />
         </button>
@@ -149,69 +168,65 @@ export const ActionDetailPanel: React.FC<ActionDetailPanelProps> = ({ onToast })
           </p>
         </div>
 
-        <hr className="border-slate-850" />
+        <hr className="border-white/5" />
 
         {/* 1. Payload Details */}
         {renderAgentPayload()}
 
         {/* 2. Impact Estimator */}
         {action.impact && (
-          <div className="bg-slate-900 border border-slate-850 rounded-xl p-4 space-y-3 select-none">
-            <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center">
-              <ShieldCheck className="w-4 h-4 mr-2 text-slate-450" />
+          <Card className="bg-black/20 border-white/5 p-4 space-y-3 select-none">
+            <h4 className="text-xs font-bold text-slate-350 uppercase tracking-wider flex items-center">
+              <ShieldCheck className="w-4 h-4 mr-2 text-accent" />
               Impact Estimation
             </h4>
-            <hr className="border-slate-850" />
+            <hr className="border-white/5" />
             <div className="space-y-2 text-xs">
               <div className="flex justify-between">
-                <span className="text-slate-500">Financial Impact</span>
-                <span className={`font-semibold ${action.impact.financial_impact && action.impact.financial_impact >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                <span className="text-slate-550">Financial Impact</span>
+                <span className={cn("font-bold text-sm", action.impact.financial_impact && action.impact.financial_impact >= 0 ? 'text-emerald-400' : 'text-red-400')}>
                   {formatCurrency(action.impact.financial_impact)}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Affected Scope</span>
-                <span className="text-slate-300 font-medium">
+                <span className="text-slate-550">Affected Scope</span>
+                <span className="text-slate-300 font-semibold">
                   {action.impact.affected_skus.length > 0 
                     ? `${action.impact.affected_skus.length} SKU(s)` 
                     : `${action.impact.affected_orders.length} Order(s)`}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Reversible?</span>
-                <span className="text-slate-300 font-medium">
+                <span className="text-slate-550">Reversible?</span>
+                <span className="text-slate-300 font-semibold">
                   {action.impact.reversible 
                     ? `Yes, within ${action.impact.reversal_window_hours || 24} hours` 
                     : 'No (Immutable)'}
                 </span>
               </div>
             </div>
-          </div>
+          </Card>
         )}
 
         {/* 3. Evidence Log Metrics */}
         {action.evidence && action.evidence.length > 0 && (
           <div className="space-y-3 select-none">
             <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center">
-              <Database className="w-4 h-4 mr-2 text-slate-500" />
+              <Database className="w-4 h-4 mr-2 text-accent" />
               Decisive Evidence Logs
             </h4>
             <div className="grid grid-cols-1 gap-2">
               {action.evidence.map((ev, index) => (
-                <div key={index} className="bg-slate-950 border border-slate-850 p-3 rounded-lg flex items-center justify-between text-xs">
+                <div key={index} className="bg-black/30 border border-white/5 p-3 rounded-lg flex items-center justify-between text-xs">
                   <div>
                     <span className="text-slate-500 font-medium block text-[10px] uppercase tracking-wider">
                       {ev.label} ({ev.source})
                     </span>
-                    <span className="text-slate-200 mt-1 font-semibold block">{ev.value}</span>
+                    <span className="text-slate-200 mt-1 font-bold block">{ev.value}</span>
                   </div>
-                  <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider border ${
-                    ev.weight === 'primary' 
-                      ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' 
-                      : 'bg-slate-500/10 text-slate-400 border-slate-500/20'
-                  }`}>
+                  <Badge variant={ev.weight === 'primary' ? 'default' : 'outline'} className="text-[9px] font-bold px-1.5 py-0.5">
                     {ev.weight}
-                  </span>
+                  </Badge>
                 </div>
               ))}
             </div>
@@ -220,7 +235,7 @@ export const ActionDetailPanel: React.FC<ActionDetailPanelProps> = ({ onToast })
       </div>
 
       {/* Decision Footer Panel */}
-      <div className="p-6 border-t border-slate-850 bg-slate-900/80">
+      <div className="p-6 border-t border-white/5 bg-black/20">
         {isPending ? (
           <div className="space-y-4">
             {showRejectInput ? (
@@ -232,25 +247,27 @@ export const ActionDetailPanel: React.FC<ActionDetailPanelProps> = ({ onToast })
                   placeholder="Specify why you are rejecting this decision (e.g. Price fluctuation updated, False fraud flag)..."
                   value={rejectionReason}
                   onChange={(e) => setRejectionReason(e.target.value)}
-                  className="w-full bg-slate-950 border border-red-500/20 focus:border-red-500 rounded-lg p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none min-h-[80px]"
+                  className="w-full bg-black/45 border border-white/10 focus:border-red-500 rounded-lg p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none min-h-[80px] transition-colors duration-250"
                 />
                 <div className="flex space-x-2">
-                  <button
+                  <Button
+                    variant="ghost"
                     onClick={() => {
                       setShowRejectInput(false);
                       setRejectionReason('');
                     }}
-                    className="flex-1 py-2 text-xs font-semibold rounded-lg hover:bg-slate-800 text-slate-400 border border-transparent transition-colors"
+                    className="flex-1 py-2 text-xs font-semibold text-slate-400 hover:text-white"
                   >
                     Back
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="destructive"
                     onClick={handleReject}
                     disabled={isRejecting}
-                    className="flex-1 py-2 text-xs font-semibold rounded-lg bg-red-600 hover:bg-red-500 text-white transition-colors"
+                    className="flex-1 py-2 text-xs font-semibold"
                   >
                     {isRejecting ? 'Rejecting...' : 'Confirm Reject'}
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : (
@@ -264,80 +281,82 @@ export const ActionDetailPanel: React.FC<ActionDetailPanelProps> = ({ onToast })
                     placeholder="Add operational notes for audit..."
                     value={operatorNotes}
                     onChange={(e) => setOperatorNotes(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-850 focus:border-blue-500 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none transition-colors"
+                    className="w-full bg-black/45 border border-white/10 focus:border-accent rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none transition-all duration-200"
                   />
                 </div>
 
                 <div className="flex space-x-3">
-                  <button
+                  <Button
+                    variant="destructive"
                     onClick={() => setShowRejectInput(true)}
-                    className="flex-1 py-2.5 text-xs font-semibold rounded-lg bg-red-600/10 hover:bg-red-600/20 text-red-400 border border-red-500/25 transition-colors flex items-center justify-center"
+                    className="flex-1 py-2.5 text-xs font-semibold flex items-center justify-center h-10"
                   >
                     <Ban className="w-3.5 h-3.5 mr-1.5" />
                     Reject Action
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="default"
                     onClick={handleApprove}
                     disabled={isApproving}
-                    className="flex-1 py-2.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500/20 transition-all flex items-center justify-center shadow-lg shadow-emerald-600/10"
+                    className="flex-1 py-2.5 text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-white border-emerald-500/20 shadow-lg shadow-emerald-500/10 flex items-center justify-center h-10"
                   >
                     <Send className="w-3.5 h-3.5 mr-1.5" />
                     {isApproving ? 'Executing...' : 'Approve & Run'}
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}
           </div>
         ) : (
           /* Immutable Decision Logs Panel */
-          <div className="bg-slate-950 border border-slate-850 p-4 rounded-xl space-y-3 select-none">
-            <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center">
-              <Award className="w-4 h-4 mr-2 text-blue-400" />
+          <Card className="bg-black/35 border-white/5 p-4 rounded-xl space-y-3 select-none">
+            <h4 className="text-xs font-bold text-slate-350 uppercase tracking-wider flex items-center">
+              <Award className="w-4 h-4 mr-2 text-accent" />
               Immutable Decision Log
             </h4>
-            <hr className="border-slate-850" />
+            <hr className="border-white/5" />
             <div className="space-y-2 text-xs leading-relaxed">
               <div className="flex justify-between">
                 <span className="text-slate-500">Review Status</span>
-                <span className="font-semibold text-slate-300 uppercase tracking-wider">
+                <Badge variant={action.status === 'executed' ? 'success' : action.status === 'rejected' ? 'destructive' : 'default'} className="font-bold text-[10px] uppercase px-2 py-0.5 border">
                   {action.status}
-                </span>
+                </Badge>
               </div>
               {action.reviewed_by && (
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Operator ID</span>
-                  <span className="text-slate-300 font-medium font-mono">{action.reviewed_by}</span>
+                  <span className="text-slate-550">Operator ID</span>
+                  <span className="text-slate-300 font-semibold font-mono">{action.reviewed_by}</span>
                 </div>
               )}
               {action.reviewed_at && (
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Decided At</span>
-                  <span className="text-slate-300 font-medium">
+                  <span className="text-slate-550">Decided At</span>
+                  <span className="text-slate-300 font-semibold">
                     {formatDateTime(action.reviewed_at)}
                   </span>
                 </div>
               )}
               {action.rejection_reason && (
-                <div>
-                  <span className="text-slate-500 block mb-1">Rejection Reason</span>
-                  <div className="bg-red-950/20 border border-red-500/10 p-2.5 rounded-lg text-red-400">
+                <div className="mt-2">
+                  <span className="text-slate-550 block mb-1">Rejection Reason</span>
+                  <div className="bg-red-500/5 border border-red-500/25 p-2.5 rounded-lg text-red-400">
                     "{action.rejection_reason}"
                   </div>
                 </div>
               )}
               {action.operator_notes && (
-                <div>
-                  <span className="text-slate-500 block mb-1">Operator Notes</span>
-                  <div className="bg-slate-900 border border-slate-850 p-2.5 rounded-lg text-slate-400 italic">
+                <div className="mt-2">
+                  <span className="text-slate-550 block mb-1">Operator Notes</span>
+                  <div className="bg-black/30 border border-white/5 p-2.5 rounded-lg text-slate-400 italic">
                     "{action.operator_notes}"
                   </div>
                 </div>
               )}
             </div>
-          </div>
+          </Card>
         )}
       </div>
-    </aside>
+    </motion.aside>
   );
 };
 

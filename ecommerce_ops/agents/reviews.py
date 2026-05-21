@@ -1,6 +1,17 @@
 from typing import Dict, Any, List
 from ecommerce_ops.agents._base import BaseAgent
 from ecommerce_ops.config import settings
+from pydantic import BaseModel, Field
+import structlog
+
+logger = structlog.get_logger(__name__)
+
+class ReviewAnalysisOutput(BaseModel):
+    sentiment: str = Field(description="The sentiment of the review: Positive, Neutral, or Negative.")
+    themes: List[str] = Field(description="Key themes extracted from the review, e.g., Shipping, Quality, Sizing, Support.")
+    response: str = Field(description="A drafted response to the customer in a professional yet friendly store voice.")
+    contains_refund_offer: bool = Field(description="True if the response offers a refund, False otherwise.")
+    confidence: float = Field(description="Confidence score of the analysis between 0.0 and 1.0.")
 
 class ReviewsAgent(BaseAgent):
     def __init__(self):
@@ -41,22 +52,32 @@ class ReviewsAgent(BaseAgent):
         return state
 
     async def _analyze_review(self, content: str, rating: int) -> Dict[str, Any]:
-        """Call DeepSeek to analyze and draft."""
-        prompt = f"""
-        Analyze this customer review: "{content}" (Rating: {rating}/5)
+        """Call DeepSeek to analyze and draft via LangChain structured output."""
+        prompt = (
+            f"Analyze this customer review: \"{content}\" (Rating: {rating}/5)\n\n"
+            "Task:\n"
+            "1. Determine sentiment (Positive, Neutral, Negative).\n"
+            "2. Extract themes (Shipping, Quality, Sizing, Support).\n"
+            "3. Draft a response in a professional yet friendly 'store voice'.\n"
+            "4. Determine if a refund is offered.\n"
+            "5. Provide a confidence score.\n"
+        )
         
-        Task:
-        1. Determine sentiment (Positive, Neutral, Negative).
-        2. Extract themes (Shipping, Quality, Sizing, Support).
-        3. Draft a response in a professional yet friendly "store voice".
-        4. Output JSON with keys: sentiment, themes, response, contains_refund_offer, confidence.
-        """
-        # In a real run, this uses self.llm.invoke()
-        # Mocking the output for now
-        return {
-            "sentiment": "Positive" if rating >= 4 else "Negative",
-            "themes": ["Quality"],
-            "response": f"Thank you for your {rating}-star review! We are glad you liked it.",
-            "contains_refund_offer": False,
-            "confidence": 0.95
-        }
+        try:
+            structured_llm = self.llm.with_structured_output(ReviewAnalysisOutput)
+            result = await structured_llm.ainvoke(prompt)
+            
+            logger.info(f"LLM analyzed review with sentiment {result.sentiment}")
+            return result.model_dump()
+            
+        except Exception as e:
+            logger.error(f"LLM analysis failed for review: {e}")
+            # Fallback mock response
+            return {
+                "sentiment": "Positive" if rating >= 4 else "Negative",
+                "themes": ["Unknown"],
+                "response": f"Thank you for your {rating}-star review! We appreciate your feedback.",
+                "contains_refund_offer": False,
+                "confidence": 0.5
+            }
+

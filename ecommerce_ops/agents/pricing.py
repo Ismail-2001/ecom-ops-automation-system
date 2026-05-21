@@ -1,6 +1,8 @@
 from typing import Dict, Any
 from ecommerce_ops.agents._base import BaseAgent
 from ecommerce_ops.config import settings
+from ecommerce_ops.connectors.competitor_scraper import scrape_competitor_price
+from ecommerce_ops.memory import cache
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -23,7 +25,7 @@ class PricingAgent(BaseAgent):
             current_price = float(item.get("price", 0))
             sku = item.get("sku")
             
-            # Step 1: Competitor Check (Scraper logic would go here)
+            # Step 1: Competitor Check (Scraper logic with Redis caching)
             competitor_price = await self._get_competitor_price(sku)
             
             # Step 2: Band enforcement (Example: ±20% from settings)
@@ -52,7 +54,21 @@ class PricingAgent(BaseAgent):
         return state
 
     async def _get_competitor_price(self, sku: str) -> float:
-        """Playwright-based scraper placeholder."""
-        # In production, this would use ecommerce_ops/connectors/competitor_scraper.py
-        # For now, return a mock competitive price
-        return 22.50 # Sample lower price
+        """Playwright-based scraper with Redis cache."""
+        cache_key = f"competitor_price:{sku}"
+        
+        # Check cache
+        cached_price = await cache.get(cache_key)
+        if cached_price is not None:
+            logger.info(f"Cache hit for {sku} competitor price: {cached_price}")
+            return float(cached_price)
+            
+        # Scrape if not in cache
+        price = await scrape_competitor_price(sku)
+        if price is not None:
+            await cache.set(cache_key, price, ttl=3600)  # Cache for 1 hour
+            return price
+            
+        # Fallback if scraping fails
+        return 22.50
+

@@ -33,12 +33,15 @@ export const AppShell: React.FC = () => {
   const { isConnected, isPipelineRunning } = useWebSocket(triggerToast);
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-slate-950 text-slate-100 font-sans">
-      {/* 1. Shadow Mode Banner (Non-hideable if active in DB) */}
+    <div className="flex flex-col h-screen overflow-hidden bg-background text-foreground font-sans relative">
+      {/* Subtle Ambient Background Glow */}
+      <div className="absolute top-0 inset-x-0 h-96 bg-gradient-to-b from-blue-500/5 to-transparent pointer-events-none" />
+
+      {/* 1. Shadow Mode Banner */}
       <ShadowModeBanner />
 
       {/* 2. Main Dashboard Split View */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative z-10">
         {/* Sidebar */}
         <Sidebar wsConnected={isConnected} />
 
@@ -48,7 +51,7 @@ export const AppShell: React.FC = () => {
           <TopBar isPipelineRunning={isPipelineRunning} onToast={triggerToast} />
 
           {/* Subpage Viewport */}
-          <main className="flex-1 overflow-y-auto bg-slate-950 p-8">
+          <main className="flex-1 overflow-y-auto p-8 z-0">
             <Outlet context={{ triggerToast }} />
           </main>
         </div>
