@@ -9,8 +9,8 @@ class BaseAgent(abc.ABC):
     def __init__(self, agent_name: str):
         self.agent_name = agent_name
         self.llm = ChatOpenAI(
-            model="deepseek-chat", # deepseek-v3 or similar depending on the exact name in the provider
-            openai_api_key=settings.DEEPSEEK_API_KEY.get_secret_value(),
+            model=settings.LLM_MODEL,
+            openai_api_key=settings.DEEPSEEK_API_KEY.get_secret_value() if settings.DEEPSEEK_API_KEY else "mock_key",
             openai_api_base=settings.DEEPSEEK_BASE_URL,
             temperature=0,
         )

@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     # API Keys
     DEEPSEEK_API_KEY: Optional[SecretStr] = None
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com/v1"
+    LLM_MODEL: str = "deepseek-chat"
     
     SHOPIFY_API_KEY: Optional[SecretStr] = None
     SHOPIFY_PASSWORD: Optional[SecretStr] = None
