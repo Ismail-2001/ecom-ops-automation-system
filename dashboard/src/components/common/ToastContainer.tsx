@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertCircle, CheckCircle, Info, X, AlertTriangle } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export interface Toast {
   id: string;
@@ -13,43 +14,57 @@ interface ToastContainerProps {
   removeToast: (id: string) => void;
 }
 
+const toastStyles = {
+  info:    { bg: 'rgba(37,99,235,0.12)',  border: 'rgba(59,130,246,0.25)',  color: '#60a5fa',  icon: <Info size={16} color="#60a5fa" /> },
+  success: { bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.25)', color: '#34d399',  icon: <CheckCircle size={16} color="#34d399" /> },
+  warning: { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.25)', color: '#fbbf24',  icon: <AlertTriangle size={16} color="#fbbf24" /> },
+  error:   { bg: 'rgba(244,63,94,0.12)',  border: 'rgba(244,63,94,0.25)',  color: '#fb7185',  icon: <AlertCircle size={16} color="#fb7185" /> },
+};
+
 export const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, removeToast }) => {
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col space-y-2 max-w-sm w-full">
-      {toasts.map((toast) => {
-        let bg = 'bg-slate-900 border-slate-850';
-        let icon = <Info className="w-5 h-5 text-blue-400" />;
-        
-        if (toast.type === 'success') {
-          bg = 'bg-emerald-950/90 border-emerald-500/20 text-emerald-100';
-          icon = <CheckCircle className="w-5 h-5 text-emerald-400" />;
-        } else if (toast.type === 'error') {
-          bg = 'bg-red-950/90 border-red-500/20 text-red-100';
-          icon = <AlertCircle className="w-5 h-5 text-red-400" />;
-        } else if (toast.type === 'warning') {
-          bg = 'bg-amber-950/90 border-amber-500/20 text-amber-100';
-          icon = <AlertTriangle className="w-5 h-5 text-amber-400" />;
-        }
-
-        return (
-          <div
-            key={toast.id}
-            className={`flex items-start p-4 rounded-lg border shadow-lg backdrop-blur-sm transition-all duration-300 transform translate-y-0 ${bg}`}
-          >
-            <div className="flex-shrink-0 mr-3 mt-0.5">{icon}</div>
-            <div className="flex-grow mr-2">
-              <h4 className="text-sm font-semibold">{toast.title}</h4>
-              <p className="text-xs text-slate-300 mt-1">{toast.message}</p>
-            </div>
-            <button
-              onClick={() => removeToast(toast.id)}
-              className="flex-shrink-0 text-slate-400 hover:text-slate-200 transition-colors"
+    <div style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 9999, display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '360px', width: '100%' }}>
+      <AnimatePresence>
+        {toasts.map((toast) => {
+          const s = toastStyles[toast.type];
+          return (
+            <motion.div
+              key={toast.id}
+              initial={{ opacity: 0, x: 40, scale: 0.95 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: 40, scale: 0.92 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: '12px',
+                padding: '14px 16px',
+                borderRadius: '12px',
+                background: 'rgba(13,17,23,0.92)',
+                backdropFilter: 'blur(24px)',
+                border: `1px solid ${s.border}`,
+                boxShadow: `0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px ${s.border}`,
+              }}
             >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        );
-      })}
+              <div style={{ flexShrink: 0, marginTop: '1px' }}>{s.icon}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: '#f1f5f9', marginBottom: '3px' }}>{toast.title}</div>
+                <div style={{ fontSize: '12px', color: '#64748b', lineHeight: '1.45' }}>{toast.message}</div>
+              </div>
+              <button
+                onClick={() => removeToast(toast.id)}
+                style={{
+                  flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer',
+                  color: '#475569', padding: '2px', borderRadius: '4px', lineHeight: 1,
+                  transition: 'color 0.15s',
+                }}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = '#94a3b8')}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = '#475569')}
+              >
+                <X size={14} />
+              </button>
+            </motion.div>
+          );
+        })}
+      </AnimatePresence>
     </div>
   );
 };

@@ -5,23 +5,43 @@ import { useSettings } from '../../hooks/useSettings';
 export const ShadowModeBanner: React.FC = () => {
   const { settings, isLoading } = useSettings();
 
-  if (isLoading || !settings || !settings.shadow_mode) {
-    return null;
-  }
+  if (isLoading || !settings || !settings.shadow_mode) return null;
 
   return (
-    <div className="bg-amber-600/90 text-amber-950 px-4 py-2 border-b border-amber-500/30 flex items-center justify-between text-xs font-semibold shadow-md backdrop-blur-sm sticky top-0 z-50 select-none">
-      <div className="flex items-center space-x-2 mx-auto">
-        <div className="relative flex h-2 w-2">
-          <span className="animate-pulse-ring absolute inline-flex h-full w-full rounded-full bg-amber-950 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-950"></span>
-        </div>
-        <ShieldAlert className="w-4 h-4 text-amber-950" />
-        <span>SHADOW MODE ACTIVE: ALL COMPLETED APPROVALS ARE LOGGED AS SIMULATIONS AND WILL NOT MUTATE LIVE SHOPIFY STORE DATA</span>
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: '7px 20px',
+      background: 'linear-gradient(90deg, rgba(245,158,11,0.12) 0%, rgba(245,158,11,0.07) 50%, rgba(245,158,11,0.12) 100%)',
+      borderBottom: '1px solid rgba(245,158,11,0.2)',
+      position: 'sticky',
+      top: 0,
+      zIndex: 50,
+      backdropFilter: 'blur(8px)',
+      userSelect: 'none',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '0 auto', fontSize: '11px', fontWeight: 600, color: '#fbbf24', letterSpacing: '0.03em' }}>
+        {/* Pulse dot */}
+        <span style={{ position: 'relative', display: 'inline-flex', width: '8px', height: '8px' }}>
+          <span style={{
+            position: 'absolute', inset: 0, borderRadius: '50%',
+            background: '#f59e0b', opacity: 0.5,
+            animation: 'pulse-ring 1.5s ease-out infinite',
+          }} />
+          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#fbbf24', position: 'relative', zIndex: 1 }} />
+        </span>
+        <ShieldAlert size={13} color="#fbbf24" />
+        SHADOW MODE ACTIVE: ALL COMPLETED APPROVALS ARE LOGGED AS SIMULATIONS AND WILL NOT MUTATE LIVE SHOPIFY STORE DATA
       </div>
-      <div className="flex items-center space-x-1 text-[10px] bg-amber-950/10 px-2 py-0.5 rounded border border-amber-950/20">
-        <Eye className="w-3.5 h-3.5" />
-        <span>MONITOR MODE</span>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '4px',
+        fontSize: '10px', fontWeight: 700, color: '#92400e',
+        padding: '3px 8px', borderRadius: '6px',
+        background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.2)',
+        letterSpacing: '0.06em',
+      }}>
+        <Eye size={11} /> MONITOR MODE
       </div>
     </div>
   );

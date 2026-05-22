@@ -1,14 +1,10 @@
 import React from 'react';
-import { Clock, DollarSign, Check, X, ChevronRight } from 'lucide-react';
+import { Clock, DollarSign, Check, X, ChevronRight, AlertTriangle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { ApprovalAction } from '../../types/action';
-import { getAgentColors, getAgentLabel, getActionTypeLabel } from '../../utils/riskColors';
+import { getAgentLabel, getActionTypeLabel } from '../../utils/riskColors';
 import { formatCurrency, getCountdown } from '../../utils/formatters';
 import { useUIStore } from '../../store/uiStore';
-import { Card } from '../ui/Card';
-import { Badge } from '../ui/Badge';
-import { Button } from '../ui/Button';
-import { cn } from '../../utils/cn';
 
 interface ApprovalCardProps {
   action: ApprovalAction;
@@ -16,201 +12,260 @@ interface ApprovalCardProps {
   onReject: (id: string) => void;
 }
 
+const riskStyle = (level: string) => {
+  switch (level) {
+    case 'critical': return { bg: 'rgba(244,63,94,0.12)', color: '#fb7185', border: 'rgba(244,63,94,0.25)', glow: 'rgba(244,63,94,0.15)' };
+    case 'high':     return { bg: 'rgba(245,158,11,0.12)', color: '#fbbf24', border: 'rgba(245,158,11,0.25)', glow: 'rgba(245,158,11,0.15)' };
+    case 'medium':   return { bg: 'rgba(139,92,246,0.12)', color: '#a78bfa', border: 'rgba(139,92,246,0.25)', glow: 'rgba(139,92,246,0.1)' };
+    default:         return { bg: 'rgba(16,185,129,0.12)', color: '#34d399', border: 'rgba(16,185,129,0.25)', glow: 'rgba(16,185,129,0.1)' };
+  }
+};
+
 export const ApprovalCard: React.FC<ApprovalCardProps> = ({ action, onApprove, onReject }) => {
-  const { 
-    selectedActionId, 
-    setSelectedActionId, 
-    selectedActionIds, 
-    toggleSelectedActionId 
-  } = useUIStore();
+  const { selectedActionId, setSelectedActionId, selectedActionIds, toggleSelectedActionId } = useUIStore();
 
   const isSelected = selectedActionId === action.id;
   const isBatchSelected = selectedActionIds.includes(action.id);
-  
-  const agentColors = getAgentColors(action.agent);
-  
   const isPending = action.status === 'pending';
   const isHighRisk = action.risk_level === 'high' || action.risk_level === 'critical';
-  const canBatchSelect = isPending && !isHighRisk; // Only allow low/medium risk for batch selection
-
-  // Expiry countdown
+  const canBatchSelect = isPending && !isHighRisk;
   const timeRemaining = getCountdown(action.expires_at);
+  const risk = riskStyle(action.risk_level);
 
-  // Construct description title
+
   let actionTitle = getActionTypeLabel(action.action_type);
   let actionSubtitle = '';
-  
-  if (action.action_type === 'fraud_hold') {
-    actionSubtitle = `Order ${action.payload?.order_id || 'Unknown'}`;
-  } else if (action.action_type === 'purchase_order') {
-    actionSubtitle = `Order ${action.payload?.reorder_quantity || 0}x of ${action.payload?.sku || 'Item'}`;
-  } else if (action.action_type === 'price_change') {
-    actionSubtitle = `Update ${action.payload?.sku || 'Item'} to ${formatCurrency(action.payload?.proposed_price)}`;
-  } else if (action.action_type === 'review_response') {
-    actionSubtitle = `Respond to rating ${action.payload?.rating || 0}★ for ${action.payload?.product_name || 'Product'}`;
-  } else if (action.action_type === 'marketing_campaign') {
-    actionSubtitle = `Discount ${action.payload?.discount_percent || 0}% for ${action.payload?.campaign_name || 'Campaign'}`;
-  }
+  if (action.action_type === 'fraud_hold') actionSubtitle = `Order ${action.payload?.order_id || 'Unknown'}`;
+  else if (action.action_type === 'purchase_order') actionSubtitle = `${action.payload?.reorder_quantity || 0}× ${action.payload?.sku || 'Item'}`;
+  else if (action.action_type === 'price_change') actionSubtitle = `${action.payload?.sku || 'Item'} → ${formatCurrency(action.payload?.proposed_price)}`;
+  else if (action.action_type === 'review_response') actionSubtitle = `${action.payload?.rating || 0}★ · ${action.payload?.product_name || 'Product'}`;
+  else if (action.action_type === 'marketing_campaign') actionSubtitle = `${action.payload?.discount_percent || 0}% · ${action.payload?.campaign_name || 'Campaign'}`;
 
-  const handleCardClick = (e: React.MouseEvent) => {
-    // Avoid selecting if clicking checkbox or action buttons
-    const target = e.target as HTMLElement;
-    if (target.closest('input[type="checkbox"]') || target.closest('button')) {
-      return;
-    }
-    setSelectedActionId(action.id);
-  };
+  const cardBg = isSelected
+    ? 'rgba(37,99,235,0.08)'
+    : isBatchSelected
+    ? 'rgba(37,99,235,0.05)'
+    : 'rgba(13,17,23,0.7)';
+
+  const cardBorder = isSelected
+    ? 'rgba(59,130,246,0.35)'
+    : isBatchSelected
+    ? 'rgba(59,130,246,0.2)'
+    : 'rgba(255,255,255,0.06)';
+
+  const cardShadow = isSelected
+    ? '0 0 0 1px rgba(59,130,246,0.2), 0 8px 32px rgba(37,99,235,0.15)'
+    : '0 2px 12px rgba(0,0,0,0.4)';
 
   return (
     <motion.div
       layoutId={`card-${action.id}`}
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      whileHover={{ y: -2, transition: { duration: 0.15 } }}
-      onClick={handleCardClick}
-      className="cursor-pointer mb-4 focus-visible:outline-none"
+      exit={{ opacity: 0, scale: 0.97 }}
+      whileHover={{ y: -2 }}
+      transition={{ duration: 0.18 }}
+      onClick={() => setSelectedActionId(action.id)}
+      style={{ cursor: 'pointer', marginBottom: '10px' }}
     >
-      <Card
-        className={cn(
-          "p-5 transition-all duration-300 relative overflow-hidden group select-none",
-          isSelected 
-            ? "border-accent bg-card/65 shadow-2xl shadow-accent/10 ring-2 ring-accent/30" 
-            : "border-white/5 hover:border-white/15 bg-card/40 hover:bg-card/60 shadow-lg",
-          isBatchSelected && "bg-accent/5 border-accent/20"
-        )}
+      <div
+        style={{
+          background: cardBg,
+          backdropFilter: 'blur(20px) saturate(160%)',
+          border: `1px solid ${cardBorder}`,
+          borderRadius: '14px',
+          boxShadow: cardShadow,
+          padding: '16px 18px',
+          position: 'relative',
+          overflow: 'hidden',
+          transition: 'all 0.2s ease',
+        }}
       >
-        {/* Subtle decorative glow when selected */}
+        {/* Glow accent for selected */}
         {isSelected && (
-          <div className="absolute top-0 right-0 w-48 h-48 bg-accent/5 rounded-full blur-3xl pointer-events-none -mr-16 -mt-16 transition-opacity duration-500" />
+          <div style={{
+            position: 'absolute', top: '-40px', right: '-40px',
+            width: '160px', height: '160px',
+            background: 'radial-gradient(circle, rgba(37,99,235,0.15) 0%, transparent 70%)',
+            pointerEvents: 'none',
+          }} />
         )}
 
-        {/* Top row: Badges and Selection */}
-        <div className="flex items-center justify-between mb-3 relative z-10">
-          <div className="flex items-center space-x-2">
-            {/* Checkbox (Batch Selection) */}
+        {/* Risk left border accent */}
+        {(action.risk_level === 'critical' || action.risk_level === 'high') && (
+          <div style={{
+            position: 'absolute', left: 0, top: '16px', bottom: '16px',
+            width: '3px', borderRadius: '0 2px 2px 0',
+            background: risk.color,
+            boxShadow: `0 0 8px ${risk.glow}`,
+          }} />
+        )}
+
+        {/* Row 1: Badges + expiry */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             {canBatchSelect && (
               <input
                 type="checkbox"
                 checked={isBatchSelected}
                 onChange={() => toggleSelectedActionId(action.id)}
-                className="mr-1.5 rounded border-white/10 bg-black/40 text-accent focus:ring-accent/20 h-4 w-4 transition-all duration-150 cursor-pointer"
+                onClick={(e) => e.stopPropagation()}
+                style={{ width: '14px', height: '14px', accentColor: '#2563eb', cursor: 'pointer' }}
               />
             )}
 
-            {/* Agent Badge */}
-            <Badge variant="outline" className={cn("text-[10px] font-semibold tracking-wide uppercase px-2 py-0.5 border", agentColors.border, agentColors.text, "bg-white/5")}>
+            {/* Agent badge */}
+            <span style={{
+              fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em',
+              padding: '2px 8px', borderRadius: '5px',
+              background: 'rgba(59,130,246,0.1)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.2)',
+            }}>
               {getAgentLabel(action.agent)}
-            </Badge>
+            </span>
 
-            {/* Risk Badge */}
-            <Badge 
-              variant={action.risk_level === 'low' ? 'success' : action.risk_level === 'medium' ? 'warning' : 'destructive'} 
-              className="text-[10px] font-semibold tracking-wide uppercase px-2 py-0.5"
-            >
-              {action.risk_level} risk
-            </Badge>
+            {/* Risk badge */}
+            <span style={{
+              fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em',
+              padding: '2px 8px', borderRadius: '5px',
+              background: risk.bg, color: risk.color, border: `1px solid ${risk.border}`,
+              boxShadow: `0 0 8px ${risk.glow}`,
+            }}>
+              {action.risk_level === 'critical' && <AlertTriangle size={9} style={{ display: 'inline', marginRight: '3px', verticalAlign: 'middle' }} />}
+              {action.risk_level}
+            </span>
           </div>
 
-          {/* Expiry or Status badge */}
-          <div className="flex items-center text-xs">
+          {/* Expiry / Status */}
+          <div>
             {isPending ? (
               timeRemaining && (
-                <span className={cn(
-                  "inline-flex items-center font-medium tracking-wide text-[10px] px-2 py-0.5 rounded-full bg-white/5 border border-white/5",
-                  timeRemaining === 'Expired' ? 'text-red-400 border-red-500/20' : 'text-slate-400'
-                )}>
-                  <Clock className="w-3.5 h-3.5 mr-1" />
-                  {timeRemaining === 'Expired' ? 'EXPIRED' : `TTL: ${timeRemaining}`}
+                <span style={{
+                  fontSize: '10px', fontWeight: 600,
+                  padding: '2px 8px', borderRadius: '999px',
+                  background: timeRemaining === 'Expired' ? 'rgba(244,63,94,0.1)' : 'rgba(255,255,255,0.05)',
+                  color: timeRemaining === 'Expired' ? '#fb7185' : '#64748b',
+                  border: `1px solid ${timeRemaining === 'Expired' ? 'rgba(244,63,94,0.2)' : 'rgba(255,255,255,0.08)'}`,
+                  display: 'flex', alignItems: 'center', gap: '4px',
+                }}>
+                  <Clock size={9} />
+                  {timeRemaining === 'Expired' ? 'EXPIRED' : timeRemaining}
                 </span>
               )
             ) : (
-              <Badge 
-                variant={action.status === 'executed' ? 'success' : action.status === 'rejected' ? 'destructive' : 'default'}
-                className="text-[10px] uppercase font-bold px-2 py-0.5 border"
-              >
+              <span style={{
+                fontSize: '10px', fontWeight: 700, textTransform: 'uppercase',
+                padding: '2px 8px', borderRadius: '5px',
+                background: action.status === 'executed' ? 'rgba(16,185,129,0.1)' : action.status === 'rejected' ? 'rgba(244,63,94,0.1)' : 'rgba(255,255,255,0.05)',
+                color: action.status === 'executed' ? '#34d399' : action.status === 'rejected' ? '#fb7185' : '#94a3b8',
+                border: `1px solid ${action.status === 'executed' ? 'rgba(16,185,129,0.2)' : action.status === 'rejected' ? 'rgba(244,63,94,0.2)' : 'rgba(255,255,255,0.08)'}`,
+              }}>
                 {action.status}
-              </Badge>
+              </span>
             )}
           </div>
         </div>
 
-        {/* Main Details */}
-        <div className="mb-4 relative z-10">
-          <h3 className="text-sm font-bold text-slate-100 mb-1.5 flex items-center justify-between">
-            <span className="group-hover:text-accent transition-colors duration-200">{actionTitle}</span>
-            <span className="text-xs text-slate-400 font-normal">{actionSubtitle}</span>
-          </h3>
-          <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
-            {action.payload?.reasoning || action.operator_notes || 'Analyzing e-commerce inventory details to suggest operations metrics.'}
+        {/* Row 2: Title + subtitle */}
+        <div style={{ marginBottom: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '5px' }}>
+            <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#f1f5f9', margin: 0 }}>{actionTitle}</h3>
+            <span style={{ fontSize: '11px', color: '#475569', fontFamily: 'JetBrains Mono, monospace' }}>{actionSubtitle}</span>
+          </div>
+          <p style={{ fontSize: '12px', color: '#64748b', lineHeight: '1.55', margin: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+            {action.payload?.reasoning || action.operator_notes || 'AI agent analyzed store data and proposed this operational change.'}
           </p>
         </div>
 
-        {/* Bottom Row: Metrics & Quick Actions */}
-        <div className="flex items-center justify-between border-t border-white/5 pt-4 relative z-10">
-          {/* Impact Metric & Confidence */}
-          <div className="flex items-center space-x-6 text-xs text-slate-400">
-            {action.impact?.financial_impact !== undefined && action.impact.financial_impact !== null && (
-              <div className="flex items-center">
-                <DollarSign className="w-4 h-4 text-emerald-400 mr-0.5" />
-                <span className="text-slate-200 font-semibold text-sm">
+        {/* Confidence bar */}
+        <div style={{ marginBottom: '14px' }}>
+          <div style={{ height: '2px', borderRadius: '1px', background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${Math.round(action.confidence_score * 100)}%` }}
+              transition={{ duration: 0.8, ease: 'easeOut' }}
+              style={{
+                height: '100%', borderRadius: '1px',
+                background: action.confidence_score > 0.8
+                  ? 'linear-gradient(90deg, #10b981, #34d399)'
+                  : action.confidence_score > 0.6
+                  ? 'linear-gradient(90deg, #2563eb, #7c3aed)'
+                  : 'linear-gradient(90deg, #f59e0b, #fb7185)',
+                boxShadow: '0 0 6px rgba(37,99,235,0.4)',
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Row 3: Metrics + actions */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            {action.impact?.financial_impact != null && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                <DollarSign size={14} color="#34d399" />
+                <span style={{ fontSize: '14px', fontWeight: 700, color: '#f1f5f9' }}>
                   {formatCurrency(Math.abs(action.impact.financial_impact))}
-                  <span className="text-[10px] text-slate-500 font-normal ml-1">
-                    {action.impact.financial_impact >= 0 ? 'impact' : 'cost'}
-                  </span>
+                </span>
+                <span style={{ fontSize: '10px', color: '#475569', marginLeft: '2px' }}>
+                  {action.impact.financial_impact >= 0 ? 'impact' : 'cost'}
                 </span>
               </div>
             )}
-
             <div>
-              <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block mb-0.5">Confidence</span>
-              <span className="text-xs font-bold text-slate-200">
+              <div style={{ fontSize: '9px', color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '1px' }}>Confidence</div>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: action.confidence_score > 0.8 ? '#34d399' : action.confidence_score > 0.6 ? '#60a5fa' : '#fbbf24' }}>
                 {Math.round(action.confidence_score * 100)}%
-              </span>
+              </div>
             </div>
           </div>
 
-          {/* Quick Decision Actions (Pending Only) */}
-          <div className="flex items-center space-x-2">
+          {/* Action buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             {isPending ? (
               <>
-                <Button
-                  variant="destructive"
-                  size="icon"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onReject(action.id);
+                <button
+                  onClick={(e) => { e.stopPropagation(); onReject(action.id); }}
+                  title="Reject"
+                  style={{
+                    width: '32px', height: '32px', borderRadius: '8px',
+                    background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.25)',
+                    color: '#fb7185', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'all 0.15s',
                   }}
-                  className="h-8 w-8 rounded-lg p-0"
-                  title="Reject Decision"
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(244,63,94,0.25)'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(244,63,94,0.1)'; }}
                 >
-                  <X className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant="default"
-                  size="icon"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onApprove(action.id);
-                  }}
-                  className="h-8 w-8 rounded-lg p-0 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-white border border-emerald-500/20"
+                  <X size={14} />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onApprove(action.id); }}
                   title="Approve & Execute"
+                  style={{
+                    width: '32px', height: '32px', borderRadius: '8px',
+                    background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)',
+                    color: '#34d399', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#10b981'; (e.currentTarget as HTMLElement).style.color = '#fff'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,185,129,0.1)'; (e.currentTarget as HTMLElement).style.color = '#34d399'; }}
                 >
-                  <Check className="w-4 h-4" />
-                </Button>
+                  <Check size={14} />
+                </button>
               </>
             ) : (
-              <button 
+              <button
                 onClick={() => setSelectedActionId(action.id)}
-                className="flex items-center text-xs text-accent font-semibold hover:text-blue-400 transition-colors"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '3px',
+                  fontSize: '12px', fontWeight: 600, color: '#60a5fa',
+                  background: 'none', border: 'none', cursor: 'pointer', padding: '4px 6px',
+                }}
               >
-                Logs
-                <ChevronRight className="w-4 h-4 ml-0.5 group-hover:translate-x-0.5 transition-transform" />
+                Logs <ChevronRight size={13} />
               </button>
             )}
           </div>
         </div>
-      </Card>
+      </div>
     </motion.div>
   );
 };

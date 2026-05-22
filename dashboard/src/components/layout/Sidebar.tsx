@@ -1,119 +1,192 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { 
-  LayoutDashboard, 
-  History, 
-  BarChart3, 
-  Settings as SettingsIcon, 
-  Terminal, 
-  Cpu
+import {
+  LayoutDashboard,
+  History,
+  BarChart3,
+  Settings as SettingsIcon,
+  Zap,
+  Cpu,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import { useAgentStatus } from '../../hooks/useAgentStatus';
 import { getAgentLabel } from '../../utils/riskColors';
-import { cn } from '../../utils/cn';
 
 interface SidebarProps {
   wsConnected: boolean;
 }
 
+const navItems = [
+  { to: '/', icon: LayoutDashboard, label: 'Approval Queue' },
+  { to: '/audit', icon: History, label: 'Audit Trail' },
+  { to: '/analytics', icon: BarChart3, label: 'Analytics' },
+  { to: '/settings', icon: SettingsIcon, label: 'Safety Settings' },
+];
+
+const autonomyColor = (level: string) => {
+  if (level === 'autonomous')
+    return { bg: 'rgba(16,185,129,0.12)', color: '#34d399', border: 'rgba(16,185,129,0.25)' };
+  if (level === 'shadow')
+    return { bg: 'rgba(245,158,11,0.12)', color: '#fbbf24', border: 'rgba(245,158,11,0.25)' };
+  return { bg: 'rgba(59,130,246,0.12)', color: '#60a5fa', border: 'rgba(59,130,246,0.25)' };
+};
+
 export const Sidebar: React.FC<SidebarProps> = ({ wsConnected }) => {
   const { agents } = useAgentStatus();
 
   return (
-    <aside className="w-64 bg-card/50 backdrop-blur-xl border-r border-white/5 flex flex-col h-full select-none z-10 shadow-2xl shadow-black/50">
-      {/* Brand Header */}
-      <div className="p-6 border-b border-white/5 flex items-center space-x-3">
-        <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-2 rounded-xl text-white shadow-lg shadow-blue-500/20 ring-1 ring-white/10">
-          <Terminal className="w-5 h-5" />
-        </div>
-        <div>
-          <h1 className="text-sm font-bold tracking-tight text-white">ECOMMERCE-OPS</h1>
-          <p className="text-[10px] text-muted-foreground font-medium tracking-widest uppercase">Enterprise Panel</p>
+    <aside
+      className="w-64 flex flex-col h-full select-none z-20 relative"
+      style={{
+        background: 'rgba(7,9,18,0.92)',
+        backdropFilter: 'blur(32px) saturate(180%)',
+        borderRight: '1px solid rgba(255,255,255,0.05)',
+        boxShadow: '4px 0 24px rgba(0,0,0,0.4)',
+      }}
+    >
+      {/* Brand */}
+      <div style={{ padding: '24px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="flex items-center gap-3">
+          <div
+            style={{
+              background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
+              borderRadius: '10px',
+              padding: '8px',
+              boxShadow: '0 0 20px rgba(37,99,235,0.4)',
+            }}
+          >
+            <Zap size={16} color="#fff" />
+          </div>
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: '#f1f5f9', letterSpacing: '-0.01em' }}>
+              ECOMMERCE-OPS
+            </div>
+            <div style={{ fontSize: '10px', color: '#475569', letterSpacing: '0.1em', textTransform: 'uppercase', fontWeight: 500 }}>
+              Enterprise Panel
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Main Navigation */}
-      <nav className="flex-1 px-4 py-6 space-y-1.5">
-        {[
-          { to: "/", icon: LayoutDashboard, label: "Approval Queue" },
-          { to: "/audit", icon: History, label: "Audit Trail" },
-          { to: "/analytics", icon: BarChart3, label: "Analytics" },
-          { to: "/settings", icon: SettingsIcon, label: "Safety Settings" }
-        ].map((item) => (
+      {/* Navigation */}
+      <nav style={{ flex: 1, padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        {navItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
-            className={({ isActive }) =>
-              cn(
-                "group relative flex items-center px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 overflow-hidden",
-                isActive
-                  ? "text-white bg-white/5 shadow-sm ring-1 ring-white/10"
-                  : "text-muted-foreground hover:bg-white/5 hover:text-white border border-transparent"
-              )
-            }
+            end={item.to === '/'}
+            style={{ textDecoration: 'none' }}
           >
             {({ isActive }) => (
-              <>
+              <motion.div
+                whileHover={{ x: 2 }}
+                whileTap={{ scale: 0.98 }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '9px 12px',
+                  borderRadius: '10px',
+                  fontSize: '13px',
+                  fontWeight: isActive ? 600 : 500,
+                  color: isActive ? '#f1f5f9' : '#64748b',
+                  background: isActive ? 'rgba(37,99,235,0.12)' : 'transparent',
+                  border: `1px solid ${isActive ? 'rgba(59,130,246,0.25)' : 'transparent'}`,
+                  boxShadow: isActive ? '0 0 12px rgba(37,99,235,0.12)' : 'none',
+                  transition: 'all 0.15s ease',
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}
+              >
                 {isActive && (
                   <motion.div
-                    layoutId="activeTab"
-                    className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 rounded-r-full shadow-[0_0_10px_rgba(59,130,246,0.5)]"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
+                    layoutId="navIndicator"
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      top: '25%',
+                      bottom: '25%',
+                      width: '3px',
+                      background: 'linear-gradient(180deg, #3b82f6, #7c3aed)',
+                      borderRadius: '0 2px 2px 0',
+                      boxShadow: '0 0 8px rgba(59,130,246,0.6)',
+                    }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                   />
                 )}
-                <item.icon className={cn("w-4 h-4 mr-3 transition-colors", isActive ? "text-blue-400" : "text-muted-foreground group-hover:text-white")} />
-                <span className="relative z-10">{item.label}</span>
-              </>
+                <item.icon
+                  size={15}
+                  color={isActive ? '#60a5fa' : '#475569'}
+                  style={{ flexShrink: 0 }}
+                />
+                {item.label}
+              </motion.div>
             )}
           </NavLink>
         ))}
       </nav>
 
-      {/* Agents Autonomy Indicator List */}
-      <div className="px-6 py-5 border-t border-white/5 bg-black/20">
-        <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-4 flex items-center">
-          <Cpu className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
-          Agent Autonomy Stems
-        </h3>
-        <div className="space-y-2.5">
-          {agents.map((agent) => {
-            const label = getAgentLabel(agent.agent_id);
-            const isAutonomous = agent.autonomy_level === 'autonomous';
-            const isShadow = agent.autonomy_level === 'shadow';
+      {/* Agent Autonomy */}
+      <div style={{ padding: '16px 16px 12px', borderTop: '1px solid rgba(255,255,255,0.05)', background: 'rgba(0,0,0,0.2)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px' }}>
+          <Cpu size={11} color="#475569" />
+          <span style={{ fontSize: '10px', fontWeight: 700, color: '#475569', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+            Agent Autonomy
+          </span>
+        </div>
 
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {agents.map((agent) => {
+            const c = autonomyColor(agent.autonomy_level);
             return (
-              <div key={agent.agent_id} className="flex justify-between items-center text-xs group">
-                <span className="text-slate-400 transition-colors group-hover:text-slate-200 truncate max-w-[110px]" title={label}>{label}</span>
-                <span 
-                  className={cn(
-                    "px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border backdrop-blur-md transition-all",
-                    isAutonomous
-                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]"
-                      : isShadow
-                      ? "bg-amber-500/10 text-amber-400 border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.1)]"
-                      : "bg-blue-500/10 text-blue-400 border-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.1)]"
-                  )}
-                >
+              <div key={agent.agent_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', color: '#94a3b8', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {getAgentLabel(agent.agent_id)}
+                </span>
+                <span style={{
+                  fontSize: '9px',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  padding: '2px 7px',
+                  borderRadius: '4px',
+                  background: c.bg,
+                  color: c.color,
+                  border: `1px solid ${c.border}`,
+                }}>
                   {agent.autonomy_level}
                 </span>
               </div>
             );
           })}
         </div>
-      </div>
 
-      {/* Connection Indicator footer */}
-      <div className="p-4 border-t border-white/5 bg-black/40 flex items-center justify-between text-xs backdrop-blur-xl">
-        <span className="text-muted-foreground font-medium">WebSocket Core</span>
-        <div className="flex items-center space-x-2">
-          <span className={cn(
-            "w-2 h-2 rounded-full",
-            wsConnected ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse" : "bg-red-500"
-          )} />
-          <span className="font-bold tracking-wide text-white">{wsConnected ? 'LIVE' : 'OFFLINE'}</span>
+        {/* WebSocket Status */}
+        <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: '11px', color: '#475569' }}>WebSocket Core</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            {wsConnected ? (
+              <>
+                <div style={{ position: 'relative', width: '8px', height: '8px' }}>
+                  <div style={{
+                    position: 'absolute', inset: 0, borderRadius: '50%',
+                    background: '#10b981', animation: 'pulse-ring 1.5s ease-out infinite',
+                    opacity: 0.4,
+                  }} />
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', position: 'relative', zIndex: 1 }} />
+                </div>
+                <Wifi size={11} color="#34d399" />
+                <span style={{ fontSize: '10px', color: '#34d399', fontWeight: 600 }}>LIVE</span>
+              </>
+            ) : (
+              <>
+                <WifiOff size={11} color="#f43f5e" />
+                <span style={{ fontSize: '10px', color: '#f43f5e', fontWeight: 600 }}>OFFLINE</span>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </aside>
