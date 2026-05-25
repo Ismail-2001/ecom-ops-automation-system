@@ -154,3 +154,8 @@ dashboard/.tsbuildinfo
 # OS files
 .DS_Store
 Thumbs.db
+
+# Runtime artifacts
+*.db
+*.db-journal
+audit_log.jsonl

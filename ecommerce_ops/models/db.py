@@ -36,9 +36,17 @@ if "postgresql" not in db_url:
     is_sqlite = True
     db_url = "sqlite+aiosqlite:///./ecommerce_ops.db"
 
-# Create async engine
+# Create async engine with connection pooling
 try:
-    engine = create_async_engine(db_url, echo=False, future=True)
+    engine = create_async_engine(
+        db_url,
+        echo=False,
+        future=True,
+        pool_size=settings.DB_POOL_SIZE,
+        max_overflow=settings.DB_MAX_OVERFLOW,
+        pool_timeout=settings.DB_POOL_TIMEOUT,
+        pool_pre_ping=True,
+    )
 except Exception as e:
     logger.warning(f"Failed to create async engine with {db_url}: {e}. Falling back to local SQLite.")
     is_sqlite = True

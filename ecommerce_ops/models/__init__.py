@@ -7,7 +7,7 @@ from ecommerce_ops.models.db import (
     AgentStatus,
     StoreSettings,
     get_db_session,
-    init_db
+    init_db,
 )
 from ecommerce_ops.models.seed import seed_data_if_empty
 
@@ -21,5 +21,5 @@ __all__ = [
     "StoreSettings",
     "get_db_session",
     "init_db",
-    "seed_data_if_empty"
+    "seed_data_if_empty",
 ]

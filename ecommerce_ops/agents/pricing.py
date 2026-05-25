@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from ecommerce_ops.agents._base import BaseAgent
 from ecommerce_ops.config import settings
 from ecommerce_ops.connectors.competitor_scraper import scrape_competitor_price
@@ -32,7 +32,11 @@ class PricingAgent(BaseAgent):
             floor = current_price * (1 - settings.GLOBAL_PRICE_CHANGE_LIMIT_PERCENT / 100)
             ceiling = current_price * (1 + settings.GLOBAL_PRICE_CHANGE_LIMIT_PERCENT / 100)
             
-            if competitor_price and competitor_price < current_price:
+            if competitor_price is None:
+                logger.info(f"Skipping {sku}: no competitor price available")
+                continue
+
+            if competitor_price < current_price:
                 new_price = max(competitor_price, floor)
                 if new_price != current_price:
                     decision = self.create_decision(
@@ -48,27 +52,23 @@ class PricingAgent(BaseAgent):
                         requires_approval=abs(new_price - current_price) / current_price > 0.05
                     )
                     decisions.append(decision)
-                    self.log_audit(decision)
 
         state["decisions"] = state.get("decisions", []) + decisions
         return state
 
-    async def _get_competitor_price(self, sku: str) -> float:
-        """Playwright-based scraper with Redis cache."""
+    async def _get_competitor_price(self, sku: str) -> Optional[float]:
         cache_key = f"competitor_price:{sku}"
-        
-        # Check cache
+
         cached_price = await cache.get(cache_key)
         if cached_price is not None:
             logger.info(f"Cache hit for {sku} competitor price: {cached_price}")
             return float(cached_price)
-            
-        # Scrape if not in cache
+
         price = await scrape_competitor_price(sku)
         if price is not None:
-            await cache.set(cache_key, price, ttl=3600)  # Cache for 1 hour
+            await cache.set(cache_key, price, ttl=3600)
             return price
-            
-        # Fallback if scraping fails
-        return 22.50
+
+        logger.warning(f"No competitor price available for {sku}")
+        return None
 
