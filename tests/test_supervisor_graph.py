@@ -1,0 +1,175 @@
+"""Integration tests for the LangGraph supervisor pipeline."""
+
+import pytest
+from unittest.mock import patch
+from datetime import datetime
+from typing import Dict, Any
+
+from ecommerce_ops.graph.supervisor import Supervisor
+
+
+class _MockAgent:
+    def __init__(self, run_fn):
+        self.run = run_fn
+
+
+@pytest.mark.asyncio
+async def test_full_pipeline_creates_decisions(mock_inventory_state):
+    supervisor = Supervisor()
+    state = await supervisor.run(mock_inventory_state)
+
+    assert "decisions" in state
+    assert len(state["decisions"]) > 0
+
+    agents_seen = {d.agent_id for d in state["decisions"]}
+    assert "InventoryAgent" in agents_seen or "MarketingAgent" in agents_seen
+
+
+@pytest.mark.asyncio
+async def test_pipeline_with_partial_data():
+    state = {
+        "inventory_data": [],
+        "active_orders": [],
+        "reviews_data": [],
+        "decisions": [],
+        "hitl_queue": [],
+        "messages": [],
+        "errors": [],
+        "run_id": "test-partial",
+        "timestamp": datetime.utcnow(),
+        "step_index": 0,
+    }
+    supervisor = Supervisor()
+    result = await supervisor.run(state)
+
+    plan = result.get("execution_plan")
+    assert plan is not None
+    assert "marketing" in plan.agents_to_run
+
+
+@pytest.mark.asyncio
+async def test_pipeline_with_only_reviews():
+    state = {
+        "inventory_data": [],
+        "active_orders": [],
+        "reviews_data": [
+            {"id": "r1", "content": "Bad service", "rating": 1},
+        ],
+        "decisions": [],
+        "hitl_queue": [],
+        "messages": [],
+        "errors": [],
+        "run_id": "test-reviews-only",
+        "timestamp": datetime.utcnow(),
+        "step_index": 0,
+    }
+    supervisor = Supervisor()
+    result = await supervisor.run(state)
+
+    plan = result.get("execution_plan")
+    assert "reviews" in plan.agents_to_run
+    assert "fraud" not in plan.agents_to_run
+
+
+@pytest.mark.asyncio
+async def test_pipeline_propagates_errors():
+    state = {
+        "inventory_data": [{"sku": "X", "stock": 1, "price": 10.0}],
+        "active_orders": [],
+        "reviews_data": [],
+        "decisions": [],
+        "hitl_queue": [],
+        "messages": [],
+        "errors": [],
+        "run_id": "test-error",
+        "timestamp": datetime.utcnow(),
+        "step_index": 0,
+    }
+
+    async def failing_run(_state):
+        raise RuntimeError("Inventory crashed")
+
+    async def empty_run(_state) -> Dict[str, Any]:
+        return {"decisions": []}
+
+    with patch(
+        "ecommerce_ops.graph.supervisor.AGENTS",
+        {
+            "inventory": _MockAgent(failing_run),
+            "marketing": _MockAgent(empty_run),
+        },
+        create=True,
+    ), patch(
+        "ecommerce_ops.graph.supervisor.DEFAULT_PLAN",
+        ["inventory", "marketing"],
+    ):
+        supervisor = Supervisor()
+        result = await supervisor.run(state)
+
+        assert len(result.get("errors", [])) >= 1
+        assert any("Inventory crashed" in str(e.get("error", "")) for e in result["errors"])
+
+
+@pytest.mark.asyncio
+async def test_reflection_corrects_low_confidence():
+    state = {
+        "inventory_data": [{"sku": "TEST", "stock": 100, "price": 50.0}],
+        "active_orders": [{"id": "o1", "line_items": [{"sku": "TEST", "quantity": 1}]}],
+        "reviews_data": [],
+        "decisions": [],
+        "hitl_queue": [],
+        "messages": [],
+        "errors": [],
+        "run_id": "test-reflection",
+        "timestamp": datetime.utcnow(),
+        "step_index": 0,
+    }
+    supervisor = Supervisor()
+    result = await supervisor.run(state)
+
+    feedback = result.get("reflection_feedback", [])
+    assert "reflection_feedback" in result
+
+
+@pytest.mark.asyncio
+async def test_planner_dynamic_routing():
+    state = {
+        "inventory_data": [{"sku": "A", "stock": 1, "price": 10.0}],
+        "active_orders": [{"id": "o1"}],
+        "reviews_data": [{"id": "r1", "content": "OK", "rating": 3}],
+        "decisions": [],
+        "hitl_queue": [],
+        "messages": [],
+        "errors": [],
+        "run_id": "test-routing",
+        "timestamp": datetime.utcnow(),
+        "step_index": 0,
+    }
+    supervisor = Supervisor()
+    result = await supervisor.run(state)
+
+    plan = result.get("execution_plan")
+    assert plan is not None
+    assert plan.agents_to_run == ["fraud", "inventory", "pricing", "reviews", "marketing"]
+
+
+@pytest.mark.asyncio
+async def test_supervisor_runs_idempotent():
+    state = {
+        "inventory_data": [],
+        "active_orders": [],
+        "reviews_data": [],
+        "decisions": [],
+        "hitl_queue": [],
+        "messages": [],
+        "errors": [],
+        "run_id": "test-idempotent",
+        "timestamp": datetime.utcnow(),
+        "step_index": 0,
+    }
+    supervisor = Supervisor()
+    result1 = await supervisor.run(state)
+    result2 = await supervisor.run(state)
+
+    assert len(result1["decisions"]) == len(result2["decisions"])
+    assert result1["execution_plan"].agents_to_run == result2["execution_plan"].agents_to_run

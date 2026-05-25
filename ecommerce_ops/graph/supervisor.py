@@ -37,7 +37,7 @@ async def planner(state: Dict[str, Any]) -> Dict[str, Any]:
         plan = DEFAULT_PLAN
 
     state["execution_plan"] = ExecutionPlan(agents_to_run=plan, rationale="dynamic")
-    state["_step_index"] = 0
+    state["step_index"] = 0
     logger.info("Execution plan: %s", plan)
     return state
 
@@ -49,15 +49,15 @@ async def run_agent(node_name: str, state: Dict[str, Any]) -> Dict[str, Any]:
         return state
     try:
         result = await agent.run(state)
-        idx = state.get("_step_index", 0)
-        result["_step_index"] = idx + 1
+        idx = state.get("step_index", 0)
+        result["step_index"] = idx + 1
         return result
     except Exception as e:
         logger.exception("Agent %s failed: %s", node_name, e)
         errors = state.get("errors", [])
         errors.append({"agent": node_name, "error": str(e)})
         state["errors"] = errors
-        state["_step_index"] = state.get("_step_index", 0) + 1
+        state["step_index"] = state.get("step_index", 0) + 1
         return state
 
 
@@ -65,7 +65,7 @@ async def router(state: Dict[str, Any]) -> str:
     plan: ExecutionPlan = state.get("execution_plan")
     if plan is None:
         return END
-    idx = state.get("_step_index", 0)
+    idx = state.get("step_index", 0)
     if idx >= len(plan.agents_to_run):
         return "reflection"
     next_agent = plan.agents_to_run[idx]
@@ -103,9 +103,9 @@ class Supervisor:
         self.builder.add_node("reflection", reflection_node)
 
         for name in AGENTS:
-            self.builder.add_node(
-                name, lambda state, n=name: run_agent(n, state)
-            )
+            async def make_node(state, n=name):
+                return await run_agent(n, state)
+            self.builder.add_node(name, make_node)
 
         all_nodes = list(AGENTS.keys()) + ["reflection", END]
         self.builder.set_conditional_entry_point(
@@ -131,6 +131,6 @@ class Supervisor:
             input_state["memory_context"] = {}
         if "reflection_feedback" not in input_state:
             input_state["reflection_feedback"] = []
-        if "_step_index" not in input_state:
-            input_state["_step_index"] = 0
+        if "step_index" not in input_state:
+            input_state["step_index"] = 0
         return await self.graph.ainvoke(input_state)

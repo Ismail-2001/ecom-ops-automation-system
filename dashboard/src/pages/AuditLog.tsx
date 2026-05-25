@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { History, ChevronLeft, ChevronRight, Eye, AlertCircle, FileCheck, X } from 'lucide-react';
+import { History, ChevronLeft, ChevronRight, Eye, AlertCircle, FileCheck, X, Download, Loader2 } from 'lucide-react';
 import { useAuditLog } from '../hooks/useAuditLog';
 import { getAgentColors, getAgentLabel, getActionTypeLabel } from '../utils/riskColors';
 import { formatCurrency, formatDateTime } from '../utils/formatters';
@@ -9,6 +9,7 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { motion, AnimatePresence } from 'framer-motion';
+import apiClient from '../api/client';
 
 export const AuditLog: React.FC = () => {
   const [page, setPage] = useState(1);
@@ -19,6 +20,29 @@ export const AuditLog: React.FC = () => {
     action_type: 'all',
   });
   const [selectedAudit, setSelectedAudit] = useState<AuditEntry | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportCSV = async () => {
+    setExporting(true);
+    try {
+      const response = await apiClient.get('/api/audit/export', {
+        params: { format: 'csv' },
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'audit_log.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      // silently fail
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const limit = 15;
   const { entries, total, isLoading } = useAuditLog(filters, page, limit);
@@ -57,6 +81,19 @@ export const AuditLog: React.FC = () => {
             Historical ledger of all autonomous decisions and manual operator interventions.
           </p>
         </div>
+        <Button
+          variant="outline"
+          onClick={handleExportCSV}
+          disabled={exporting}
+          className="flex items-center text-xs"
+        >
+          {exporting ? (
+            <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+          ) : (
+            <Download className="w-3.5 h-3.5 mr-1.5" />
+          )}
+          {exporting ? 'Exporting...' : 'Export CSV'}
+        </Button>
       </div>
 
       {/* Filter Toolbar */}

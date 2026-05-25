@@ -7,8 +7,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc libpq-dev && \
     rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml .
-RUN pip install --no-cache-dir --user hatchling
+COPY pyproject.toml requirements.txt ./
+RUN pip install --no-cache-dir --user hatchling && \
+    python -m pip install --no-cache-dir --user -r requirements.txt
 
 # ── Runtime Stage ──────────────────────────────────────────
 FROM python:3.12-slim
@@ -29,9 +30,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2 libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy installed Python packages from builder
+COPY --from=builder /root/.local /root/.local
 
 # Install Playwright Chromium
 RUN playwright install chromium && playwright install-deps chromium

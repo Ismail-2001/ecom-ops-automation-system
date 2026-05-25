@@ -41,3 +41,4 @@ class OverallState(TypedDict):
     execution_plan: Optional[ExecutionPlan]
     reflection_feedback: List[ReflectionFeedback]
     memory_context: Dict[str, Any]
+    step_index: int

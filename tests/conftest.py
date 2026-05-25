@@ -120,6 +120,7 @@ def mock_inventory_state() -> dict[str, Any]:
         "errors": [],
         "run_id": str(uuid.uuid4()),
         "timestamp": datetime.utcnow(),
+        "step_index": 0,
     }
 
 

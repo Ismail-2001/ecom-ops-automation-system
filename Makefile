@@ -1,4 +1,4 @@
-.PHONY: help install dev test lint format migrate docker-up docker-down clean
+.PHONY: help install dev test lint format migrate docker-up docker-down clean test-integration
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -15,6 +15,9 @@ test: ## Run test suite
 
 test-ci: ## Run tests for CI (faster, no coverage)
 	python -m pytest tests/ -v --asyncio-mode=auto -x
+
+test-integration: ## Run LangGraph integration tests
+	python -m pytest tests/test_supervisor_graph.py -v --asyncio-mode=auto
 
 lint: ## Run linters
 	ruff check ecommerce_ops/ tests/

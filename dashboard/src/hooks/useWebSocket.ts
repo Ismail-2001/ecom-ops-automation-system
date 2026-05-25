@@ -109,6 +109,22 @@ export const useWebSocket = (onToast?: (title: string, message: string, type: 'i
               }
               break;
 
+            case 'notification':
+              if (onToast) {
+                const kind = message.payload.kind || 'notification';
+                const titleMap: Record<string, string> = {
+                  hitl_request: 'Human Review Needed',
+                  pipeline_failed: 'Pipeline Failure',
+                  agent_graduated: 'Agent Promoted',
+                };
+                onToast(
+                  titleMap[kind] || kind.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+                  message.payload.message || '',
+                  kind === 'pipeline_failed' ? 'error' : kind === 'hitl_request' ? 'warning' : 'info',
+                );
+              }
+              break;
+
             default:
               break;
           }
