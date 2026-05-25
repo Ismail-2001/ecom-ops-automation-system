@@ -596,27 +596,20 @@ DECISION_TYPE_MAP = {
 
 async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
     logger.info("Starting pipeline run %s", run_id)
-    import random
 
-    seed_choice = random.choice(["fraud", "inventory", "price", "review", "marketing", "all"])
     inventory_data = [
-        {"sku": "TSHIRT-BLUE-L", "stock": random.randint(1, 15), "price": 25.0, "variant_id": "v1"},
-        {"sku": "MUG-WHITE", "stock": random.randint(1, 8), "price": 12.0, "variant_id": "v2"},
+        {"sku": "TSHIRT-BLUE-L", "stock": 3, "price": 25.0, "variant_id": "v1"},
+        {"sku": "MUG-WHITE", "stock": 2, "price": 12.0, "variant_id": "v2"},
+        {"sku": "SILK-PILLOW-SLV", "stock": 1, "price": 49.0, "variant_id": "v3"},
     ]
-    if seed_choice in ("inventory", "all"):
-        inventory_data.append({"sku": "SILK-PILLOW-SLV", "stock": 1, "price": 49.0, "variant_id": "v3"})
 
-    active_orders = []
-    if seed_choice in ("fraud", "all"):
-        active_orders.append({"id": "o_suspicious", "line_items": [{"sku": "TSHIRT-BLUE-L", "quantity": 1}], "order_total": 450.0})
-    else:
-        active_orders.append({"id": f"o_{random.randint(100, 999)}", "line_items": [{"sku": "MUG-WHITE", "quantity": 2}], "order_total": 24.0})
+    active_orders = [
+        {"id": "o_suspicious", "line_items": [{"sku": "TSHIRT-BLUE-L", "quantity": 1}], "order_total": 450.0},
+    ]
 
-    reviews_data = []
-    if seed_choice in ("review", "all"):
-        reviews_data.append({"id": f"r_{random.randint(100, 999)}", "content": "The shipping was delayed and box was damaged!", "rating": 2})
-    else:
-        reviews_data.append({"id": f"r_{random.randint(100, 999)}", "content": "Good material, very soft.", "rating": 5})
+    reviews_data = [
+        {"id": "r_100", "content": "The shipping was delayed and box was damaged!", "rating": 2},
+    ]
 
     initial_state = {
         "inventory_data": inventory_data,
@@ -788,6 +781,14 @@ async def trigger_run(
     background_tasks.add_task(run_pipeline_task, run_id, db_settings)
 
     return {"message": "Operations cycle triggered", "run_id": run_id}
+
+
+# ── Metrics ────────────────────────────────────────────────
+
+
+@app.get("/metrics")
+async def metrics():
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 # ── Static Files ───────────────────────────────────────────

@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from ecommerce_ops.agents._base import BaseAgent
 from ecommerce_ops.config import settings
 from ecommerce_ops.connectors.competitor_scraper import scrape_competitor_price
@@ -52,7 +52,6 @@ class PricingAgent(BaseAgent):
                         requires_approval=abs(new_price - current_price) / current_price > 0.05
                     )
                     decisions.append(decision)
-                    self.log_audit(decision)
 
         state["decisions"] = state.get("decisions", []) + decisions
         return state

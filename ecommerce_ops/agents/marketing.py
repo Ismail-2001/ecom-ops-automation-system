@@ -28,7 +28,6 @@ class MarketingAgent(BaseAgent):
                     requires_approval=True
                 )
                 decisions.append(decision)
-                self.log_audit(decision)
 
         state["decisions"] = state.get("decisions", []) + decisions
         return state

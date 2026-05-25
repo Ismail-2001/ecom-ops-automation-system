@@ -25,7 +25,6 @@ class FraudAgent(BaseAgent):
                     requires_approval=True # Always HITL for holds unless obvious fraud
                 )
                 decisions.append(decision)
-                self.log_audit(decision)
 
         state["decisions"] = state.get("decisions", []) + decisions
         return state

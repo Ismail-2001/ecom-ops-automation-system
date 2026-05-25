@@ -28,7 +28,7 @@ async def test_marketing_agent_drafts_campaign_for_low_stock(mock_state):
     campaign = decisions[0]
     assert campaign.action_type == "DRAFT_MARKETING_CAMPAIGN"
     assert campaign.action_data["sku"] == "HOT-SKU-1"
-    assert "Last Chance" in campaign.action_data.get("draft_copy", "")
+    assert "Hurry" in campaign.action_data.get("draft_copy", "")
     assert campaign.requires_approval is True
     assert campaign.agent_id == "MarketingAgent"
 

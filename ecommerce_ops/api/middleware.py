@@ -3,14 +3,14 @@ import logging
 from typing import Callable
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from ecommerce_ops.config import settings, Environment
 
 logger = logging.getLogger("ecommerce_ops.api.middleware")
 
 
-class RequestIDMiddleware(BaseMiddleware):
+class RequestIDMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
         request.state.request_id = request_id
@@ -19,7 +19,7 @@ class RequestIDMiddleware(BaseMiddleware):
         return response
 
 
-class RequestLoggingMiddleware(BaseMiddleware):
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         request_id = getattr(request.state, "request_id", "unknown")
         logger.info(

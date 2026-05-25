@@ -39,7 +39,6 @@ class InventoryAgent(BaseAgent):
                     confidence=0.9 if days_left < 7 else 0.7,
                 )
                 decisions.append(decision)
-                self.log_audit(decision)
 
         state["decisions"] = state.get("decisions", []) + decisions
         return state

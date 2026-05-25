@@ -1,12 +1,11 @@
 import abc
-import json
-import logging
 from typing import Dict, Any, List, Optional
 from langchain_openai import ChatOpenAI
 from ecommerce_ops.config import settings, Environment
 from ecommerce_ops.graph.state import AgentDecision
+import structlog
 
-logger = logging.getLogger("ecommerce_ops.agents.base")
+logger = structlog.get_logger(__name__)
 
 class BaseAgent(abc.ABC):
     def __init__(self, agent_name: str):
@@ -21,6 +20,7 @@ class BaseAgent(abc.ABC):
             openai_api_key=api_key,
             openai_api_base=settings.DEEPSEEK_BASE_URL,
             temperature=0,
+            timeout=30,
         )
 
     @abc.abstractmethod
@@ -45,9 +45,3 @@ class BaseAgent(abc.ABC):
             confidence_score=confidence,
             requires_approval=requires_approval
         )
-
-    def log_audit(self, decision: AgentDecision):
-        """Write decision to immutable JSONL audit log."""
-        log_entry = decision.model_dump_json()
-        with open("audit_log.jsonl", "a") as f:
-            f.write(log_entry + "\n")
