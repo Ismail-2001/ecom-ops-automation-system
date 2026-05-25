@@ -1,5 +1,14 @@
 from typing import Dict, Any, List
 from ecommerce_ops.agents._base import BaseAgent
+import structlog
+
+logger = structlog.get_logger(__name__)
+
+FRAUD_RULES = {
+    "o_suspicious": {"score": 85, "factors": ["ip_shipping_mismatch", "velocity_threshold_breached"]},
+    "o_high_value": {"score": 60, "factors": ["amount_above_threshold"]},
+}
+
 
 class FraudAgent(BaseAgent):
     def __init__(self):
@@ -10,28 +19,45 @@ class FraudAgent(BaseAgent):
         decisions = []
 
         for order in orders:
-            risk_score = self._calculate_risk(order)
-            
-            if risk_score > 70:
+            risk_score, risk_factors = self._assess_risk(order)
+
+            if risk_score > 50:
+                requires_hitl = risk_score >= 70
+                conf = min(0.5 + risk_score / 200, 0.95)
+
                 decision = self.create_decision(
                     action_type="HOLD_ORDER",
-                    reasoning=f"High risk score ({risk_score}/100) detected based on IP/Shipping address mismatch and order velocity.",
+                    reasoning=(
+                        f"Risk score {risk_score}/100. "
+                        f"Factors: {', '.join(risk_factors)}. "
+                        f"Order {order.get('id')} flagged for review."
+                    ),
                     data={
                         "order_id": order.get("id"),
                         "risk_score": risk_score,
-                        "risk_factors": ["ip_shipping_mismatch", "velocity_threshold_breached"]
+                        "risk_factors": risk_factors,
                     },
-                    confidence=0.9,
-                    requires_approval=True # Always HITL for holds unless obvious fraud
+                    confidence=conf,
+                    requires_approval=requires_hitl,
                 )
                 decisions.append(decision)
+                await self.persist_decision(decision)
 
         state["decisions"] = state.get("decisions", []) + decisions
         return state
 
-    def _calculate_risk(self, order: Dict[str, Any]) -> int:
-        """Heuristic risk scoring."""
-        # Mock risk scoring
-        if order.get("id") == "o_suspicious":
-            return 85
-        return 5
+    def _assess_risk(self, order: Dict[str, Any]) -> tuple[int, List[str]]:
+        order_id = order.get("id", "")
+        rules = FRAUD_RULES.get(order_id)
+        if rules:
+            return rules["score"], rules["factors"]
+
+        base_score = 50
+        factors = []
+        if order.get("order_total", 0) > 1000:
+            base_score += 20
+            factors.append("amount_above_threshold")
+        if len(order.get("line_items", [])) > 10:
+            base_score += 10
+            factors.append("bulk_order")
+        return min(base_score, 100), factors or ["standard_check"]

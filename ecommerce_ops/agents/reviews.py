@@ -1,10 +1,19 @@
+import hashlib
 from typing import Dict, Any, List
 from ecommerce_ops.agents._base import BaseAgent
 from ecommerce_ops.config import settings
+from ecommerce_ops.infra.retry import async_retry_decorator
+from ecommerce_ops.infra.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
+from ecommerce_ops.memory.cache import cache
 from pydantic import BaseModel, Field
+from openai import APIError, APITimeoutError, APIConnectionError
 import structlog
 
 logger = structlog.get_logger(__name__)
+
+
+LLM_CACHE_TTL = 86400
+
 
 class ReviewAnalysisOutput(BaseModel):
     sentiment: str = Field(description="The sentiment of the review: Positive, Neutral, or Negative.")
@@ -14,25 +23,29 @@ class ReviewAnalysisOutput(BaseModel):
     confidence: float = Field(description="Confidence score of the analysis between 0.0 and 1.0.")
 
 class ReviewsAgent(BaseAgent):
+    _llm_circuit_breaker = CircuitBreaker(name="DeepSeek-LLM", failure_threshold=3, recovery_timeout=30.0)
+
     def __init__(self):
         super().__init__("ReviewsAgent")
+        self._retry_llm = async_retry_decorator(
+            exceptions=(APIError, APITimeoutError, APIConnectionError, CircuitBreakerOpenError),
+            max_attempts=3,
+            min_wait=1.0,
+            max_wait=5.0,
+        )
 
     async def run(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Classifies reviews and drafts responses.
-        """
         reviews = state.get("reviews_data", [])
         decisions = []
 
         for review in reviews:
             content = review.get("content", "")
             rating = review.get("rating", 0)
-            
-            # Use DeepSeek for sentiment and draft
+
             analysis = await self._analyze_review(content, rating)
-            
+
             requires_approval = rating < 4 or analysis.get("contains_refund_offer", False)
-            
+
             decision = self.create_decision(
                 action_type="POST_REVIEW_RESPONSE",
                 reasoning=f"Review rating {rating}. Sentiment: {analysis.get('sentiment')}. Drafted response in store voice.",
@@ -46,6 +59,7 @@ class ReviewsAgent(BaseAgent):
                 requires_approval=requires_approval
             )
             decisions.append(decision)
+            await self.persist_decision(decision)
 
         state["decisions"] = state.get("decisions", []) + decisions
         return state
@@ -59,6 +73,41 @@ class ReviewsAgent(BaseAgent):
                 contains_refund_offer=False, confidence=0.5,
             ).model_dump()
 
+        content_hash = hashlib.sha256(sanitized.encode()).hexdigest()
+        cache_key = f"llm_review:{content_hash}:{rating}"
+
+        cached = await cache.get(cache_key)
+        if cached is not None:
+            logger.info("LLM review analysis cache hit for hash %s", content_hash[:8])
+            return cached
+
+        try:
+            result = await self._llm_circuit_breaker.call(self._call_llm, sanitized, rating)
+
+            if rating >= 4 and result.sentiment in ("Negative", "Neutral"):
+                result.sentiment = "Positive"
+                result.confidence = max(result.confidence, 0.6)
+            if rating <= 2 and result.sentiment == "Positive":
+                result.sentiment = "Negative"
+                result.confidence = max(result.confidence, 0.6)
+
+            logger.info(f"LLM analyzed review with sentiment {result.sentiment}")
+            output = result.model_dump()
+
+            await cache.set(cache_key, output, ttl=LLM_CACHE_TTL)
+            return output
+
+        except (CircuitBreakerOpenError, APIError, APITimeoutError, APIConnectionError) as e:
+            logger.warning("LLM unavailable for review analysis: %s", e)
+            return self._fallback_analysis(rating)
+
+    @async_retry_decorator(
+        exceptions=(APIError, APITimeoutError, APIConnectionError),
+        max_attempts=2,
+        min_wait=1.0,
+        max_wait=3.0,
+    )
+    async def _call_llm(self, sanitized: str, rating: int) -> ReviewAnalysisOutput:
         system_prompt = (
             "You are a customer review analyzer for an e-commerce store. "
             "Your ONLY task is to analyze the review content below. "
@@ -77,18 +126,27 @@ class ReviewsAgent(BaseAgent):
         )
 
         structured_llm = self.llm.with_structured_output(ReviewAnalysisOutput)
-        result = await structured_llm.ainvoke([
+        return await structured_llm.ainvoke([
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ])
 
-        if rating >= 4 and result.sentiment in ("Negative", "Neutral"):
-            result.sentiment = "Positive"
-            result.confidence = max(result.confidence, 0.6)
-        if rating <= 2 and result.sentiment == "Positive":
-            result.sentiment = "Negative"
-            result.confidence = max(result.confidence, 0.6)
-
-        logger.info(f"LLM analyzed review with sentiment {result.sentiment}")
-        return result.model_dump()
+    def _fallback_analysis(self, rating: int) -> Dict[str, Any]:
+        if rating >= 4:
+            return ReviewAnalysisOutput(
+                sentiment="Positive", themes=["General"],
+                response="Thank you for your wonderful feedback! We are thrilled you loved it.",
+                contains_refund_offer=False, confidence=0.4,
+            ).model_dump()
+        if rating <= 2:
+            return ReviewAnalysisOutput(
+                sentiment="Negative", themes=["Support"],
+                response="We are sorry to hear about your experience. Please contact our support team and we will make it right.",
+                contains_refund_offer=True, confidence=0.4,
+            ).model_dump()
+        return ReviewAnalysisOutput(
+            sentiment="Neutral", themes=["General"],
+            response="Thank you for your feedback. We appreciate your input and will use it to improve.",
+            contains_refund_offer=False, confidence=0.4,
+        ).model_dump()
 

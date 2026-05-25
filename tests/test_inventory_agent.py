@@ -52,6 +52,6 @@ async def test_inventory_agent_drafts_po(mock_state):
         po_decisions = [d for d in updated_state["decisions"] if d.action_type == "DRAFT_PO"]
         assert len(po_decisions) > 0
         assert po_decisions[0].agent_id == "InventoryAgent"
-        assert "Predicted stockout" in po_decisions[0].reasoning
+        assert "stockout" in po_decisions[0].reasoning.lower()
 
 

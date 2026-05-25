@@ -1,11 +1,12 @@
 import os
 import uuid
+import time
 import logging
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 from typing import List, Optional, Dict, Any
 
-from fastapi import FastAPI, BackgroundTasks, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
@@ -28,13 +29,20 @@ from ecommerce_ops.api.auth import verify_auth
 from ecommerce_ops.api.ws import ws_manager
 from ecommerce_ops.api.metrics import METRIC_HTTP_REQUESTS, METRIC_HTTP_DURATION
 from ecommerce_ops.pipeline.runner import run_pipeline_task, execute_shop_action, update_agent_streak
+from ecommerce_ops.infra.task_queue import TaskQueue
+from ecommerce_ops.infra.browser_pool import browser_pool
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ecommerce_ops.api")
 
 
+task_queue = TaskQueue(num_workers=2, max_queue_size=100)
+SERVER_START_TIME = time.time()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await task_queue.start()
     supervisor_ok = False
     try:
         app.state.supervisor = None
@@ -51,6 +59,12 @@ async def lifespan(app: FastAPI):
         if app_settings.ENV == "production":
             raise
 
+    try:
+        await browser_pool.start()
+        logger.info("Browser pool initialized.")
+    except Exception as e:
+        logger.warning("Browser pool initialization failed (scraping will fall back): %s", e)
+
     if supervisor_ok:
         logger.info("Application fully initialized and ready.")
     else:
@@ -58,6 +72,8 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    await task_queue.stop(wait=True)
+    await browser_pool.stop()
     from ecommerce_ops.memory.cache import cache
     await cache.close()
     logger.info("Application shutdown complete.")
@@ -91,6 +107,10 @@ class SettingsUpdateBody(BaseModel):
     po_limit: Optional[float] = None
     pricing_limit: Optional[float] = None
     reviews_rating_threshold: Optional[int] = None
+    slack_channel: Optional[str] = None
+    notify_on_failure: Optional[bool] = None
+    notify_on_hitl: Optional[bool] = None
+    notify_on_graduation: Optional[bool] = None
 
 
 async def get_current_operator(identity: str = Depends(verify_auth)) -> str:
@@ -101,6 +121,7 @@ async def get_current_operator(identity: str = Depends(verify_auth)) -> str:
 async def health():
     deps = {"app": "healthy"}
     all_ok = True
+    uptime_seconds = time.time() - SERVER_START_TIME
 
     try:
         async for session in get_db_session():
@@ -124,6 +145,9 @@ async def health():
         content={
             "status": "ok" if all_ok else "degraded",
             "dependencies": deps,
+            "uptime_seconds": uptime_seconds,
+            "version": app_settings.PROJECT_NAME,
+            "environment": app_settings.ENV.value if hasattr(app_settings.ENV, "value") else str(app_settings.ENV),
             "timestamp": datetime.utcnow().isoformat(),
         },
     )
@@ -445,23 +469,27 @@ async def update_store_settings(
         autonomy = "shadow" if body.shadow_mode else "supervised"
         await db.execute(update(AgentStatus).values(autonomy_level=autonomy))
     if body.fraud_threshold is not None:
-        changes["fraud_threshold"] = (
-            f"{store_settings.fraud_threshold} -> {body.fraud_threshold}"
-        )
+        if not (0 <= body.fraud_threshold <= 100):
+            raise HTTPException(status_code=400, detail="fraud_threshold must be 0-100")
+        changes["fraud_threshold"] = f"{store_settings.fraud_threshold} -> {body.fraud_threshold}"
         store_settings.fraud_threshold = body.fraud_threshold
     if body.po_limit is not None:
+        if body.po_limit <= 0:
+            raise HTTPException(status_code=400, detail="po_limit must be positive")
         changes["po_limit"] = f"{store_settings.po_limit} -> {body.po_limit}"
         store_settings.po_limit = body.po_limit
     if body.pricing_limit is not None:
-        changes["pricing_limit"] = (
-            f"{store_settings.pricing_limit} -> {body.pricing_limit}"
-        )
+        if not (0 < body.pricing_limit <= 100):
+            raise HTTPException(status_code=400, detail="pricing_limit must be 0-100")
+        changes["pricing_limit"] = f"{store_settings.pricing_limit} -> {body.pricing_limit}"
         store_settings.pricing_limit = body.pricing_limit
     if body.reviews_rating_threshold is not None:
-        changes["reviews_rating_threshold"] = (
-            f"{store_settings.reviews_rating_threshold} -> {body.reviews_rating_threshold}"
-        )
+        if not (1 <= body.reviews_rating_threshold <= 5):
+            raise HTTPException(status_code=400, detail="reviews_rating_threshold must be 1-5")
+        changes["reviews_rating_threshold"] = f"{store_settings.reviews_rating_threshold} -> {body.reviews_rating_threshold}"
         store_settings.reviews_rating_threshold = body.reviews_rating_threshold
+    if body.slack_channel is not None:
+        changes["slack_channel"] = body.slack_channel
 
     db.add(
         AuditEntry(
@@ -532,30 +560,51 @@ async def get_analytics(db: AsyncSession = Depends(get_db_session)):
     timeline = []
     for i in range(6, -1, -1):
         day = now - timedelta(days=i)
-        day_str = day.strftime("%b %d")
-        timeline.append(
-            {
-                "date": day_str,
-                "FraudAgent": 90 + (i % 3) * 3,
-                "InventoryAgent": 80 + (i % 2) * 5,
-                "PricingAgent": 95 - (i % 4) * 2,
-                "ReviewsAgent": 88 + (i % 3) * 4,
-                "MarketingAgent": 70 + (i % 2) * 8,
-            }
-        )
+        day_start = datetime(day.year, day.month, day.day)
+        day_end = day_start + timedelta(days=1)
+        counts = {}
+        for agent_id in ["FraudAgent", "InventoryAgent", "PricingAgent", "ReviewsAgent", "MarketingAgent"]:
+            cnt = (
+                await db.execute(
+                    select(func.count(AuditEntry.id)).where(
+                        AuditEntry.agent == agent_id,
+                        AuditEntry.timestamp >= day_start,
+                        AuditEntry.timestamp < day_end,
+                    )
+                )
+            ).scalar() or 0
+            counts[agent_id] = cnt
+        timeline.append({"date": day.strftime("%b %d"), **counts})
 
-    volume_by_agent = [
-        {"day": d, "Fraud": f, "Inventory": i, "Pricing": p, "Reviews": r, "Marketing": m}
-        for d, f, i, p, r, m in [
-            ("Mon", 12, 4, 18, 25, 2),
-            ("Tue", 15, 8, 22, 30, 3),
-            ("Wed", 9, 6, 15, 28, 1),
-            ("Thu", 18, 12, 24, 35, 4),
-            ("Fri", 14, 5, 20, 32, 2),
-            ("Sat", 8, 2, 12, 18, 1),
-            ("Sun", 11, 3, 14, 22, 3),
-        ]
-    ]
+    volume_by_agent = []
+    for i in range(6, -1, -1):
+        day = now - timedelta(days=i)
+        day_start = datetime(day.year, day.month, day.day)
+        day_end = day_start + timedelta(days=1)
+        vol = {"day": day.strftime("%a")}
+        for agent_id, short in [("FraudAgent", "Fraud"), ("InventoryAgent", "Inventory"), ("PricingAgent", "Pricing"), ("ReviewsAgent", "Reviews"), ("MarketingAgent", "Marketing")]:
+            cnt = (
+                await db.execute(
+                    select(func.count(AuditEntry.id)).where(
+                        AuditEntry.agent == agent_id,
+                        AuditEntry.timestamp >= day_start,
+                        AuditEntry.timestamp < day_end,
+                    )
+                )
+            ).scalar() or 0
+            vol[short] = cnt
+        volume_by_agent.append(vol)
+
+    avg_conf = 0.0
+    if agents:
+        avg_conf = sum(a.avg_confidence for a in agents) / len(agents)
+
+    decision_time_dist = {"under_1m": 0, "1m_5m": 0, "5m_30m": 0, "over_30m": 0}
+    resolved = await db.execute(
+        select(AuditEntry).where(AuditEntry.decision.in_(["approved", "rejected", "shadow"]))
+    )
+    for entry in resolved.scalars().all():
+        pass
 
     return {
         "summary": {
@@ -563,7 +612,7 @@ async def get_analytics(db: AsyncSession = Depends(get_db_session)):
             "approval_rate": round(approval_rate, 1),
             "actions_auto_approved": auto,
             "total_financial_impact": round(financial, 2),
-            "avg_confidence": 0.89,
+            "avg_confidence": round(avg_conf, 2),
             "avg_decision_time_minutes": 4.2,
         },
         "graduation": [
@@ -580,14 +629,47 @@ async def get_analytics(db: AsyncSession = Depends(get_db_session)):
         "charts": {
             "approval_rate_over_time": timeline,
             "volume_by_agent": volume_by_agent,
-            "decision_time_dist": {"under_1m": 45, "1m_5m": 28, "5m_30m": 12, "over_30m": 8},
+            "decision_time_dist": decision_time_dist,
         },
     }
 
 
+@app.get("/api/audit/export")
+async def export_audit_logs(
+    format: str = "csv",
+    db: AsyncSession = Depends(get_db_session),
+):
+    entries = (await db.execute(
+        select(AuditEntry).order_by(desc(AuditEntry.timestamp)).limit(10000)
+    )).scalars().all()
+
+    if format == "csv":
+        import csv
+        import io
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["ID", "Timestamp", "Agent", "Action Type", "Decision", "Operator", "Confidence", "Financial Impact", "Details"])
+        for e in entries:
+            writer.writerow([
+                e.action_id, e.timestamp.isoformat(), e.agent, e.action_type,
+                e.decision, e.operator, e.confidence_score, e.financial_impact, str(e.details),
+            ])
+        return Response(
+            content=output.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=audit_log.csv"},
+        )
+
+    return {"entries": [{
+        "action_id": e.action_id, "timestamp": e.timestamp.isoformat(),
+        "agent": e.agent, "action_type": e.action_type, "decision": e.decision,
+        "operator": e.operator, "confidence": e.confidence_score,
+        "financial_impact": e.financial_impact, "details": e.details,
+    } for e in entries]}
+
+
 @app.post("/api/run")
 async def trigger_run(
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db_session),
 ):
     run_id = str(uuid.uuid4())
@@ -597,9 +679,25 @@ async def trigger_run(
     await ws_manager.broadcast(
         {"type": "pipeline_started", "payload": {"run_id": run_id}}
     )
-    background_tasks.add_task(run_pipeline_task, run_id, db_settings)
+    await task_queue.enqueue("pipeline", run_pipeline_task, run_id, db_settings)
 
     return {"message": "Operations cycle triggered", "run_id": run_id}
+
+
+@app.get("/api/tasks/{task_id}")
+async def get_task_status(task_id: str):
+    task = task_queue.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {
+        "id": task.id,
+        "name": task.name,
+        "status": task.status.value,
+        "error": task.error,
+        "created_at": task.created_at.isoformat(),
+        "started_at": task.started_at.isoformat() if task.started_at else None,
+        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+    }
 
 
 @app.get("/metrics")

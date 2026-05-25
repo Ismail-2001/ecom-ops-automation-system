@@ -1,33 +1,46 @@
-from typing import Dict, Any, List
+from typing import Dict, Any
 from ecommerce_ops.agents._base import BaseAgent
+import structlog
+
+logger = structlog.get_logger(__name__)
+
 
 class MarketingAgent(BaseAgent):
     def __init__(self):
         super().__init__("MarketingAgent")
 
     async def run(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Identifies winning SKUs and drafts marketing materials.
-        Always returns with requires_approval=True.
-        """
         inventory = state.get("inventory_data", [])
         decisions = []
 
-        # Identify hot sellers (heuristic: stock < 20 but positive velocity)
         for item in inventory:
-            if 0 < item.get("stock", 0) < 20:
+            stock = item.get("stock", 0)
+            sku = item.get("sku")
+
+            if 0 < stock < 20:
+                urgency = "critical" if stock < 5 else "moderate"
+                conf = 0.85 if urgency == "critical" else 0.75
+
                 decision = self.create_decision(
                     action_type="DRAFT_MARKETING_CAMPAIGN",
-                    reasoning=f"High-velocity SKU {item.get('sku')} is running low. Proposing a 'Last Chance' campaign.",
+                    reasoning=(
+                        f"SKU {sku} has low stock ({stock} units, {urgency}). "
+                        f"Proposing 'Last Chance' campaign via Email channel."
+                    ),
                     data={
-                        "sku": item.get("sku"),
+                        "sku": sku,
                         "channel": "Email",
-                        "draft_copy": f"Hurry! Only {item.get('stock')} left of {item.get('sku')}. Get yours before they are gone!"
+                        "urgency": urgency,
+                        "draft_copy": (
+                            f"Hurry! Only {stock} left of {sku}. "
+                            f"Get yours before they are gone!"
+                        ),
                     },
-                    confidence=0.8,
-                    requires_approval=True
+                    confidence=conf,
+                    requires_approval=True,
                 )
                 decisions.append(decision)
+                await self.persist_decision(decision)
 
         state["decisions"] = state.get("decisions", []) + decisions
         return state

@@ -1,6 +1,5 @@
-from typing import Annotated, Any, Dict, List, TypedDict
+from typing import Any, Dict, List, TypedDict, Optional
 from datetime import datetime
-from operator import add
 from pydantic import BaseModel, Field
 
 
@@ -14,12 +13,31 @@ class AgentDecision(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
+class ReflectionFeedback(BaseModel):
+    agent_id: str
+    decision_index: int
+    passed: bool
+    issues: List[str]
+    adjusted_confidence: Optional[float] = None
+
+
+class ExecutionPlan(BaseModel):
+    agents_to_run: List[str]
+    rationale: str
+
+
 class OverallState(TypedDict):
-    inventory_data: Dict
-    pricing_data: Dict
+    inventory_data: List[Dict]
+    pricing_data: List[Dict]
     reviews_data: List[Dict]
+    active_orders: List[Dict]
     fraud_alerts: List[Dict]
-    decisions: Annotated[list, add]
-    hitl_queue: Annotated[list, add]
-    messages: Annotated[list, add]
-    errors: Annotated[list, add]
+    decisions: List[AgentDecision]
+    hitl_queue: List[Dict]
+    messages: List
+    errors: List[Dict]
+    run_id: str
+    timestamp: Optional[str]
+    execution_plan: Optional[ExecutionPlan]
+    reflection_feedback: List[ReflectionFeedback]
+    memory_context: Dict[str, Any]

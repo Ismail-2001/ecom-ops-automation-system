@@ -18,6 +18,7 @@ from ecommerce_ops.safety.safety_rules import evaluate_action_safety
 from ecommerce_ops.pipeline.builder import build_payload_and_evidence
 from ecommerce_ops.api.ws import ws_manager
 from ecommerce_ops.api.metrics import METRIC_PIPELINE_RUNS
+from ecommerce_ops.infra.notifications import notify_hitl_request, notify_pipeline_failed, notify_agent_graduated
 
 logger = logging.getLogger("ecommerce_ops.pipeline.runner")
 
@@ -61,6 +62,7 @@ async def update_agent_streak(
             if status.streak >= 50 and status.autonomy_level != "autonomous":
                 status.autonomy_level = "autonomous"
                 logger.info("Agent %s graduated to AUTONOMOUS!", agent_name)
+                await notify_agent_graduated(agent_name, "autonomous", status.streak)
     else:
         status.total_rejections += 1
         status.streak = 0
@@ -184,6 +186,14 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                     )
 
                 new_actions_count += 1
+                if requires_hitl or settings.shadow_mode:
+                    await notify_hitl_request(
+                        agent=d.agent_id,
+                        action_id=action_id,
+                        action_type=mapped_type,
+                        risk_level=risk_level,
+                        confidence=d.confidence_score,
+                    )
 
             await session.commit()
             await ws_manager.broadcast(
@@ -200,6 +210,7 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
     except Exception as e:
         logger.exception("Pipeline run %s failed: %s", run_id, e)
         METRIC_PIPELINE_RUNS.labels(status="failure").inc()
+        await notify_pipeline_failed(run_id, str(e))
         await ws_manager.broadcast(
             {
                 "type": "pipeline_failed",
