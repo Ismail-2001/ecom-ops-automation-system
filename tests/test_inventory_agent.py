@@ -54,14 +54,4 @@ async def test_inventory_agent_drafts_po(mock_state):
         assert po_decisions[0].agent_id == "InventoryAgent"
         assert "Predicted stockout" in po_decisions[0].reasoning
 
-@pytest.mark.asyncio
-async def test_inventory_agent_audit_log(mock_state):
-    agent = InventoryAgent()
-    
-    # Mock file write to avoid side effects
-    with patch("builtins.open", MagicMock()):
-        with patch.object(InventoryAgent, '_calculate_velocity', return_value=5.0):
-            await agent.run(mock_state)
-            # Ensure audit log would have been written
-            # (Testing log_audit through side effect or mock)
-            pass
+

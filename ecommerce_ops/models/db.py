@@ -1,8 +1,6 @@
-import os
-import json
 import logging
 from datetime import datetime
-from typing import AsyncGenerator, Dict, Any, List
+from typing import AsyncGenerator
 
 from sqlalchemy import (
     Column,
@@ -12,28 +10,17 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     JSON,
-    create_engine,
     select
 )
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import declarative_base
 
 from ecommerce_ops.config import settings
 
 logger = logging.getLogger("ecommerce_ops.db")
 
-# Fallback engine resolution
 db_url = settings.DATABASE_URL
-# If we don't have asyncpg or postgres running, we'll try a local sqlite database.
-if db_url.startswith("postgresql"):
-    # Check if aiosqlite is used as a fallback if PostgreSQL connection fails
-    pass
-
-# We will create an async connection url
-# If we detect that the engine should use SQLite, we format it as sqlite+aiosqlite
-is_sqlite = False
 if "postgresql" not in db_url:
-    is_sqlite = True
     db_url = "sqlite+aiosqlite:///./ecommerce_ops.db"
 
 # Create async engine with connection pooling
@@ -61,10 +48,10 @@ class ApprovalAction(Base):
     __tablename__ = "approval_actions"
 
     id = Column(String, primary_key=True)
-    agent = Column(String, nullable=False)
+    agent = Column(String, nullable=False, index=True)
     action_type = Column(String, nullable=False)
-    status = Column(String, default="pending", nullable=False) # pending, approved, rejected, executing, executed, failed, expired, shadow
-    risk_level = Column(String, default="low", nullable=False) # low, medium, high, critical
+    status = Column(String, default="pending", nullable=False, index=True) # pending, approved, rejected, executing, executed, failed, expired, shadow
+    risk_level = Column(String, default="low", nullable=False, index=True) # low, medium, high, critical
     confidence_score = Column(Float, default=0.0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     expires_at = Column(DateTime, nullable=True)
@@ -85,10 +72,10 @@ class AuditEntry(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     action_id = Column(String, nullable=True)
-    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
-    agent = Column(String, nullable=False)
-    action_type = Column(String, nullable=False)
-    decision = Column(String, nullable=False) # approved, rejected, auto-approved, shadow
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    agent = Column(String, nullable=False, index=True)
+    action_type = Column(String, nullable=False, index=True)
+    decision = Column(String, nullable=False, index=True) # approved, rejected, auto-approved, shadow
     operator = Column(String, nullable=True)
     confidence_score = Column(Float, default=0.0, nullable=False)
     financial_impact = Column(Float, nullable=True)
