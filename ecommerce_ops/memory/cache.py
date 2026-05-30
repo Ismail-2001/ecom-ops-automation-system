@@ -47,14 +47,15 @@ class RedisCache:
     async def get_client(self) -> Optional[redis.Redis]:
         if self._redis is None:
             try:
-                self._redis = redis.from_url(
+                client = redis.from_url(
                     self.redis_url,
                     decode_responses=True,
                     max_connections=settings.REDIS_MAX_CONNECTIONS,
                     socket_timeout=settings.REDIS_SOCKET_TIMEOUT,
                     socket_connect_timeout=settings.REDIS_SOCKET_CONNECT_TIMEOUT,
                 )
-                await self._redis.ping()
+                await client.ping()
+                self._redis = client
                 logger.info("Initialized Redis client")
             except Exception as e:
                 logger.warning("Failed to initialize Redis: %s", e)
@@ -67,12 +68,18 @@ class RedisCache:
         except CircuitBreakerOpenError:
             logger.warning("Redis circuit open, skipping GET %s", key)
             return None
+        except Exception as e:
+            logger.warning("Redis error during GET %s: %s", key, e)
+            return None
 
     async def set(self, key: str, value: Any, ttl: int = 3600) -> bool:
         try:
             return await self._circuit_breaker.call(self._set_with_retry, key, value, ttl)
         except CircuitBreakerOpenError:
             logger.warning("Redis circuit open, skipping SET %s", key)
+            return False
+        except Exception as e:
+            logger.warning("Redis error during SET %s: %s", key, e)
             return False
 
     async def get_cached_response(self, method: str, path: str, query: str = "") -> Optional[tuple[int, dict]]:
