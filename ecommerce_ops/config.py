@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:8000"]
     
     # API Keys
+    GOOGLE_API_KEY: Optional[SecretStr] = None
     DEEPSEEK_API_KEY: Optional[SecretStr] = None
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com/v1"
     LLM_MODEL: str = "deepseek-chat"
@@ -63,8 +64,8 @@ class Settings(BaseSettings):
         if self.ENV == Environment.PRODUCTION:
             if not self.API_KEY:
                 raise ValueError("API_KEY must be set in production")
-            if not self.DEEPSEEK_API_KEY:
-                raise ValueError("DEEPSEEK_API_KEY must be set in production")
+            if not self.GOOGLE_API_KEY and not self.DEEPSEEK_API_KEY:
+                raise ValueError("Either GOOGLE_API_KEY or DEEPSEEK_API_KEY must be set in production")
             if "postgresql" not in self.DATABASE_URL:
                 raise ValueError("DATABASE_URL must use PostgreSQL in production")
         return self
