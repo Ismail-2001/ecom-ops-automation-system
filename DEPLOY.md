@@ -303,6 +303,67 @@ supervisorctl restart opsiq
 
 ---
 
+### 15. Rollback Plan
+
+#### A. Code Rollback
+
+```bash
+# Roll back to previous commit
+cd /opt/ecom-ops-automation-system
+git log --oneline -5              # See recent commits
+git reset --hard <previous-sha>   # Roll back to known-good commit
+supervisorctl restart opsiq       # Restart backend
+npm run build                     # Rebuild frontend if changed
+```
+
+#### B. Database Rollback
+
+```bash
+# Alembic downgrade (go back one migration)
+cd /opt/ecom-ops-automation-system
+source .venv/bin/activate
+alembic downgrade -1
+
+# Or go to a specific revision
+alembic downgrade <revision_id>
+```
+
+#### C. Full System Rollback (disaster recovery)
+
+```bash
+# Stop services
+supervisorctl stop opsiq
+systemctl stop nginx
+
+# Restore database from backup
+sudo -u postgres psql -c "DROP DATABASE ecommerce_ops;"
+sudo -u postgres psql -c "CREATE DATABASE ecommerce_ops WITH OWNER ecom_user;"
+sudo -u postgres pg_restore -d ecommerce_ops /var/backups/opsiq/opsiq_$(date +%Y%m%d).dump
+
+# Checkout known-good tag
+cd /opt/ecom-ops-automation-system
+git checkout tags/v1.0.0   # or a known-good commit
+
+# Restart
+supervisorctl start opsiq
+systemctl start nginx
+```
+
+#### D. Backup Checklist (set up before production)
+
+```bash
+# Create backup directory
+mkdir -p /var/backups/opsiq
+
+# Daily database backup cron
+echo "0 3 * * * root pg_dump -U ecom_user ecommerce_ops > /var/backups/opsiq/opsiq_\$(date +\%Y\%m\%d).dump" > /etc/cron.d/opsiq-backup
+
+# Keep last 7 days of backups
+echo "0 5 * * * root find /var/backups/opsiq -mtime +7 -delete" >> /etc/cron.d/opsiq-backup
+```
+
+---
+
 ## Domain Setup (Hostinger DNS)
 
 1. Go to **Hostinger hPanel → Domains → DNS Zone**

@@ -92,6 +92,15 @@ jobs:
           pip install pytest pytest-asyncio pytest-cov httpx
           pip install -r requirements.txt
 
+      - name: Run evaluation tests
+        run: |
+          python -m pytest tests/test_evaluation.py tests/test_auth.py tests/test_tool_registry.py -v --asyncio-mode=auto --tb=short -x
+
+      - name: Security scan (bandit)
+        run: |
+          pip install bandit
+          bandit -r ecommerce_ops/ -c pyproject.toml || echo "Bandit warnings ignored"
+
       - name: Run tests with coverage
         run: |
           python -m pytest tests/ -v --asyncio-mode=auto \
