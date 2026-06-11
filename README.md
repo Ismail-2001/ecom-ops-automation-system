@@ -578,8 +578,8 @@ OpsIQ is building that future.
   <br/>
 
   <p style="color:#475569;">
-    Built by <a href="https://github.com/Ismail-2001"><b>Syed Huzaifa</b></a> · 
-    Enterprise Inquiries: <a href="mailto:admin@example.com">admin@example.com</a>
+    Built by <a href="https://github.com/Ismail-2001"><b>Ismail Sajid</b></a> · 
+    Enterprise Inquiries: <a href="mailto:admin@example.com">ismailsajid0617@gmail.com</a>
   </p>
 
   <br/>
