@@ -25,7 +25,7 @@ from ecommerce_ops.models import (
     StoreSettings,
 )
 from ecommerce_ops.api.middleware import setup_middleware
-from ecommerce_ops.api.auth import verify_auth
+from ecommerce_ops.api.auth import verify_auth, verify_auth_optional
 from ecommerce_ops.api.ws import ws_manager
 from ecommerce_ops.api.metrics import METRIC_HTTP_REQUESTS, METRIC_HTTP_DURATION
 from ecommerce_ops.pipeline.runner import run_pipeline_task, execute_shop_action, update_agent_streak
@@ -84,6 +84,11 @@ app = FastAPI(title=app_settings.PROJECT_NAME, lifespan=lifespan)
 setup_middleware(app)
 
 
+class LoginBody(BaseModel):
+    api_key: str
+    operator_id: Optional[str] = None
+
+
 class DecisionActionBody(BaseModel):
     notes: Optional[str] = None
     draft_response: Optional[str] = None
@@ -117,8 +122,22 @@ async def get_current_operator(identity: str = Depends(verify_auth)) -> str:
     return identity or "unknown-operator"
 
 
+@app.post("/api/auth/login")
+async def login(body: LoginBody):
+    api_key_setting = app_settings.API_KEY
+    valid_key = api_key_setting.get_secret_value() if api_key_setting else ""
+
+    if not valid_key or body.api_key != valid_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    return {
+        "status": "ok",
+        "operator": body.operator_id or "api-operator",
+    }
+
+
 @app.get("/health")
-async def health():
+async def health(operator: str = Depends(verify_auth_optional)):
     deps = {"app": "healthy"}
     all_ok = True
     uptime_seconds = time.time() - SERVER_START_TIME
