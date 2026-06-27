@@ -43,6 +43,14 @@ from ecommerce_ops.api.cart_recovery import router as cart_recovery_router
 from ecommerce_ops.api.customer_support import router as customer_support_router
 from ecommerce_ops.api.observability import router as observability_router
 from ecommerce_ops.api.memory import router as memory_router
+from ecommerce_ops.api.security import router as security_router
+from ecommerce_ops.security.auth import AuthenticationMiddleware
+from ecommerce_ops.security.hardening import (
+    SecurityHeadersMiddleware,
+    RateLimitMiddleware,
+    InputSanitizationMiddleware,
+)
+from ecommerce_ops.security.role_manager import role_manager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ecommerce_ops.api")
@@ -95,6 +103,12 @@ app = FastAPI(title=app_settings.PROJECT_NAME, lifespan=lifespan)
 
 setup_middleware(app)
 
+# Security middleware (runs after auth middleware)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RateLimitMiddleware, requests_per_minute=60, requests_per_hour=1000)
+app.add_middleware(InputSanitizationMiddleware)
+app.add_middleware(AuthenticationMiddleware)
+
 # Include Shopify routes
 app.include_router(shopify_router)
 
@@ -109,6 +123,9 @@ app.include_router(observability_router)
 
 # Include Memory routes
 app.include_router(memory_router)
+
+# Include Security routes
+app.include_router(security_router)
 
 
 class LoginBody(BaseModel):
