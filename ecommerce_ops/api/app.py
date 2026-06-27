@@ -39,6 +39,7 @@ from ecommerce_ops.pipeline.runner import run_pipeline_task, execute_shop_action
 from ecommerce_ops.infra.task_queue import TaskQueue
 from ecommerce_ops.infra.browser_pool import browser_pool
 from ecommerce_ops.api.shopify import router as shopify_router
+from ecommerce_ops.api.cart_recovery import router as cart_recovery_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ecommerce_ops.api")
@@ -93,6 +94,9 @@ setup_middleware(app)
 
 # Include Shopify routes
 app.include_router(shopify_router)
+
+# Include Cart Recovery routes
+app.include_router(cart_recovery_router)
 
 
 class LoginBody(BaseModel):
