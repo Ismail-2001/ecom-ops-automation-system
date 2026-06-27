@@ -1,124 +1,345 @@
-version: "3.9"
+# ── OpsIQ — Production Docker Compose ──────────────────────
+# Usage:
+#   Development: docker compose up (auto-merges override)
+#   Production:  docker compose -f docker-compose.yml up -d
+#   With backup: docker compose -f docker-compose.yml -f docker-compose.backup.yml up -d
 
 services:
+  # ── PostgreSQL ────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
+    container_name: opsiq-postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: ecommerce_ops
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-ecommerce_ops}
+      # Performance tuning
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    command:
+      - "postgres"
+      - "-c" 
+      - "shared_buffers=256MB"
+      - "-c"
+      - "effective_cache_size=512MB"
+      - "-c"
+      - "maintenance_work_mem=64MB"
+      - "-c"
+      - "checkpoint_completion_target=0.9"
+      - "-c"
+      - "wal_buffers=16MB"
+      - "-c"
+      - "default_statistics_target=100"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "effective_io_concurrency=200"
+      - "-c"
+      - "work_mem=4MB"
+      - "-c"
+      - "huge_pages=off"
+      - "-c"
+      - "min_wal_size=1GB"
+      - "-c"
+      - "max_wal_size=4GB"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
+    networks:
+      - backend
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+        reservations:
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
+  # ── Redis ─────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    container_name: opsiq-redis
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
+      interval: 10s
+      timeout: 5s
       retries: 5
+    networks:
+      - backend
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+        reservations:
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
+  # ── API Server ────────────────────────────────────────────
   api:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
+    container_name: opsiq-api
+    env_file:
+      - .env.docker
     environment:
-      ENV: development
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/ecommerce_ops
+      ENV: production
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ecommerce_ops}
       REDIS_URL: redis://redis:6379/0
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      SHADOW_MODE: "true"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
-      - ./ecommerce_ops:/app/ecommerce_ops
-      - audit_logs:/app
+      - audit_logs:/app/logs
+      - playwright_cache:/app/.playwright
+    networks:
+      - backend
+      - frontend
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "2.0"
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/live')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
 
+  # ── Dashboard (Node.js dev server) ────────────────────────
   dashboard:
     image: node:20-alpine
+    container_name: opsiq-dashboard
     working_dir: /app
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
-    ports:
-      - "5173:5173"
     environment:
       VITE_API_BASE_URL: http://localhost:8000
     volumes:
       - ./dashboard:/app
+      - dashboard_node_modules:/app/node_modules
+    networks:
+      - frontend
     depends_on:
       - api
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
 
-  # ── Monitoring ──────────────────────────────────────────
+  # ── Nginx Reverse Proxy ───────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: opsiq-nginx
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - nginx_logs:/var/log/nginx
+      - dashboard_dist:/usr/share/nginx/html:ro
+    depends_on:
+      - api
+      - dashboard
+    networks:
+      - frontend
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.25"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ── Prometheus ────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:v2.53.0
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml
-      - prometheus_data:/prometheus
+    container_name: opsiq-prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.retention.time=30d"
-    depends_on:
-      - api
+      - "--storage.tsdb.retention.size=10GB"
+      - "--web.enable-lifecycle"
+      - "--web.enable-admin-api"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - backend
+      - monitoring
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+        reservations:
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
+  # ── Grafana ───────────────────────────────────────────────
   grafana:
     image: grafana/grafana:11.1.0
-    ports:
-      - "3000:3000"
+    container_name: opsiq-grafana
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_INSTALL_PLUGINS: ""
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s/grafana/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana-dashboard.json:/etc/grafana/provisioning/dashboards/ecom-ops-dashboard.json
+      - ./monitoring/grafana-dashboard.json:/etc/grafana/provisioning/dashboards/ecom-ops-dashboard.json:ro
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - monitoring
     depends_on:
       - prometheus
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
+  # ── Alertmanager ──────────────────────────────────────────
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: opsiq-alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    networks:
+      - monitoring
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+
+  # ── PostgreSQL Exporter ───────────────────────────────────
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.15.0
-    ports:
-      - "9187:9187"
+    container_name: opsiq-postgres-exporter
     environment:
-      DATA_SOURCE_NAME: "postgresql://postgres:postgres@postgres:5432/ecommerce_ops?sslmode=disable"
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ecommerce_ops}?sslmode=disable"
+    networks:
+      - monitoring
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
 
+  # ── Redis Exporter ────────────────────────────────────────
   redis-exporter:
     image: oliver006/redis_exporter:v1.62.0
-    ports:
-      - "9121:9121"
+    container_name: opsiq-redis-exporter
     environment:
       REDIS_ADDR: redis://redis:6379
+    networks:
+      - monitoring
     depends_on:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
 
+# ── Networks ────────────────────────────────────────────────
+networks:
+  backend:
+    driver: bridge
+    name: opsiq-backend
+  frontend:
+    driver: bridge
+    name: opsiq-frontend
+  monitoring:
+    driver: bridge
+    name: opsiq-monitoring
+
+# ── Volumes ─────────────────────────────────────────────────
 volumes:
   postgres_data:
+    name: opsiq-postgres-data
+  redis_data:
+    name: opsiq-redis-data
   audit_logs:
+    name: opsiq-audit-logs
+  playwright_cache:
+    name: opsiq-playwright-cache
+  dashboard_node_modules:
+    name: opsiq-dashboard-node-modules
+  dashboard_dist:
+    name: opsiq-dashboard-dist
   prometheus_data:
+    name: opsiq-prometheus-data
   grafana_data:
+    name: opsiq-grafana-data
+  alertmanager_data:
+    name: opsiq-alertmanager-data
+  nginx_logs:
+    name: opsiq-nginx-logs
