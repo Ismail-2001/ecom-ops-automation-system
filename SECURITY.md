@@ -2,60 +2,161 @@
 
 ## Supported Versions
 
-| Version | Supported |
-|:---|---:|
-| 0.x (latest) | ✅ Active development — security fixes prioritized |
+| Version | Supported          |
+| ------- | ------------------ |
+| 1.0.x   | :white_check_mark: |
+| < 1.0   | :x:                |
 
 ## Reporting a Vulnerability
 
-OpsIQ handles ecommerce operations data including customer information, order details, and store credentials. We take security seriously.
+If you discover a security vulnerability within OpsIQ, please send an email to security@opsiq.ai. All security vulnerabilities will be promptly addressed.
 
-### How to Report
+**Please do NOT report security vulnerabilities through public GitHub issues.**
 
-**Do not open a public GitHub issue for security vulnerabilities.**
+### What to include
 
-Instead, email: **admin@example.com**
+- Type of issue (e.g., buffer overflow, SQL injection, cross-site scripting, etc.)
+- Full paths of source file(s) related to the manifestation of the issue
+- The location of the affected source code (tag/branch/commit or direct URL)
+- Any special configuration required to reproduce the issue
+- Step-by-step instructions to reproduce the issue
+- Proof-of-concept or exploit code (if possible)
+- Impact of the issue, including how an attacker might exploit the issue
 
-Include:
-- A clear description of the vulnerability
-- Steps to reproduce (PoC preferred)
-- Potential business impact (data exposure, credential leakage, etc.)
-- Your contact information for follow-up
+### Response Timeline
 
-### What to Expect
+- **Acknowledgment**: Within 48 hours
+- **Initial Assessment**: Within 1 week
+- **Fix & Disclosure**: Within 30 days
 
-1. **Acknowledgment** within 48 hours
-2. **Investigation** and confirmation within 5 business days
-3. **Fix timeline** communicated based on severity
-4. **Credit** in release notes (if desired)
+## Security Measures
 
-## Security Best Practices for Deployments
+### Authentication
 
-| Practice | Recommendation |
-|:---|---:|
-| API keys | Store in environment variables or a secrets manager (Doppler, 1Password). Never commit `.env` files. |
-| Database | Use PostgreSQL with SSL in production. Avoid SQLite for production deployments. |
-| Redis | Enable password authentication and TLS for Redis in production. |
-| LLM keys | Use least-privilege API keys. Rotate keys every 90 days. |
-| Network | Run OpsIQ behind a reverse proxy (nginx, Caddy) with HTTPS in production. |
-| Dashboard | Add authentication (OAuth, SSO) before exposing the dashboard publicly. |
-| Audit logs | Monitor audit trails regularly. Logs are immutable but should be backed up. |
+- JWT tokens with configurable expiration
+- API key authentication
+- Rate limiting on all endpoints
+- Brute force protection
 
-## Known Security Features
+### Authorization
 
-- Prompt injection hardening on all user-facing LLM calls
-- API keys encrypted via Pydantic `SecretStr` (masked in logs)
-- Rate limiting per IP (configurable, Redis-backed)
-- Circuit breakers prevent cascading failures
-- SOC2-ready immutable audit trails
-- Shadow mode for risk-free testing
+- Role-Based Access Control (RBAC)
+- 30+ granular permissions
+- 5 predefined roles (super_admin, admin, operator, viewer, api_only)
+- Resource-level access control
 
-## Responsible Disclosure
+### Data Protection
 
-We believe in responsible disclosure. If you report a vulnerability:
+- Passwords hashed with bcrypt
+- API keys encrypted at rest
+- Sensitive data masked in logs
+- HTTPS enforced in production
 
-- We will investigate and fix it promptly
-- We will not take legal action against researchers acting in good faith
-- We will publicly acknowledge your contribution (if desired)
+### Input Validation
 
-Thank you for helping keep OpsIQ and the ecommerce ecosystem secure.
+- Request body validation with Pydantic
+- SQL injection prevention (SQLAlchemy ORM)
+- XSS prevention (security headers)
+- Input sanitization middleware
+
+### Monitoring
+
+- Audit logging for all security events
+- Failed login attempt tracking
+- Rate limit violation monitoring
+- Anomaly detection
+
+### Infrastructure
+
+- Docker container isolation
+- Network segmentation
+- Database access restricted
+- Redis access restricted
+- Regular security updates
+
+## Best Practices
+
+### For Developers
+
+1. Never commit secrets to version control
+2. Use environment variables for configuration
+3. Validate all user input
+4. Use parameterized queries
+5. Implement proper error handling
+6. Follow the principle of least privilege
+7. Keep dependencies updated
+8. Run security scans in CI/CD
+
+### For Deployment
+
+1. Use HTTPS in production
+2. Enable firewall
+3. Restrict database access
+4. Use strong passwords
+5. Enable audit logging
+6. Monitor for suspicious activity
+7. Regular backups
+8. Keep systems updated
+
+### For API Usage
+
+1. Use API keys for programmatic access
+2. Rotate API keys regularly
+3. Use HTTPS only
+4. Implement rate limiting
+5. Validate webhook signatures
+6. Don't expose sensitive data
+
+## Security Updates
+
+Security updates will be released as patch versions (e.g., 1.0.1, 1.0.2). Users are encouraged to always use the latest version.
+
+### Update Process
+
+1. Security vulnerability reported
+2. Fix developed and tested
+3. Security patch released
+4. Users notified via GitHub Security Advisories
+5. CVE assigned (if applicable)
+
+## Compliance
+
+### GDPR
+
+- Data minimization
+- Right to erasure
+- Data portability
+- Consent management
+- Privacy by design
+
+### SOC 2
+
+- Access controls
+- Audit logging
+- Encryption at rest and in transit
+- Incident response procedures
+- Regular security assessments
+
+### PCI DSS
+
+- No credit card data stored
+- Secure transmission
+- Access controls
+- Regular testing
+- Security policies
+
+## Contact
+
+For security-related inquiries:
+
+- **Email**: security@opsiq.ai
+- **PGP Key**: Available on request
+- **Bug Bounty**: Coming soon
+
+## Acknowledgments
+
+We thank the security researchers who help us improve the security of OpsIQ. Responsible disclosure is appreciated.
+
+## License
+
+This security policy is part of the OpsIQ project and is licensed under the MIT License.
