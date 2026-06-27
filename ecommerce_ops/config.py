@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     SHOPIFY_PASSWORD: Optional[SecretStr] = None
     SHOPIFY_STORE_URL: Optional[str] = None
     SHOPIFY_API_VERSION: str = "2024-01"
+
+    # Shopify OAuth (new)
+    SHOPIFY_CLIENT_ID: Optional[str] = None
+    SHOPIFY_CLIENT_SECRET: Optional[SecretStr] = None
+    SHOPIFY_APP_URL: Optional[str] = None
+    SHOPIFY_SHOP_DOMAIN: Optional[str] = None
+    SHOPIFY_ACCESS_TOKEN: Optional[str] = None
     
     # DB & Cache
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/ecommerce_ops"
