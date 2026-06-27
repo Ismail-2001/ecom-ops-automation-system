@@ -1,37 +1,31 @@
 ---
 name: Feature Request
-about: Suggest an idea for a new agent capability, integration, or operational improvement
-title: "[FEATURE] "
+about: Suggest an idea for OpsIQ
+title: '[FEATURE] '
 labels: enhancement
-assignees: ""
+assignees: ''
 ---
 
-## Business Problem
-Describe the operational pain point or inefficiency this feature would solve. How does it affect your ecommerce operations today?
+## Is your feature request related to a problem?
 
-## Proposed Solution
-A clear and concise description of what you want to happen. Focus on the operational outcome, not the implementation.
+A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
 
-## Agent / Area
-Which part of OpsIQ does this affect?
-- [ ] Fraud Detection Agent
-- [ ] Inventory Management Agent
-- [ ] Pricing Optimization Agent
-- [ ] Customer Experience Agent
-- [ ] Marketing Activation Agent
-- [ ] Dashboard / UI
-- [ ] API / Integrations
-- [ ] Infrastructure / Deployment
-- [ ] Documentation
+## Describe the Solution You'd Like
 
-## Alternatives Considered
-What manual workflow or workaround are you using today to address this problem?
+A clear and concise description of what you want to happen.
 
-## Impact
-- [ ] Revenue impact (saves/makes money)
-- [ ] Efficiency impact (saves time)
-- [ ] Customer experience impact
-- [ ] Risk reduction
+## Describe Alternatives You've Considered
+
+A clear and concise description of any alternative solutions or features you've considered.
+
+## Use Case
+
+Describe the use case for this feature. How would it be used? Who would benefit?
 
 ## Additional Context
-Add any other context, mockups, or examples from other tools that demonstrate what you're looking for.
+
+Add any other context or screenshots about the feature request here.
+
+## Implementation Ideas
+
+If you have ideas about how this could be implemented, share them here.
