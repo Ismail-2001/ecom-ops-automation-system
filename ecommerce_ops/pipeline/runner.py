@@ -82,12 +82,50 @@ async def fetch_shopify_data() -> Optional[Dict[str, Any]]:
         # Fetch reviews (from order notes/comments - placeholder)
         reviews_data = []  # Reviews API not available in basic scope
 
+        # Fetch abandoned carts (checkouts)
+        checkouts_response = await client.get_checkouts(limit=50)
+        abandoned_carts = []
+        for checkout in checkouts_response.get("checkouts", []):
+            # Check if checkout is abandoned (no completed order)
+            if checkout.get("order") is None:
+                items = []
+                for item in checkout.get("line_items", []):
+                    items.append({
+                        "product_id": item.get("product_id", 0),
+                        "variant_id": item.get("variant_id", 0),
+                        "title": item.get("title", "Unknown"),
+                        "sku": item.get("sku"),
+                        "quantity": item.get("quantity", 1),
+                        "price": float(item.get("price", 0)),
+                        "total": float(item.get("line_price", 0)),
+                    })
+
+                abandoned_carts.append({
+                    "id": str(checkout.get("id", f"cart-{len(abandoned_carts)}")),
+                    "shop_domain": shop_domain,
+                    "checkout_token": checkout.get("token"),
+                    "items": items,
+                    "total_value": float(checkout.get("total_price", 0)),
+                    "currency": checkout.get("currency", "USD"),
+                    "items_count": len(items),
+                    "status": "abandoned",
+                    "checkout_url": checkout.get("abandoned_checkout_url"),
+                    "created_at": checkout.get("created_at"),
+                    "abandoned_at": checkout.get("updated_at"),
+                    "customer": {
+                        "email": checkout.get("email"),
+                        "first_name": checkout.get("billing_address", {}).get("first_name"),
+                        "last_name": checkout.get("billing_address", {}).get("last_name"),
+                    } if checkout.get("email") else None,
+                })
+
         await client.close()
 
         return {
             "inventory_data": inventory_data,
             "active_orders": active_orders,
             "reviews_data": reviews_data,
+            "abandoned_carts": abandoned_carts,
         }
 
     except Exception as e:
@@ -155,11 +193,13 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
         inventory_data = shopify_data["inventory_data"]
         active_orders = shopify_data["active_orders"]
         reviews_data = shopify_data["reviews_data"]
+        abandoned_carts = shopify_data.get("abandoned_carts", [])
         data_source = "shopify"
         logger.info(
-            "Using Shopify data: %d inventory items, %d active orders",
+            "Using Shopify data: %d inventory items, %d active orders, %d abandoned carts",
             len(inventory_data),
             len(active_orders),
+            len(abandoned_carts),
         )
     else:
         # Fallback to mock data
@@ -180,6 +220,31 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
         reviews_data = [
             {"id": "r_100", "content": "The shipping was delayed and box was damaged!", "rating": 2},
         ]
+
+        abandoned_carts = [
+            {
+                "id": "cart_mock_1",
+                "shop_domain": "mock-store.myshopify.com",
+                "items": [
+                    {"product_id": 101, "variant_id": 201, "title": "Blue T-Shirt", "sku": "TSHIRT-BLUE-L", "quantity": 2, "price": 25.0, "total": 50.0},
+                    {"product_id": 102, "variant_id": 202, "title": "White Mug", "sku": "MUG-WHITE", "quantity": 1, "price": 12.0, "total": 12.0},
+                ],
+                "total_value": 62.0,
+                "currency": "USD",
+                "items_count": 2,
+                "status": "abandoned",
+                "checkout_url": "https://mock-store.myshopify.com/checkout/abc123",
+                "customer": {
+                    "email": "customer@example.com",
+                    "first_name": "John",
+                    "last_name": "Doe",
+                    "total_orders": 3,
+                    "total_spent": 150.0,
+                    "is_repeat_customer": True,
+                    "segment": "returning",
+                },
+            },
+        ]
         data_source = "mock"
         logger.info("Using mock data (Shopify not configured)")
 
@@ -187,6 +252,7 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
         "inventory_data": inventory_data,
         "active_orders": active_orders,
         "reviews_data": reviews_data,
+        "abandoned_carts": abandoned_carts,
         "decisions": [],
         "hitl_queue": [],
         "messages": [],
