@@ -44,7 +44,7 @@ jobs:
 
       - name: Deploy via SSH (staging)
         if: github.event.inputs.environment == 'staging' || startsWith(github.ref, 'refs/tags/v')
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
