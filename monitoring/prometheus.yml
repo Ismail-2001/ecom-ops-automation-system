@@ -3,15 +3,19 @@ global:
   evaluation_interval: 15s
   scrape_timeout: 10s
 
+# ── Alertmanager ───────────────────────────────────────────
 alerting:
   alertmanagers:
     - static_configs:
-        - targets: []
+        - targets: ['alertmanager:9093']
 
+# ── Alert Rules ────────────────────────────────────────────
 rule_files:
   - "alerts.yml"
 
+# ── Scrape Configs ─────────────────────────────────────────
 scrape_configs:
+  # API Server metrics
   - job_name: "ecom-ops-api"
     metrics_path: /metrics
     static_configs:
@@ -21,10 +25,17 @@ scrape_configs:
         target_label: instance
         replacement: "api"
 
+  # PostgreSQL metrics
   - job_name: "postgres"
     static_configs:
       - targets: ["postgres-exporter:9187"]
 
+  # Redis metrics
   - job_name: "redis"
     static_configs:
       - targets: ["redis-exporter:9121"]
+
+  # Prometheus self-monitoring
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
