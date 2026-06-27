@@ -38,6 +38,7 @@ from ecommerce_ops.api.metrics import (
 from ecommerce_ops.pipeline.runner import run_pipeline_task, execute_shop_action, update_agent_streak
 from ecommerce_ops.infra.task_queue import TaskQueue
 from ecommerce_ops.infra.browser_pool import browser_pool
+from ecommerce_ops.api.shopify import router as shopify_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ecommerce_ops.api")
@@ -89,6 +90,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=app_settings.PROJECT_NAME, lifespan=lifespan)
 
 setup_middleware(app)
+
+# Include Shopify routes
+app.include_router(shopify_router)
 
 
 class LoginBody(BaseModel):
