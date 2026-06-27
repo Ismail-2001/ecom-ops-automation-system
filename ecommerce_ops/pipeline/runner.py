@@ -1,6 +1,7 @@
 import uuid
 import logging
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +29,71 @@ from ecommerce_ops.api.metrics import (
 from ecommerce_ops.infra.notifications import notify_hitl_request, notify_pipeline_failed, notify_agent_graduated
 
 logger = logging.getLogger("ecommerce_ops.pipeline.runner")
+
+
+async def fetch_shopify_data() -> Optional[Dict[str, Any]]:
+    """Fetch real data from Shopify if credentials are configured."""
+    from ecommerce_ops.connectors.shopify.client import ShopifyClient
+
+    shop_domain = app_settings.SHOPIFY_SHOP_DOMAIN
+    access_token = app_settings.SHOPIFY_ACCESS_TOKEN
+
+    if not shop_domain or not access_token:
+        logger.debug("Shopify credentials not configured, using mock data")
+        return None
+
+    try:
+        client = ShopifyClient(
+            shop_domain=shop_domain,
+            access_token=access_token,
+            api_version=app_settings.SHOPIFY_API_VERSION,
+        )
+
+        # Fetch inventory
+        inventory_response = await client.get_products(limit=100)
+        inventory_data = []
+        for product in inventory_response.get("products", []):
+            for variant in product.get("variants", []):
+                inventory_data.append({
+                    "sku": variant.get("sku", f"SKU-{variant['id']}"),
+                    "stock": variant.get("inventory_quantity", 0),
+                    "price": float(variant.get("price", 0)),
+                    "variant_id": str(variant["id"]),
+                })
+
+        # Fetch recent orders (last 24h)
+        orders_response = await client.get_orders(
+            status="any",
+            limit=50,
+            created_at_min=(datetime.utcnow() - timedelta(hours=24)).isoformat(),
+        )
+        active_orders = []
+        for order in orders_response.get("orders", []):
+            if order.get("fulfillment_status") != "fulfilled":
+                active_orders.append({
+                    "id": str(order["id"]),
+                    "line_items": [
+                        {"sku": item.get("sku", ""), "quantity": item.get("quantity", 1)}
+                        for item in order.get("line_items", [])
+                    ],
+                    "order_total": float(order.get("total_price", 0)),
+                })
+
+        # Fetch reviews (from order notes/comments - placeholder)
+        reviews_data = []  # Reviews API not available in basic scope
+
+        await client.close()
+
+        return {
+            "inventory_data": inventory_data,
+            "active_orders": active_orders,
+            "reviews_data": reviews_data,
+        }
+
+    except Exception as e:
+        logger.error("Failed to fetch Shopify data: %s", e)
+        return None
+
 
 DECISION_TYPE_MAP = {
     "HOLD_ORDER": "fraud_hold",
@@ -82,23 +148,40 @@ async def update_agent_streak(
 async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
     logger.info("Starting pipeline run %s", run_id)
 
-    inventory_data = [
-        {"sku": "TSHIRT-BLUE-L", "stock": 3, "price": 25.0, "variant_id": "v1"},
-        {"sku": "MUG-WHITE", "stock": 2, "price": 12.0, "variant_id": "v2"},
-        {"sku": "SILK-PILLOW-SLV", "stock": 1, "price": 49.0, "variant_id": "v3"},
-    ]
+    # Try to fetch real Shopify data first
+    shopify_data = await fetch_shopify_data()
 
-    active_orders = [
-        {
-            "id": "o_suspicious",
-            "line_items": [{"sku": "TSHIRT-BLUE-L", "quantity": 1}],
-            "order_total": 450.0,
-        },
-    ]
+    if shopify_data:
+        inventory_data = shopify_data["inventory_data"]
+        active_orders = shopify_data["active_orders"]
+        reviews_data = shopify_data["reviews_data"]
+        data_source = "shopify"
+        logger.info(
+            "Using Shopify data: %d inventory items, %d active orders",
+            len(inventory_data),
+            len(active_orders),
+        )
+    else:
+        # Fallback to mock data
+        inventory_data = [
+            {"sku": "TSHIRT-BLUE-L", "stock": 3, "price": 25.0, "variant_id": "v1"},
+            {"sku": "MUG-WHITE", "stock": 2, "price": 12.0, "variant_id": "v2"},
+            {"sku": "SILK-PILLOW-SLV", "stock": 1, "price": 49.0, "variant_id": "v3"},
+        ]
 
-    reviews_data = [
-        {"id": "r_100", "content": "The shipping was delayed and box was damaged!", "rating": 2},
-    ]
+        active_orders = [
+            {
+                "id": "o_suspicious",
+                "line_items": [{"sku": "TSHIRT-BLUE-L", "quantity": 1}],
+                "order_total": 450.0,
+            },
+        ]
+
+        reviews_data = [
+            {"id": "r_100", "content": "The shipping was delayed and box was damaged!", "rating": 2},
+        ]
+        data_source = "mock"
+        logger.info("Using mock data (Shopify not configured)")
 
     initial_state = {
         "inventory_data": inventory_data,
