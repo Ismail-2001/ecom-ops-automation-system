@@ -44,6 +44,7 @@ from ecommerce_ops.api.customer_support import router as customer_support_router
 from ecommerce_ops.api.observability import router as observability_router
 from ecommerce_ops.api.memory import router as memory_router
 from ecommerce_ops.api.security import router as security_router
+from ecommerce_ops.api.demo import router as demo_router
 from ecommerce_ops.security.auth import AuthenticationMiddleware
 from ecommerce_ops.security.hardening import (
     SecurityHeadersMiddleware,
@@ -126,6 +127,9 @@ app.include_router(memory_router)
 
 # Include Security routes
 app.include_router(security_router)
+
+# Include Demo routes
+app.include_router(demo_router)
 
 
 class LoginBody(BaseModel):
