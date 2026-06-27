@@ -1,5 +1,6 @@
 import uuid
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -27,6 +28,8 @@ from ecommerce_ops.api.metrics import (
     METRIC_FINANCIAL_IMPACT,
 )
 from ecommerce_ops.infra.notifications import notify_hitl_request, notify_pipeline_failed, notify_agent_graduated
+from ecommerce_ops.observability.langfuse_client import langfuse_client
+from ecommerce_ops.observability.evaluation import evaluation_framework
 
 logger = logging.getLogger("ecommerce_ops.pipeline.runner")
 
@@ -290,10 +293,47 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
     }
 
     try:
+        # Create pipeline trace
+        trace = langfuse_client.create_trace(
+            name=f"pipeline.run",
+            user_id=None,
+            tags=["pipeline", run_id],
+            metadata={
+                "run_id": run_id,
+                "data_source": data_source,
+            },
+        )
+
         supervisor = Supervisor()
         final_state = await supervisor.run(initial_state)
         decisions_list = final_state.get("decisions", [])
         logger.info("Pipeline %s finished: %d decisions", run_id, len(decisions_list))
+
+        # Evaluate decisions
+        evaluation_results = []
+        for d in decisions_list:
+            evaluation = evaluation_framework.evaluate_decision(
+                agent_name=d.agent_id,
+                decision_id=str(uuid.uuid4()),
+                decision={
+                    "action_type": d.action_type,
+                    "reasoning": d.reasoning,
+                    "confidence_score": d.confidence_score,
+                    "action_data": d.action_data,
+                },
+                context={"run_id": run_id},
+                trace_id=trace.id if trace else None,
+            )
+            evaluation_results.append(evaluation)
+
+            # Add score to trace
+            if trace:
+                langfuse_client.score(
+                    trace_id=trace.id,
+                    name=f"{d.agent_id}.quality",
+                    value=evaluation.overall_score,
+                    comment=evaluation.feedback,
+                )
 
         async with async_session_factory() as session:
             res_set = await session.execute(
@@ -387,12 +427,50 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                     )
 
             await session.commit()
+
+            # Log evaluation summary
+            avg_score = (
+                sum(e.overall_score for e in evaluation_results) / len(evaluation_results)
+                if evaluation_results
+                else 0
+            )
+            passed_count = sum(1 for e in evaluation_results if e.passed)
+            logger.info(
+                "Pipeline %s evaluation: %d/%d passed, avg_score=%.3f",
+                run_id,
+                passed_count,
+                len(evaluation_results),
+                avg_score,
+            )
+
+            # Add pipeline completion to trace
+            if trace:
+                langfuse_client.create_span(
+                    trace_id=trace.id,
+                    name="pipeline_summary",
+                    output={
+                        "run_id": run_id,
+                        "decisions_count": len(decisions_list),
+                        "actions_count": new_actions_count,
+                        "evaluation_avg_score": round(avg_score, 3),
+                        "evaluation_pass_rate": round(
+                            passed_count / len(evaluation_results), 3
+                        ) if evaluation_results else 0,
+                    },
+                )
+
             await ws_manager.broadcast(
                 {
                     "type": "pipeline_completed",
                     "payload": {
                         "run_id": run_id,
                         "action_count": new_actions_count,
+                        "evaluation": {
+                            "avg_score": round(avg_score, 3),
+                            "pass_rate": round(
+                                passed_count / len(evaluation_results), 3
+                            ) if evaluation_results else 0,
+                        },
                     },
                 }
             )
@@ -401,6 +479,16 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
     except Exception as e:
         logger.exception("Pipeline run %s failed: %s", run_id, e)
         METRIC_PIPELINE_RUNS.labels(status="failure").inc()
+
+        # Track failure in Langfuse
+        if trace:
+            langfuse_client.score(
+                trace_id=trace.id,
+                name="pipeline_success",
+                value=0.0,
+                comment=f"Pipeline failed: {str(e)}",
+            )
+
         await notify_pipeline_failed(run_id, str(e))
         await ws_manager.broadcast(
             {
@@ -408,3 +496,6 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                 "payload": {"run_id": run_id, "error": str(e)},
             }
         )
+    finally:
+        # Flush Langfuse events
+        langfuse_client.flush()
