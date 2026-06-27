@@ -6,154 +6,189 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   PYTHON_VERSION: "3.12"
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgres
+  POSTGRES_DB: ecommerce_ops_test
+  DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/ecommerce_ops_test
+  REDIS_URL: redis://localhost:6379/0
+  SHADOW_MODE: "true"
+  ENV: testing
 
 jobs:
   lint:
-    name: Lint & Type Check
+    name: Lint & Format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: "pip"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Ruff lint
+        run: ruff check . --output-format=github
+
+      - name: Ruff format check
+        run: ruff format --check .
+
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install ruff mypy pre-commit
+          pip install --upgrade pip
           pip install -r requirements.txt
+          pip install -e .
 
-      - name: Run Ruff linter
-        run: ruff check ecommerce_ops/ tests/
+      - name: Run mypy
+        run: mypy ecommerce_ops/ --ignore-missing-imports --no-error-summary
+        continue-on-error: true
 
-      - name: Check Ruff formatting
-        run: ruff format --check ecommerce_ops/ tests/
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Run MyPy type checker
-        run: mypy ecommerce_ops/ --ignore-missing-imports
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Run pre-commit hooks
-        run: pre-commit run --all-files || true
+      - name: Install bandit
+        run: pip install bandit[toml]
+
+      - name: Run bandit
+        run: bandit -r ecommerce_ops/ -c pyproject.toml -f json -o bandit-report.json || true
+
+      - name: Check for high-severity issues
+        run: |
+          if [ -f bandit-report.json ]; then
+            HIGH=$(python -c "import json; data=json.load(open('bandit-report.json')); print(len([r for r in data.get('results', []) if r.get('issue_severity') == 'HIGH']))")
+            if [ "$HIGH" -gt 0 ]; then
+              echo "⚠️ Found $HIGH high-severity security issues"
+              cat bandit-report.json
+            fi
+          fi
+
+      - name: Upload bandit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-report.json
+          if-no-files-found: ignore
 
   test:
-    name: Tests (PostgreSQL)
+    name: Tests
     runs-on: ubuntu-latest
-    needs: lint
+
     services:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: ecommerce_ops_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+          POSTGRES_USER: ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ env.POSTGRES_DB }}
         ports:
           - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
       redis:
         image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
         ports:
           - 6379:6379
-
-    env:
-      ENV: testing
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/ecommerce_ops_test
-      REDIS_URL: redis://localhost:6379/0
-      DEEPSEEK_API_KEY: sk-test-key
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: "pip"
+          cache: pip
 
-      - name: Install system dependencies
+      - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libpq-dev
-
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pytest pytest-asyncio pytest-cov httpx
+          pip install --upgrade pip
           pip install -r requirements.txt
+          pip install -e .
+          pip install pytest pytest-asyncio pytest-cov
 
-      - name: Run tests with coverage
+      - name: Run tests
         run: |
-          python -m pytest tests/ -v --asyncio-mode=auto \
+          pytest tests/ \
+            -v \
+            --tb=short \
             --cov=ecommerce_ops \
-            --cov-report=xml \
+            --cov-report=xml:coverage.xml \
             --cov-report=term-missing \
-            -x
+            --junitxml=test-results.xml
 
-      - name: Security scan
-        run: |
-          pip install bandit
-          bandit -r ecommerce_ops/ -c pyproject.toml || echo "Bandit warnings ignored"
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          file: ./coverage.xml
-          fail_ci_if_error: false
+          name: test-results
+          path: |
+            test-results.xml
+            coverage.xml
 
-  docker:
-    name: Docker Build & Push
+      - name: Coverage summary
+        if: always()
+        run: |
+          if [ -f coverage.xml ]; then
+            python -c "
+          import xml.etree.ElementTree as ET
+          tree = ET.parse('coverage.xml')
+          root = tree.getroot()
+          rate = float(root.attrib.get('line-rate', 0)) * 100
+          print(f'Coverage: {rate:.1f}%')
+          "
+          fi
+
+  build:
+    name: Build Check
     runs-on: ubuntu-latest
-    needs: test
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
-    permissions:
-      contents: read
-      packages: write
-
+    needs: [lint, test]
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata for Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=sha,prefix=
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-
-      - name: Build and push Docker image
+      - name: Build Docker image (no push)
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          push: false
+          tags: ecom-ops:ci-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -1,40 +1,39 @@
 version: 2
 updates:
-  - package-ecosystem: "pip"
-    directory: "/"
+  - package-ecosystem: pip
+    directory: /
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: weekly
+      day: monday
     open-pull-requests-limit: 10
     labels:
-      - "dependencies"
-      - "python"
+      - dependencies
+      - security
+    reviewers:
+      - Ismail-2001
 
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: npm
+    directory: /dashboard
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: weekly
+      day: monday
     open-pull-requests-limit: 5
     labels:
-      - "dependencies"
-      - "ci"
+      - dependencies
+      - frontend
 
-  - package-ecosystem: "npm"
-    directory: "/dashboard"
+  - package-ecosystem: docker
+    directory: /
     schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 10
+      interval: monthly
     labels:
-      - "dependencies"
-      - "frontend"
+      - dependencies
+      - docker
 
-  - package-ecosystem: "docker"
-    directory: "/"
+  - package-ecosystem: github-actions
+    directory: /
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: monthly
     labels:
-      - "dependencies"
-      - "docker"
+      - dependencies
+      - ci
