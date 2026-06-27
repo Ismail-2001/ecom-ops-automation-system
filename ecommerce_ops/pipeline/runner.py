@@ -245,6 +245,33 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                 },
             },
         ]
+
+        support_tickets = [
+            {
+                "id": "ticket_001",
+                "shop_domain": "mock-store.myshopify.com",
+                "customer_email": "angry@example.com",
+                "customer_name": "Sarah",
+                "subject": "Where is my order?!",
+                "body": "I placed my order 2 weeks ago and still haven't received it! This is unacceptable. I want a refund immediately!",
+                "channel": "email",
+                "order_id": "12345",
+                "created_at": datetime.utcnow().isoformat(),
+                "metadata": {"total_spent": 250.0, "total_orders": 5},
+            },
+            {
+                "id": "ticket_002",
+                "shop_domain": "mock-store.myshopify.com",
+                "customer_email": "question@example.com",
+                "customer_name": "Mike",
+                "subject": "Product question",
+                "body": "Hi, what sizes does the blue t-shirt come in? Also, is it machine washable?",
+                "channel": "chat",
+                "product_id": "101",
+                "created_at": datetime.utcnow().isoformat(),
+                "metadata": {"total_spent": 50.0, "total_orders": 1},
+            },
+        ]
         data_source = "mock"
         logger.info("Using mock data (Shopify not configured)")
 
@@ -253,6 +280,7 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
         "active_orders": active_orders,
         "reviews_data": reviews_data,
         "abandoned_carts": abandoned_carts,
+        "support_tickets": support_tickets,
         "decisions": [],
         "hitl_queue": [],
         "messages": [],
