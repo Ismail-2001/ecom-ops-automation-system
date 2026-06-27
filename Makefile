@@ -1,7 +1,12 @@
-.PHONY: help install dev test lint format migrate docker-up docker-down clean test-ci test-integration security audit db-shell prometheus grafana
+.PHONY: help install dev test lint format migrate clean \
+	docker-up docker-down docker-logs docker-restart docker-build \
+	docker-prod docker-prod-down docker-backup docker-restore \
+	docker-ps docker-stats docker-shell docker-migrate
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+
+# ── Local Development ──────────────────────────────────────
 
 install: ## Install Python dependencies
 	pip install -r requirements.txt
@@ -12,6 +17,8 @@ dev: ## Start development servers (requires Redis + PostgreSQL)
 
 dev-dashboard: ## Start dashboard dev server
 	cd dashboard && npm run dev
+
+# ── Testing ────────────────────────────────────────────────
 
 test: ## Run test suite with PostgreSQL
 	python -m pytest tests/ -v --asyncio-mode=auto --cov=ecommerce_ops --cov-report=term-missing
@@ -27,6 +34,8 @@ test-integration: ## Run LangGraph integration tests
 
 test-load: ## Run load tests
 	python -m pytest tests/load_tests/ -v --asyncio-mode=auto
+
+# ── Code Quality ───────────────────────────────────────────
 
 lint: ## Run linters
 	ruff check ecommerce_ops/ tests/
@@ -45,6 +54,8 @@ security: ## Run security scan with bandit
 audit: ## Audit Python dependencies for vulnerabilities
 	pip-audit -r requirements.txt --desc
 
+# ── Database Migrations ────────────────────────────────────
+
 migrate: ## Run database migrations
 	alembic upgrade head
 
@@ -60,17 +71,58 @@ migrate-history: ## Show migration history
 db-shell: ## Open PostgreSQL shell
 	psql $(DATABASE_URL)
 
-docker-up: ## Start all services via Docker Compose
+# ── Docker Development ─────────────────────────────────────
+
+docker-up: ## Start all services (dev mode with hot reload)
 	docker compose up -d --build
 
 docker-down: ## Stop all services
 	docker compose down
 
-docker-logs: ## Tail logs from Docker services
+docker-logs: ## Tail logs from all services
 	docker compose logs -f
+
+docker-logs-api: ## Tail API logs only
+	docker compose logs -f api
 
 docker-restart: ## Restart API service
 	docker compose restart api
+
+docker-build: ## Build API image without starting
+	docker compose build api
+
+docker-ps: ## Show running containers
+	docker compose ps
+
+docker-stats: ## Show container resource usage
+	docker stats --no-stream
+
+docker-shell: ## Open shell in API container
+	docker compose exec api bash
+
+docker-migrate: ## Run migrations inside container
+	docker compose exec api alembic upgrade head
+
+# ── Docker Production ──────────────────────────────────────
+
+docker-prod: ## Start production services (no dev overrides)
+	docker compose -f docker-compose.yml up -d --build
+
+docker-prod-down: ## Stop production services
+	docker compose -f docker-compose.yml down
+
+docker-prod-logs: ## Tail production logs
+	docker compose -f docker-compose.yml logs -f
+
+# ── Docker Backup & Restore ────────────────────────────────
+
+docker-backup: ## Start with backup services (daily PostgreSQL backups)
+	docker compose -f docker-compose.yml -f docker-compose.backup.yml up -d
+
+docker-restore: ## Restore database from backup
+	@bash scripts/restore-db.sh $(BACKUP_FILE)
+
+# ── Monitoring ─────────────────────────────────────────────
 
 prometheus: ## Start Prometheus (if local binary available)
 	prometheus --config.file=monitoring/prometheus.yml
@@ -78,7 +130,13 @@ prometheus: ## Start Prometheus (if local binary available)
 grafana: ## Start Grafana (if local binary available)
 	grafana-server --config=monitoring/grafana.ini
 
+# ── Cleanup ────────────────────────────────────────────────
+
 clean: ## Clean build artifacts
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name *.pyc -delete
 	rm -rf .pytest_cache .coverage coverage.xml
+
+docker-clean: ## Remove all containers, volumes, networks
+	docker compose down -v --remove-orphans
+	docker system prune -f
