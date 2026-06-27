@@ -41,6 +41,7 @@ from ecommerce_ops.infra.browser_pool import browser_pool
 from ecommerce_ops.api.shopify import router as shopify_router
 from ecommerce_ops.api.cart_recovery import router as cart_recovery_router
 from ecommerce_ops.api.customer_support import router as customer_support_router
+from ecommerce_ops.api.observability import router as observability_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ecommerce_ops.api")
@@ -101,6 +102,9 @@ app.include_router(cart_recovery_router)
 
 # Include Customer Support routes
 app.include_router(customer_support_router)
+
+# Include Observability routes
+app.include_router(observability_router)
 
 
 class LoginBody(BaseModel):
