@@ -1,0 +1,76 @@
+# ── Development Overrides ──────────────────────────────────
+# Auto-merged with docker-compose.yml by default
+# Usage: docker compose up (uses both files)
+# Production: docker compose -f docker-compose.yml up (skips this)
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    command: >
+      sh -c "pip install --no-cache-dir -r requirements.txt &&
+             uvicorn ecommerce_ops.api.app:app --reload --host 0.0.0.0 --port 8000 --log-level debug"
+    environment:
+      ENV: development
+      DEBUG: "true"
+      SHADOW_MODE: "true"
+    volumes:
+      - ./ecommerce_ops:/app/ecommerce_ops
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
+      - audit_logs:/app
+    ports:
+      - "8000:8000"
+      - "5678:5678"  # Debug port (if needed)
+    develop:
+      watch:
+        - action: sync
+          path: ./ecommerce_ops
+          target: /app/ecommerce_ops
+        - action: sync
+          path: ./alembic
+          target: /app/alembic
+
+  dashboard:
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    volumes:
+      - ./dashboard:/app
+      - /app/node_modules
+
+  postgres:
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ecommerce_ops
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  prometheus:
+    ports:
+      - "9090:9090"
+
+  grafana:
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+
+  postgres-exporter:
+    ports:
+      - "9187:9187"
+
+  redis-exporter:
+    ports:
+      - "9121:9121"
