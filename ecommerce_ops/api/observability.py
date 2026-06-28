@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from ecommerce_ops.config import settings
@@ -50,110 +50,29 @@ async def list_traces(
     limit: int = Query(50, ge=1, le=200),
 ):
     """List recent traces."""
-    # In production: query Langfuse or local storage
     return {
-        "traces": [
-            {
-                "id": "trace_001",
-                "name": "pipeline.run",
-                "status": "completed",
-                "duration_ms": 1250.5,
-                "span_count": 8,
-                "average_score": 0.85,
-                "total_tokens": 2500,
-                "total_cost_usd": 0.025,
-                "tags": ["pipeline"],
-                "start_time": datetime.utcnow().isoformat(),
-            },
-            {
-                "id": "trace_002",
-                "name": "agent.FraudAgent.run",
-                "status": "completed",
-                "duration_ms": 320.2,
-                "span_count": 3,
-                "average_score": 0.92,
-                "total_tokens": 800,
-                "total_cost_usd": 0.008,
-                "tags": ["FraudAgent"],
-                "start_time": datetime.utcnow().isoformat(),
-            },
-        ],
-        "total": 2,
+        "traces": [],
+        "total": 0,
+        "note": "Traces will appear after pipeline runs",
     }
 
 
 @router.get("/traces/{trace_id}")
 async def get_trace(trace_id: str):
     """Get trace details."""
-    # In production: query Langfuse or local storage
-    return {
-        "id": trace_id,
-        "name": "pipeline.run",
-        "status": "completed",
-        "user_id": None,
-        "session_id": None,
-        "tags": ["pipeline"],
-        "metadata": {"run_id": "test-123"},
-        "start_time": datetime.utcnow().isoformat(),
-        "end_time": datetime.utcnow().isoformat(),
-        "duration_ms": 1250.5,
-        "spans": [
-            {
-                "id": "span_001",
-                "name": "supervisor.run",
-                "span_type": "agent",
-                "duration_ms": 800.0,
-                "status": "completed",
-            },
-            {
-                "id": "span_002",
-                "name": "FraudAgent.run",
-                "span_type": "agent",
-                "duration_ms": 320.2,
-                "status": "completed",
-            },
-        ],
-        "scores": [
-            {"name": "pipeline_success", "value": 1.0},
-            {"name": "FraudAgent.quality", "value": 0.92},
-        ],
-        "total_tokens": 2500,
-        "total_cost_usd": 0.025,
-    }
+    raise HTTPException(status_code=404, detail="Trace not found")
 
 
 @router.get("/traces/{trace_id}/spans")
 async def get_trace_spans(trace_id: str):
     """Get spans for a trace."""
-    return {
-        "trace_id": trace_id,
-        "spans": [
-            {
-                "id": "span_001",
-                "trace_id": trace_id,
-                "name": "supervisor.run",
-                "span_type": "agent",
-                "input": {"decisions": []},
-                "output": {"decisions": 5},
-                "duration_ms": 800.0,
-                "status": "completed",
-                "start_time": datetime.utcnow().isoformat(),
-            },
-        ],
-    }
+    raise HTTPException(status_code=404, detail="Trace not found")
 
 
 @router.get("/traces/{trace_id}/scores")
 async def get_trace_scores(trace_id: str):
     """Get scores for a trace."""
-    return {
-        "trace_id": trace_id,
-        "scores": [
-            {"name": "pipeline_success", "value": 1.0, "comment": "Pipeline completed"},
-            {"name": "FraudAgent.quality", "value": 0.92, "comment": "High quality decisions"},
-            {"name": "InventoryAgent.quality", "value": 0.88, "comment": "Good decisions"},
-        ],
-    }
+    raise HTTPException(status_code=404, detail="Trace not found")
 
 
 @router.get("/traces/{trace_id}/url")
@@ -221,28 +140,11 @@ async def get_evaluation_history(
     days: int = Query(7, ge=1, le=90),
 ):
     """Get evaluation history."""
-    # In production: query database
     return {
-        "evaluations": [
-            {
-                "id": "eval_001",
-                "agent_name": "FraudAgent",
-                "decision_id": "dec_001",
-                "overall_score": 0.92,
-                "passed": True,
-                "timestamp": datetime.utcnow().isoformat(),
-            },
-            {
-                "id": "eval_002",
-                "agent_name": "InventoryAgent",
-                "decision_id": "dec_002",
-                "overall_score": 0.85,
-                "passed": True,
-                "timestamp": datetime.utcnow().isoformat(),
-            },
-        ],
-        "total": 2,
+        "evaluations": [],
+        "total": 0,
         "period_days": days,
+        "note": "Evaluations will appear after agent runs",
     }
 
 
@@ -255,35 +157,20 @@ async def get_metrics_summary(
 ):
     """Get aggregated metrics summary."""
     return TraceAggregation(
-        total_traces=1250,
-        successful_traces=1200,
-        failed_traces=50,
-        avg_duration_ms=850.0,
-        p50_duration_ms=650.0,
-        p95_duration_ms=2100.0,
-        p99_duration_ms=4500.0,
-        total_tokens=250000,
-        total_cost_usd=2.50,
-        avg_score=0.87,
-        traces_by_status={
-            "completed": 1200,
-            "failed": 50,
-        },
-        traces_by_name={
-            "pipeline.run": 100,
-            "agent.FraudAgent.run": 350,
-            "agent.InventoryAgent.run": 350,
-            "agent.PricingAgent.run": 250,
-        },
-        cost_by_model={
-            "deepseek-chat": 1.50,
-            "gemini-2.0-flash": 1.00,
-        },
-        daily_volume=[
-            {"date": "2024-01-01", "traces": 180, "cost": 0.35},
-            {"date": "2024-01-02", "traces": 195, "cost": 0.38},
-            {"date": "2024-01-03", "traces": 175, "cost": 0.33},
-        ],
+        total_traces=0,
+        successful_traces=0,
+        failed_traces=0,
+        avg_duration_ms=0.0,
+        p50_duration_ms=0.0,
+        p95_duration_ms=0.0,
+        p99_duration_ms=0.0,
+        total_tokens=0,
+        total_cost_usd=0.0,
+        avg_score=0.0,
+        traces_by_status={},
+        traces_by_name={},
+        cost_by_model={},
+        daily_volume=[],
     )
 
 
@@ -291,53 +178,8 @@ async def get_metrics_summary(
 async def get_agent_metrics():
     """Get per-agent metrics."""
     return {
-        "agents": [
-            {
-                "agent_name": "FraudAgent",
-                "total_runs": 350,
-                "avg_duration_ms": 320.0,
-                "avg_score": 0.92,
-                "pass_rate": 0.95,
-                "total_tokens": 80000,
-                "total_cost_usd": 0.80,
-            },
-            {
-                "agent_name": "InventoryAgent",
-                "total_runs": 350,
-                "avg_duration_ms": 280.0,
-                "avg_score": 0.88,
-                "pass_rate": 0.92,
-                "total_tokens": 75000,
-                "total_cost_usd": 0.75,
-            },
-            {
-                "agent_name": "PricingAgent",
-                "total_runs": 250,
-                "avg_duration_ms": 450.0,
-                "avg_score": 0.85,
-                "pass_rate": 0.88,
-                "total_tokens": 60000,
-                "total_cost_usd": 0.60,
-            },
-            {
-                "agent_name": "AbandonedCartAgent",
-                "total_runs": 150,
-                "avg_duration_ms": 200.0,
-                "avg_score": 0.90,
-                "pass_rate": 0.94,
-                "total_tokens": 20000,
-                "total_cost_usd": 0.20,
-            },
-            {
-                "agent_name": "CustomerSupportAgent",
-                "total_runs": 150,
-                "avg_duration_ms": 350.0,
-                "avg_score": 0.87,
-                "pass_rate": 0.90,
-                "total_tokens": 15000,
-                "total_cost_usd": 0.15,
-            },
-        ],
+        "agents": [],
+        "note": "Agent metrics will appear after pipeline runs",
     }
 
 
@@ -348,23 +190,11 @@ async def get_cost_metrics(
     """Get cost breakdown metrics."""
     return {
         "period_days": days,
-        "total_cost_usd": 2.50,
-        "cost_by_model": {
-            "deepseek-chat": {"calls": 1200, "tokens": 180000, "cost": 1.50},
-            "gemini-2.0-flash": {"calls": 800, "tokens": 70000, "cost": 1.00},
-        },
-        "cost_by_agent": {
-            "FraudAgent": 0.80,
-            "InventoryAgent": 0.75,
-            "PricingAgent": 0.60,
-            "AbandonedCartAgent": 0.20,
-            "CustomerSupportAgent": 0.15,
-        },
-        "daily_costs": [
-            {"date": "2024-01-01", "cost": 0.08},
-            {"date": "2024-01-02", "cost": 0.09},
-            {"date": "2024-01-03", "cost": 0.07},
-        ],
+        "total_cost_usd": 0.0,
+        "cost_by_model": {},
+        "cost_by_agent": {},
+        "daily_costs": [],
+        "note": "Cost metrics will appear after LLM usage",
     }
 
 
