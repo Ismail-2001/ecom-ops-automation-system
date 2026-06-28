@@ -100,7 +100,53 @@ async def lifespan(app: FastAPI):
     logger.info("Application shutdown complete.")
 
 
-app = FastAPI(title=app_settings.PROJECT_NAME, lifespan=lifespan)
+app = FastAPI(
+    title="OpsIQ — Autonomous Ecommerce Operations Engine",
+    description="""
+## OpsIQ — AI-Powered Ecommerce Operations
+
+OpsIQ is an autonomous multi-agent system that manages ecommerce operations including:
+
+- **Fraud Detection** — LLM-powered risk assessment with rule-based fallback
+- **Inventory Management** — Demand forecasting and automated reorder
+- **Price Optimization** — Competitor price monitoring and dynamic pricing
+- **Review Moderation** — Sentiment analysis and response drafting
+- **Marketing Automation** — Campaign creation and audience segmentation
+
+### Architecture
+- **7 AI Agents** with LLM-first, rule-based fallback
+- **PostgreSQL** for persistent storage (RBAC, audit, vector memory)
+- **Redis** for caching, rate limiting, and session management
+- **LangGraph** for agent orchestration and supervisor pattern
+- **Prometheus + Grafana** for monitoring and alerting
+
+### Security
+- Role-Based Access Control (RBAC) with 5 roles
+- API key authentication with SHA-256 hashing
+- Audit logging for all security events
+- Rate limiting with Redis sliding window
+- Input sanitization and security headers
+    """,
+    version="0.2.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    openapi_tags=[
+        {"name": "Health", "description": "Health checks and readiness probes"},
+        {"name": "Pipeline", "description": "Pipeline trigger and task management"},
+        {"name": "Approvals", "description": "Human-in-the-loop approval queue"},
+        {"name": "Audit", "description": "Audit log queries and export"},
+        {"name": "Analytics", "description": "Analytics and reporting"},
+        {"name": "Agents", "description": "Agent status and configuration"},
+        {"name": "Settings", "description": "Store settings management"},
+        {"name": "Observability", "description": "Traces, evaluations, and metrics"},
+        {"name": "Memory", "description": "Vector memory and session management"},
+        {"name": "Security", "description": "RBAC, API keys, and security management"},
+        {"name": "Shopify", "description": "Shopify integration and webhooks"},
+        {"name": "Cart Recovery", "description": "Abandoned cart recovery automation"},
+        {"name": "Customer Support", "description": "AI-powered customer support"},
+    ],
+)
 
 setup_middleware(app)
 
