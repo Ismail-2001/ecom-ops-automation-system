@@ -7,6 +7,10 @@ import {
   auditApi,
   settingsApi,
   pipelineApi,
+  securityApi,
+  supportApi,
+  cartRecoveryApi,
+  shopifyApi,
   type ApprovalsQuery,
 } from "./api"
 
@@ -147,6 +151,110 @@ export function useTaskStatus(taskId: string | null) {
       const status = query.state.data?.status
       if (status === "completed" || status === "failed") return false
       return 2_000
+    },
+  })
+}
+
+// ── Security ────────────────────────────────────────────────
+
+export function useSecurityUsers(params?: { role?: string; is_active?: boolean }) {
+  return useQuery({
+    queryKey: ["security", "users", params],
+    queryFn: () => securityApi.listUsers(params),
+    staleTime: 30_000,
+  })
+}
+
+export function useSecurityApiKeys() {
+  return useQuery({
+    queryKey: ["security", "api-keys"],
+    queryFn: securityApi.listApiKeys,
+    staleTime: 30_000,
+  })
+}
+
+export function useSecurityAuditSummary(hours = 24) {
+  return useQuery({
+    queryKey: ["security", "audit-summary", hours],
+    queryFn: () => securityApi.getAuditSummary(hours),
+    staleTime: 30_000,
+  })
+}
+
+export function useSecurityAuditLogs(params?: { event_type?: string; limit?: number }) {
+  return useQuery({
+    queryKey: ["security", "audit-logs", params],
+    queryFn: () => securityApi.getAuditLogs(params),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
+}
+
+// ── Support ─────────────────────────────────────────────────
+
+export function useSupportTickets(params?: { status?: string; priority?: string; page?: number; limit?: number }) {
+  return useQuery({
+    queryKey: ["support", "tickets", params],
+    queryFn: () => supportApi.listTickets(params),
+    refetchInterval: 30_000,
+    staleTime: 10_000,
+  })
+}
+
+export function useSupportTicket(id: string | null) {
+  return useQuery({
+    queryKey: ["support", "ticket", id],
+    queryFn: () => supportApi.getTicket(id!),
+    enabled: !!id,
+    staleTime: 10_000,
+  })
+}
+
+export function useSupportAnalytics(days = 7) {
+  return useQuery({
+    queryKey: ["support", "analytics", days],
+    queryFn: () => supportApi.getAnalytics(days),
+    staleTime: 60_000,
+  })
+}
+
+// ── Cart Recovery ───────────────────────────────────────────
+
+export function useCartRecoveryAnalytics(days = 7) {
+  return useQuery({
+    queryKey: ["cart-recovery", "analytics", days],
+    queryFn: () => cartRecoveryApi.getAnalytics(days),
+    staleTime: 60_000,
+  })
+}
+
+export function useCartRecover() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ cartId, strategy }: { cartId: string; strategy: string }) =>
+      cartRecoveryApi.recover(cartId, strategy),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cart-recovery"] })
+    },
+  })
+}
+
+// ── Shopify ─────────────────────────────────────────────────
+
+export function useShopifyStatus() {
+  return useQuery({
+    queryKey: ["shopify", "status"],
+    queryFn: shopifyApi.status,
+    staleTime: 30_000,
+  })
+}
+
+export function useShopifySync() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (full?: boolean) => shopifyApi.sync(full),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["shopify"] })
     },
   })
 }

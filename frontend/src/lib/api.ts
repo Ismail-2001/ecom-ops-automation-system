@@ -274,6 +274,206 @@ export const authApi = {
     }),
 }
 
+// ── Security ────────────────────────────────────────────────
+
+export interface SecurityUser {
+  id: string
+  email: string
+  name: string
+  role: string
+  is_active: boolean
+  created_at: string
+  last_login: string | null
+}
+
+export interface ApiKey {
+  id: string
+  name: string
+  user_id: string
+  role: string
+  is_active: boolean
+  expires_at: string | null
+  last_used: string | null
+  usage_count: number
+  created_at: string
+}
+
+export interface SecurityAuditEntry {
+  id: string
+  timestamp: string
+  event_type: string
+  action: string
+  resource: string
+  resource_id: string | null
+  user_id: string | null
+  success: boolean
+  risk_level: string
+}
+
+export interface SecuritySummary {
+  total_events: number
+  failed_logins: number
+  successful_logins: number
+  api_key_events: number
+  role_changes: number
+  risk_events: number
+  period_hours: number
+}
+
+export const securityApi = {
+  listUsers: (params?: { role?: string; is_active?: boolean }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.role) searchParams.set("role", params.role)
+    if (params?.is_active !== undefined) searchParams.set("is_active", String(params.is_active))
+    const qs = searchParams.toString()
+    return request<{ users: SecurityUser[]; total: number }>(`/security/users${qs ? `?${qs}` : ""}`)
+  },
+
+  listApiKeys: () =>
+    request<{ api_keys: ApiKey[]; total: number }>("/security/api-keys"),
+
+  getAuditSummary: (hours = 24) =>
+    request<SecuritySummary>(`/security/audit/summary?hours=${hours}`),
+
+  getAuditLogs: (params?: { event_type?: string; limit?: number }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.event_type) searchParams.set("event_type", params.event_type)
+    if (params?.limit) searchParams.set("limit", String(params.limit))
+    const qs = searchParams.toString()
+    return request<{ entries: SecurityAuditEntry[]; total: number }>(`/security/audit/logs${qs ? `?${qs}` : ""}`)
+  },
+
+  health: () => request<Record<string, string>>("/security/health"),
+}
+
+// ── Support ─────────────────────────────────────────────────
+
+export interface SupportTicket {
+  id: string
+  customer_email: string
+  customer_name: string
+  subject: string
+  body: string
+  category: string
+  priority: string
+  status: string
+  channel: string
+  order_id: string | null
+  created_at: string
+  messages: Array<{ id: string; sender_type: string; content: string; created_at: string }>
+}
+
+export interface SupportAnalytics {
+  total_tickets: number
+  open_tickets: number
+  avg_response_time_hours: number
+  avg_resolution_time_hours: number
+  satisfaction_score: number
+  first_contact_resolution_rate: number
+  escalation_rate: number
+  category_breakdown: Record<string, number>
+  priority_breakdown: Record<string, number>
+  sentiment_distribution: Record<string, number>
+}
+
+export const supportApi = {
+  listTickets: (params?: { status?: string; priority?: string; page?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.status) searchParams.set("status", params.status)
+    if (params?.priority) searchParams.set("priority", params.priority)
+    if (params?.page) searchParams.set("page", String(params.page))
+    if (params?.limit) searchParams.set("limit", String(params.limit))
+    const qs = searchParams.toString()
+    return request<{ tickets: SupportTicket[]; total: number; page: number; limit: number }>(`/support/tickets${qs ? `?${qs}` : ""}`)
+  },
+
+  getTicket: (id: string) => request<SupportTicket>(`/support/tickets/${id}`),
+
+  getAnalytics: (days = 7) =>
+    request<SupportAnalytics>(`/support/analytics?days=${days}`),
+
+  health: () => request<Record<string, string>>("/support/health"),
+}
+
+// ── Cart Recovery ───────────────────────────────────────────
+
+export interface CartRecoveryAnalytics {
+  total_abandoned: number
+  total_recovered: number
+  recovery_rate: number
+  total_revenue_lost: number
+  total_revenue_recovered: number
+  average_cart_value: number
+  average_recovery_time_hours: number
+  top_recovery_strategy: string
+  strategy_breakdown: Record<string, number>
+  risk_distribution: Record<string, number>
+}
+
+export interface CartAnalysisResult {
+  cart_id: string
+  recommendation: {
+    strategy: string
+    risk_level: string
+    discount_value: number
+    discount_code: string | null
+    recovery_probability: number
+    estimated_revenue: number
+    reasoning: string
+  }
+  email_context: Record<string, unknown>
+}
+
+export const cartRecoveryApi = {
+  getAnalytics: (days = 7) =>
+    request<CartRecoveryAnalytics>(`/cart-recovery/analytics?days=${days}`),
+
+  analyze: (cartId: string, items: Array<{ name: string; price: number; quantity: number }>, totalValue: number) =>
+    request<CartAnalysisResult>("/cart-recovery/analyze", {
+      method: "POST",
+      body: JSON.stringify({ cart_id: cartId, items, total_value: totalValue }),
+    }),
+
+  recover: (cartId: string, strategy: string) =>
+    request<{ status: string; cart_id: string; strategy: string; discount_code: string }>("/cart-recovery/recover", {
+      method: "POST",
+      body: JSON.stringify({ cart_id: cartId, strategy }),
+    }),
+
+  health: () => request<Record<string, string>>("/cart-recovery/health"),
+}
+
+// ── Shopify ─────────────────────────────────────────────────
+
+export interface ShopifyStatus {
+  configured: boolean
+  shop_domain: string | null
+  api_version: string
+  webhook_topics: string[]
+}
+
+export interface SyncResult {
+  status: string
+  products_synced: number
+  orders_synced: number
+  customers_synced: number
+  duration_seconds: number
+  errors: string[]
+}
+
+export const shopifyApi = {
+  status: () => request<ShopifyStatus>("/shopify/status"),
+
+  sync: (full = false) =>
+    request<SyncResult>(`/shopify/sync?full=${full}`, { method: "POST" }),
+
+  products: (limit = 50) =>
+    request<unknown>(`/shopify/products?limit=${limit}`),
+
+  orders: (status = "any", limit = 50) =>
+    request<unknown>(`/shopify/orders?status=${status}&limit=${limit}`),
+}
+
 // ── Export error class for callers ─────────────────────────
 
 export { ApiError }
