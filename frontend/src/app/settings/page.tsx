@@ -1,33 +1,66 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   Settings as SettingsIcon,
   Bell,
-  Palette,
-  Database,
   Globe,
-  Mail,
   Save,
   RefreshCw,
   CheckCircle,
+  Loader2,
 } from "lucide-react"
 import { Shell } from "@/components/layout/Shell"
 import { Topbar } from "@/components/layout/Topbar"
+import { useSettings, useUpdateSettings } from "@/lib/hooks"
 import { cn } from "@/lib/utils"
 
 export default function SettingsPage() {
+  const settingsQuery = useSettings()
+  const updateMutation = useUpdateSettings()
   const [saved, setSaved] = useState(false)
+  const [local, setLocal] = useState({
+    shadow_mode: true,
+    fraud_threshold: 70,
+    po_limit: 1000,
+    pricing_limit: 20,
+    reviews_rating_threshold: 3,
+    notify_on_failure: true,
+    notify_on_hitl: true,
+    notify_on_graduation: false,
+    slack_channel: "",
+  })
+
+  useEffect(() => {
+    if (settingsQuery.data) {
+      const s = settingsQuery.data
+      setLocal({
+        shadow_mode: s.shadow_mode,
+        fraud_threshold: s.fraud_threshold,
+        po_limit: s.po_limit,
+        pricing_limit: s.pricing_limit,
+        reviews_rating_threshold: s.reviews_rating_threshold,
+        notify_on_failure: s.notify_on_failure,
+        notify_on_hitl: s.notify_on_hitl,
+        notify_on_graduation: s.notify_on_graduation,
+        slack_channel: s.slack_channel,
+      })
+    }
+  }, [settingsQuery.data])
 
   const handleSave = () => {
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    updateMutation.mutate(local, {
+      onSuccess: () => {
+        setSaved(true)
+        setTimeout(() => setSaved(false), 2000)
+      },
+    })
   }
 
   return (
     <Shell>
       <Topbar title="Settings" subtitle="System configuration and preferences" />
-      
+
       <div className="p-6 space-y-6 max-w-4xl">
         {/* General */}
         <div className="card">
@@ -38,23 +71,23 @@ export default function SettingsPage() {
             <h2 className="font-display font-semibold text-text-1">General</h2>
           </div>
           <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-text-3 uppercase tracking-wider mb-2">Store Name</label>
-              <input type="text" defaultValue="OpsIQ Demo Store" className="w-full px-4 py-2.5 rounded-lg bg-surface-2 border border-border text-text-1 text-sm focus:border-border-bright focus:outline-none transition-colors" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-text-3 uppercase tracking-wider mb-2">Shopify Store URL</label>
-              <input type="text" defaultValue="https://opsiq-demo.myshopify.com" className="w-full px-4 py-2.5 rounded-lg bg-surface-2 border border-border text-text-1 text-sm focus:border-border-bright focus:outline-none transition-colors" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-text-3 uppercase tracking-wider mb-2">Timezone</label>
-              <select className="w-full px-4 py-2.5 rounded-lg bg-surface-2 border border-border text-text-1 text-sm focus:border-border-bright focus:outline-none transition-colors">
-                <option>UTC</option>
-                <option>America/New_York</option>
-                <option>America/Los_Angeles</option>
-                <option>Europe/London</option>
-                <option selected>Asia/Karachi</option>
-              </select>
+            <div className="flex items-center justify-between p-3 rounded-lg hover:bg-surface-2 transition-colors">
+              <div>
+                <div className="text-sm font-medium text-text-1">Shadow Mode</div>
+                <div className="text-xs text-text-3">Agents suggest but don't execute actions</div>
+              </div>
+              <button
+                onClick={() => setLocal((p) => ({ ...p, shadow_mode: !p.shadow_mode }))}
+                className={cn(
+                  "w-10 h-6 rounded-full transition-colors relative",
+                  local.shadow_mode ? "bg-indigo" : "bg-surface-3",
+                )}
+              >
+                <div className={cn(
+                  "w-4 h-4 rounded-full bg-white absolute top-1 transition-transform",
+                  local.shadow_mode ? "left-5" : "left-1",
+                )} />
+              </button>
             </div>
           </div>
         </div>
@@ -69,23 +102,25 @@ export default function SettingsPage() {
           </div>
           <div className="space-y-4">
             {[
-              { label: "Fraud alerts", description: "Get notified when high-risk orders are detected", enabled: true },
-              { label: "Stock warnings", description: "Alerts when products fall below minimum stock level", enabled: true },
-              { label: "Price changes", description: "Notifications when AI suggests price adjustments", enabled: false },
-              { label: "Daily digest", description: "Summary of all agent activity and decisions", enabled: true },
+              { key: "notify_on_failure" as const, label: "Failure alerts", description: "Get notified when agents fail" },
+              { key: "notify_on_hitl" as const, label: "Human-in-the-loop", description: "Alert when decisions need approval" },
+              { key: "notify_on_graduation" as const, label: "Graduation alerts", description: "Notify when agents increase autonomy" },
             ].map((item) => (
-              <div key={item.label} className="flex items-center justify-between p-3 rounded-lg hover:bg-surface-2 transition-colors">
+              <div key={item.key} className="flex items-center justify-between p-3 rounded-lg hover:bg-surface-2 transition-colors">
                 <div>
                   <div className="text-sm font-medium text-text-1">{item.label}</div>
                   <div className="text-xs text-text-3">{item.description}</div>
                 </div>
-                <button className={cn(
-                  "w-10 h-6 rounded-full transition-colors relative",
-                  item.enabled ? "bg-indigo" : "bg-surface-3"
-                )}>
+                <button
+                  onClick={() => setLocal((p) => ({ ...p, [item.key]: !p[item.key] }))}
+                  className={cn(
+                    "w-10 h-6 rounded-full transition-colors relative",
+                    local[item.key] ? "bg-indigo" : "bg-surface-3",
+                  )}
+                >
                   <div className={cn(
                     "w-4 h-4 rounded-full bg-white absolute top-1 transition-transform",
-                    item.enabled ? "left-5" : "left-1"
+                    local[item.key] ? "left-5" : "left-1",
                   )} />
                 </button>
               </div>
@@ -103,46 +138,61 @@ export default function SettingsPage() {
           </div>
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-text-3 uppercase tracking-wider mb-2">Fraud Detection Threshold</label>
+              <label className="block text-xs font-semibold text-text-3 uppercase tracking-wider mb-2">
+                Fraud Detection Threshold
+              </label>
               <div className="flex items-center gap-4">
-                <input type="range" min="0" max="100" defaultValue="70" className="flex-1 accent-indigo" />
-                <span className="font-mono text-data-sm text-indigo w-10 text-right">0.70</span>
+                <input
+                  type="range" min="0" max="100"
+                  value={local.fraud_threshold}
+                  onChange={(e) => setLocal((p) => ({ ...p, fraud_threshold: Number(e.target.value) }))}
+                  className="flex-1 accent-indigo"
+                />
+                <span className="font-mono text-data-sm text-indigo w-10 text-right">{(local.fraud_threshold / 100).toFixed(2)}</span>
               </div>
-              <p className="text-xs text-text-3 mt-1">Orders above this risk score will be flagged for review</p>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-text-3 uppercase tracking-wider mb-2">Auto-Approve Confidence Threshold</label>
-              <div className="flex items-center gap-4">
-                <input type="range" min="0" max="100" defaultValue="85" className="flex-1 accent-indigo" />
-                <span className="font-mono text-data-sm text-indigo w-10 text-right">0.85</span>
-              </div>
-              <p className="text-xs text-text-3 mt-1">Decisions above this confidence are auto-approved without human review</p>
+              <label className="block text-xs font-semibold text-text-3 uppercase tracking-wider mb-2">
+                Purchase Order Limit ($)
+              </label>
+              <input
+                type="number" min={0}
+                value={local.po_limit}
+                onChange={(e) => setLocal((p) => ({ ...p, po_limit: Number(e.target.value) }))}
+                className="w-32 px-4 py-2.5 rounded-lg bg-surface-2 border border-border text-text-1 text-sm focus:border-border-bright focus:outline-none transition-colors"
+              />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-text-3 uppercase tracking-wider mb-2">Max Discount Code Value (%)</label>
-              <input type="number" defaultValue={25} min={0} max={50} className="w-32 px-4 py-2.5 rounded-lg bg-surface-2 border border-border text-text-1 text-sm focus:border-border-bright focus:outline-none transition-colors" />
-              <p className="text-xs text-text-3 mt-1">Maximum discount percentage AI agents can generate for cart recovery</p>
+              <label className="block text-xs font-semibold text-text-3 uppercase tracking-wider mb-2">
+                Max Price Change (%)
+              </label>
+              <input
+                type="number" min={0} max={100}
+                value={local.pricing_limit}
+                onChange={(e) => setLocal((p) => ({ ...p, pricing_limit: Number(e.target.value) }))}
+                className="w-32 px-4 py-2.5 rounded-lg bg-surface-2 border border-border text-text-1 text-sm focus:border-border-bright focus:outline-none transition-colors"
+              />
             </div>
           </div>
         </div>
 
         {/* Save */}
         <div className="flex items-center justify-end gap-3">
-          <button className="btn-ghost">
-            <RefreshCw className="w-4 h-4" />
-            Reset Defaults
+          <button
+            onClick={() => settingsQuery.refetch()}
+            className="btn-ghost"
+            disabled={settingsQuery.isFetching}
+          >
+            <RefreshCw className={cn("w-4 h-4", settingsQuery.isFetching && "animate-spin")} />
+            Refresh
           </button>
-          <button onClick={handleSave} className={cn("btn-primary", saved && "bg-emerald")}>
-            {saved ? (
-              <>
-                <CheckCircle className="w-4 h-4" />
-                Saved!
-              </>
+          <button onClick={handleSave} disabled={updateMutation.isPending} className={cn("btn-primary", saved && "bg-emerald")}>
+            {updateMutation.isPending ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
+            ) : saved ? (
+              <><CheckCircle className="w-4 h-4" /> Saved!</>
             ) : (
-              <>
-                <Save className="w-4 h-4" />
-                Save Changes
-              </>
+              <><Save className="w-4 h-4" /> Save Changes</>
             )}
           </button>
         </div>
