@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from ecommerce_ops.memory.vector.agent_integration import agent_memory_manager
@@ -113,7 +113,7 @@ async def get_memory(memory_id: str):
     """Get a memory by ID."""
     entry = await vector_store.get(memory_id)
     if not entry:
-        return {"error": "Memory not found"}, 404
+        raise HTTPException(status_code=404, detail="Memory not found")
 
     return {
         "id": entry.id,
@@ -239,7 +239,7 @@ async def get_session(session_id: str):
     """Get session details."""
     session = session_manager.get_session(session_id)
     if not session:
-        return {"error": "Session not found"}, 404
+        raise HTTPException(status_code=404, detail="Session not found")
 
     return {
         "session_id": session.session_id,
