@@ -68,8 +68,10 @@
 - **RBAC** - 30+ permissions, 5 predefined roles
 - **Authentication** - JWT, API keys, header-based
 - **Rate Limiting** - Per-minute and per-hour limits
+- **Request Body Limiting** - 10MB max request size
 - **Audit Logging** - Comprehensive event tracking
 - **Input Sanitization** - XSS and injection prevention
+- **Security Headers** - HSTS, CSP, X-Frame-Options, X-Content-Type-Options
 
 ### Infrastructure
 - **PostgreSQL** - Async SQLAlchemy with 4 ORM models
@@ -365,6 +367,14 @@ The system includes an ROI calculator that demonstrates cost savings:
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for security policy and best practices.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ## License
 
