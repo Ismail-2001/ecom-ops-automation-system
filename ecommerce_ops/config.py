@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     ENV: Environment = Environment.DEVELOPMENT
     DEBUG: bool = False
     PROJECT_NAME: str = "ecommerce-ops-agent"
+    LOG_LEVEL: str = "INFO"
     
     # Authentication
     API_KEY: Optional[SecretStr] = None
