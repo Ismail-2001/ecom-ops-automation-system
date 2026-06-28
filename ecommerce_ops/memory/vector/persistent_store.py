@@ -163,15 +163,24 @@ class PersistentVectorStore:
         agent_id: Optional[str],
         session_id: Optional[str],
     ) -> List[Dict[str, Any]]:
-        """Search using pgvector cosine distance."""
+        """Search using pgvector cosine distance (parameterized queries)."""
         async with self.session_factory() as session:
             conditions = []
+            params: dict = {
+                "query_embedding": str(query_embedding),
+                "min_similarity": min_similarity,
+                "top_k": top_k,
+            }
+
             if memory_type:
-                conditions.append(f"memory_type = '{memory_type}'")
+                conditions.append("memory_type = :memory_type")
+                params["memory_type"] = memory_type
             if agent_id:
-                conditions.append(f"agent_id = '{agent_id}'")
+                conditions.append("agent_id = :agent_id")
+                params["agent_id"] = agent_id
             if session_id:
-                conditions.append(f"session_id = '{session_id}'")
+                conditions.append("session_id = :session_id")
+                params["session_id"] = session_id
 
             where_clause = " AND ".join(conditions) if conditions else "1=1"
 
@@ -186,14 +195,7 @@ class PersistentVectorStore:
                 LIMIT :top_k
             """)
 
-            result = await session.execute(
-                query,
-                {
-                    "query_embedding": str(query_embedding),
-                    "min_similarity": min_similarity,
-                    "top_k": top_k,
-                },
-            )
+            result = await session.execute(query, params)
 
             rows = result.fetchall()
             results = []
