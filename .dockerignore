@@ -1,22 +1,54 @@
-__pycache__/
-*.py[cod]
-*.egg-info/
-.git/
-.github/
-.venv/
-venv/
-env/
-*.db
-*.sqlite3
-.pytest_cache/
-.coverage
+# ── Docker Ignore ──────────────────────────────────────────
+# Backend
+.git
+.github
+.gitignore
+.env
+.env.*
+!.env.example
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+htmlcov/
 coverage.xml
-.mypy_cache/
-.ruff_cache/
-node_modules/
-dashboard/node_modules/
-dashboard/dist/
-tests/
-alembic/versions/*.pyc
-!.env
+test-results/
+*.egg-info
+dist/
+build/
+.pytest_cache/
+
+# Frontend
+frontend/.next
+frontend/node_modules
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+frontend/npm-debug.log*
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs
+docs/
 *.md
+!README.md
+LICENSE
+CONTRIBUTING.md
+SECURITY.md
