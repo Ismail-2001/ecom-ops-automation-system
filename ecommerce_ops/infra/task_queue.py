@@ -1,14 +1,19 @@
+"""
+Task Queue
+In-memory async task queue with size limits and task expiry.
+"""
+
 import asyncio
-import json
 import uuid
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Callable, Any, Optional
 
-from ecommerce_ops.memory.cache import cache
-
 logger = logging.getLogger("ecommerce_ops.infra.task_queue")
+
+MAX_TASKS = 500
+TASK_EXPIRY_HOURS = 24
 
 
 class TaskStatus(str, Enum):
@@ -34,14 +39,12 @@ class Task:
 
 
 class TaskQueue:
-    def __init__(self, num_workers: int = 2, max_queue_size: int = 100, use_redis: bool = False):
+    def __init__(self, num_workers: int = 2, max_queue_size: int = 100):
         self._queue: asyncio.Queue[Task] = asyncio.Queue(maxsize=max_queue_size)
         self._workers: list[asyncio.Task] = []
         self._num_workers = num_workers
         self._running = False
         self._tasks: dict[str, Task] = {}
-        self._use_redis = use_redis
-        self._redis_prefix = "tq:"
 
     async def start(self):
         if self._running:
@@ -51,9 +54,7 @@ class TaskQueue:
             asyncio.create_task(self._worker_loop(i), name=f"task-worker-{i}")
             for i in range(self._num_workers)
         ]
-        logger.info(
-            "TaskQueue started with %d workers (redis=%s)", self._num_workers, self._use_redis
-        )
+        logger.info("TaskQueue started with %d workers", self._num_workers)
 
     async def stop(self, wait: bool = True):
         self._running = False
@@ -64,30 +65,40 @@ class TaskQueue:
         self._workers.clear()
         logger.info("TaskQueue stopped")
 
-    async def enqueue(
-        self, name: str, coro_factory: Callable, *args, **kwargs
-    ) -> str:
+    async def enqueue(self, name: str, coro_factory: Callable, *args, **kwargs) -> str:
+        self._evict_expired()
+
+        if len(self._tasks) >= MAX_TASKS:
+            self._evict_oldest_completed()
+            if len(self._tasks) >= MAX_TASKS:
+                raise RuntimeError(f"Task queue full ({MAX_TASKS} tasks)")
+
         task_id = str(uuid.uuid4())
         task = Task(task_id, name, coro_factory, *args, **kwargs)
         self._tasks[task_id] = task
         await self._queue.put(task)
-
-        if self._use_redis:
-            try:
-                client = await cache.get_client()
-                if client:
-                    await client.lpush(
-                        f"{self._redis_prefix}queue",
-                        json.dumps({"task_id": task_id, "name": name}),
-                    )
-            except Exception as e:
-                logger.warning("Failed to enqueue task in Redis: %s", e)
-
         logger.info("Task %s (%s) enqueued", task_id, name)
         return task_id
 
     def get_task(self, task_id: str) -> Optional[Task]:
         return self._tasks.get(task_id)
+
+    def _evict_expired(self):
+        cutoff = datetime.utcnow() - timedelta(hours=TASK_EXPIRY_HOURS)
+        expired = [tid for tid, t in self._tasks.items() if t.created_at < cutoff]
+        for tid in expired:
+            del self._tasks[tid]
+        if expired:
+            logger.info("Evicted %d expired tasks", len(expired))
+
+    def _evict_oldest_completed(self):
+        completed = sorted(
+            [(tid, t) for tid, t in self._tasks.items() if t.status in (TaskStatus.COMPLETED, TaskStatus.FAILED)],
+            key=lambda x: x[1].completed_at or datetime.min,
+        )
+        evict_count = max(1, len(completed) // 4)
+        for tid, _ in completed[:evict_count]:
+            del self._tasks[tid]
 
     async def _worker_loop(self, worker_id: int):
         logger.debug("Worker %d started", worker_id)
