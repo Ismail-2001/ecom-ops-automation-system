@@ -1,14 +1,19 @@
 """
-Role Management Service
-Manages roles, users, and permission checks.
+Role Management Service (PostgreSQL-backed)
+Manages roles, users, and permission checks with persistent storage.
 """
 
+import hashlib
 import logging
 import secrets
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set
 
+from sqlalchemy import select, update, delete, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ecommerce_ops.models.db import RBACUser, RBACApiKey, async_session_factory
 from ecommerce_ops.security.models import (
     APIKey,
     DEFAULT_ROLES,
@@ -22,22 +27,23 @@ from ecommerce_ops.security.models import (
 logger = logging.getLogger("ecommerce_ops.security.role_manager")
 
 
+def _hash_api_key(key: str) -> str:
+    """Hash an API key using SHA-256 for secure storage."""
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
 class RoleManager:
-    """Manages roles, users, and permissions."""
+    """Manages roles, users, and permissions with PostgreSQL persistence."""
 
     def __init__(self):
         self._roles: Dict[Role, RoleDefinition] = dict(DEFAULT_ROLES)
-        self._users: Dict[str, User] = {}
-        self._api_keys: Dict[str, APIKey] = {}
 
-    # ── Role Management ────────────────────────────────────
+    # ── Role Management (in-memory, rarely changes) ────────
 
     def get_role(self, role: Role) -> Optional[RoleDefinition]:
-        """Get role definition."""
         return self._roles.get(role)
 
     def list_roles(self) -> List[RoleDefinition]:
-        """List all roles."""
         return list(self._roles.values())
 
     def create_role(
@@ -47,11 +53,9 @@ class RoleManager:
         description: str,
         permissions: Set[Permission],
     ) -> RoleDefinition:
-        """Create a custom role."""
         role = Role(name)
         if role in self._roles:
             raise ValueError(f"Role {name} already exists")
-
         definition = RoleDefinition(
             name=role,
             display_name=display_name,
@@ -59,47 +63,33 @@ class RoleManager:
             permissions=permissions,
             is_system=False,
         )
-
         self._roles[role] = definition
         logger.info("Created role: %s", name)
         return definition
 
-    def update_role_permissions(
-        self,
-        role: Role,
-        permissions: Set[Permission],
-    ) -> bool:
-        """Update role permissions."""
+    def update_role_permissions(self, role: Role, permissions: Set[Permission]) -> bool:
         definition = self._roles.get(role)
         if not definition:
             return False
-
         if definition.is_system:
             logger.warning("Cannot modify system role: %s", role)
             return False
-
         definition.permissions = permissions
         definition.updated_at = datetime.utcnow()
-        logger.info("Updated permissions for role: %s", role)
         return True
 
     def delete_role(self, role: Role) -> bool:
-        """Delete a custom role."""
         definition = self._roles.get(role)
         if not definition:
             return False
-
         if definition.is_system:
-            logger.warning("Cannot delete system role: %s", role)
             return False
-
         del self._roles[role]
-        logger.info("Deleted role: %s", role)
         return True
 
-    # ── User Management ────────────────────────────────────
+    # ── User Management (PostgreSQL) ──────────────────────
 
-    def create_user(
+    async def create_user(
         self,
         email: str,
         name: Optional[str] = None,
@@ -107,54 +97,72 @@ class RoleManager:
         permissions: Optional[Set[Permission]] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> User:
-        """Create a new user."""
-        user_id = str(uuid.uuid4())
-
-        # Check if email already exists
-        for user in self._users.values():
-            if user.email == email:
+        async with async_session_factory() as session:
+            # Check duplicate email
+            existing = await session.execute(
+                select(RBACUser).where(RBACUser.email == email)
+            )
+            if existing.scalar_one_or_none():
                 raise ValueError(f"User with email {email} already exists")
 
-        user = User(
-            id=user_id,
-            email=email,
-            name=name,
-            role=role,
-            permissions=permissions or set(),
-            metadata=metadata or {},
-        )
+            user_id = str(uuid.uuid4())
+            db_user = RBACUser(
+                id=user_id,
+                email=email,
+                name=name,
+                role=role.value,
+                is_active=True,
+                permissions=[p.value for p in (permissions or set())],
+                metadata_json=metadata or {},
+            )
+            session.add(db_user)
+            await session.commit()
 
-        self._users[user_id] = user
-        logger.info("Created user: %s (email=%s, role=%s)", user_id, email, role)
-        return user
+            logger.info("Created user: %s (email=%s, role=%s)", user_id, email, role)
+            return User(
+                id=user_id,
+                email=email,
+                name=name,
+                role=role,
+                permissions=permissions or set(),
+                metadata=metadata or {},
+            )
 
-    def get_user(self, user_id: str) -> Optional[User]:
-        """Get user by ID."""
-        return self._users.get(user_id)
+    async def get_user(self, user_id: str) -> Optional[User]:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(RBACUser).where(RBACUser.id == user_id)
+            )
+            db_user = result.scalar_one_or_none()
+            if not db_user:
+                return None
+            return self._db_to_user(db_user)
 
-    def get_user_by_email(self, email: str) -> Optional[User]:
-        """Get user by email."""
-        for user in self._users.values():
-            if user.email == email:
-                return user
-        return None
+    async def get_user_by_email(self, email: str) -> Optional[User]:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(RBACUser).where(RBACUser.email == email)
+            )
+            db_user = result.scalar_one_or_none()
+            if not db_user:
+                return None
+            return self._db_to_user(db_user)
 
-    def list_users(
+    async def list_users(
         self,
         role: Optional[Role] = None,
         is_active: Optional[bool] = None,
     ) -> List[User]:
-        """List users with filters."""
-        users = list(self._users.values())
+        async with async_session_factory() as session:
+            stmt = select(RBACUser)
+            if role:
+                stmt = stmt.where(RBACUser.role == role.value)
+            if is_active is not None:
+                stmt = stmt.where(RBACUser.is_active == is_active)
+            result = await session.execute(stmt.order_by(RBACUser.created_at.desc()))
+            return [self._db_to_user(u) for u in result.scalars().all()]
 
-        if role:
-            users = [u for u in users if u.role == role]
-        if is_active is not None:
-            users = [u for u in users if u.is_active == is_active]
-
-        return users
-
-    def update_user(
+    async def update_user(
         self,
         user_id: str,
         name: Optional[str] = None,
@@ -162,66 +170,68 @@ class RoleManager:
         is_active: Optional[bool] = None,
         permissions: Optional[Set[Permission]] = None,
     ) -> bool:
-        """Update user."""
-        user = self._users.get(user_id)
-        if not user:
-            return False
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(RBACUser).where(RBACUser.id == user_id)
+            )
+            db_user = result.scalar_one_or_none()
+            if not db_user:
+                return False
 
-        if name is not None:
-            user.name = name
-        if role is not None:
-            user.role = role
-        if is_active is not None:
-            user.is_active = is_active
-        if permissions is not None:
-            user.permissions = permissions
+            if name is not None:
+                db_user.name = name
+            if role is not None:
+                db_user.role = role.value
+            if is_active is not None:
+                db_user.is_active = is_active
+            if permissions is not None:
+                db_user.permissions = [p.value for p in permissions]
+            db_user.updated_at = datetime.utcnow()
 
-        logger.info("Updated user: %s", user_id)
-        return True
+            await session.commit()
+            logger.info("Updated user: %s", user_id)
+            return True
 
-    def delete_user(self, user_id: str) -> bool:
-        """Delete a user."""
-        if user_id not in self._users:
-            return False
+    async def delete_user(self, user_id: str) -> bool:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(RBACUser).where(RBACUser.id == user_id)
+            )
+            db_user = result.scalar_one_or_none()
+            if not db_user:
+                return False
+            await session.delete(db_user)
+            await session.commit()
+            logger.info("Deleted user: %s", user_id)
+            return True
 
-        del self._users[user_id]
-        logger.info("Deleted user: %s", user_id)
-        return True
-
-    def record_login(self, user_id: str) -> bool:
-        """Record user login."""
-        user = self._users.get(user_id)
-        if not user:
-            return False
-
-        user.last_login = datetime.utcnow()
-        user.login_count += 1
-        return True
+    async def record_login(self, user_id: str) -> bool:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(RBACUser).where(RBACUser.id == user_id)
+            )
+            db_user = result.scalar_one_or_none()
+            if not db_user:
+                return False
+            db_user.last_login = datetime.utcnow()
+            db_user.login_count = (db_user.login_count or 0) + 1
+            await session.commit()
+            return True
 
     # ── Permission Checks ──────────────────────────────────
 
-    def check_permission(
-        self,
-        user: User,
-        permission: Permission,
-    ) -> PermissionCheck:
-        """Check if user has a specific permission."""
+    def check_permission(self, user: User, permission: Permission) -> PermissionCheck:
         if not user.is_active:
             return PermissionCheck(
                 allowed=False,
                 reason="User account is inactive",
                 role=user.role,
             )
-
-        # Check role permissions
         role_def = self._roles.get(user.role)
         if role_def and permission in role_def.permissions:
             return PermissionCheck(allowed=True, role=user.role)
-
-        # Check user-specific permissions
         if permission in user.permissions:
             return PermissionCheck(allowed=True, role=user.role)
-
         return PermissionCheck(
             allowed=False,
             reason=f"Permission {permission.value} not granted",
@@ -229,19 +239,12 @@ class RoleManager:
             missing_permissions=[permission],
         )
 
-    def check_permissions(
-        self,
-        user: User,
-        permissions: Set[Permission],
-    ) -> PermissionCheck:
-        """Check if user has all specified permissions."""
+    def check_permissions(self, user: User, permissions: Set[Permission]) -> PermissionCheck:
         missing = []
-
         for permission in permissions:
             result = self.check_permission(user, permission)
             if not result.allowed:
                 missing.extend(result.missing_permissions)
-
         if missing:
             return PermissionCheck(
                 allowed=False,
@@ -249,26 +252,19 @@ class RoleManager:
                 role=user.role,
                 missing_permissions=missing,
             )
-
         return PermissionCheck(allowed=True, role=user.role)
 
     def get_user_permissions(self, user: User) -> Set[Permission]:
-        """Get all permissions for a user."""
-        permissions = set()
-
-        # Add role permissions
+        permissions: Set[Permission] = set()
         role_def = self._roles.get(user.role)
         if role_def:
             permissions.update(role_def.permissions)
-
-        # Add user-specific permissions
         permissions.update(user.permissions)
-
         return permissions
 
-    # ── API Key Management ─────────────────────────────────
+    # ── API Key Management (PostgreSQL) ────────────────────
 
-    def create_api_key(
+    async def create_api_key(
         self,
         user_id: str,
         name: str,
@@ -276,84 +272,152 @@ class RoleManager:
         expires_days: Optional[int] = 90,
         permissions: Optional[Set[Permission]] = None,
     ) -> APIKey:
-        """Create an API key for a user."""
-        user = self._users.get(user_id)
-        if not user:
-            raise ValueError(f"User {user_id} not found")
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(RBACUser).where(RBACUser.id == user_id)
+            )
+            if not result.scalar_one_or_none():
+                raise ValueError(f"User {user_id} not found")
 
-        key_id = str(uuid.uuid4())
-        key_value = f"eops_{secrets.token_urlsafe(32)}"
+            key_id = str(uuid.uuid4())
+            raw_key = f"eops_{secrets.token_urlsafe(32)}"
+            key_hash = _hash_api_key(raw_key)
+            key_prefix = raw_key[:12] + "..."
 
-        expires_at = None
-        if expires_days:
-            from datetime import timedelta
-            expires_at = datetime.utcnow() + timedelta(days=expires_days)
+            expires_at = None
+            if expires_days:
+                expires_at = datetime.utcnow() + timedelta(days=expires_days)
 
-        api_key = APIKey(
-            id=key_id,
-            key=key_value,
-            name=name,
-            user_id=user_id,
-            role=role,
-            permissions=permissions or set(),
-            expires_at=expires_at,
-        )
+            db_key = RBACApiKey(
+                id=key_id,
+                key_hash=key_hash,
+                key_prefix=key_prefix,
+                name=name,
+                user_id=user_id,
+                role=role.value,
+                permissions=[p.value for p in (permissions or set())],
+                is_active=True,
+                expires_at=expires_at,
+            )
+            session.add(db_key)
+            await session.commit()
 
-        self._api_keys[key_id] = api_key
-        logger.info("Created API key: %s for user %s", key_id, user_id)
-        return api_key
+            logger.info("Created API key: %s for user %s", key_id, user_id)
+            return APIKey(
+                id=key_id,
+                key=raw_key,
+                name=name,
+                user_id=user_id,
+                role=role,
+                permissions=permissions or set(),
+                expires_at=expires_at,
+            )
 
-    def validate_api_key(self, key: str) -> Optional[APIKey]:
-        """Validate an API key."""
-        for api_key in self._api_keys.values():
-            if api_key.key == key and api_key.is_active:
-                if not api_key.is_expired:
-                    api_key.last_used = datetime.utcnow()
-                    api_key.usage_count += 1
-                    return api_key
-        return None
+    async def validate_api_key(self, key: str) -> Optional[APIKey]:
+        key_hash = _hash_api_key(key)
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(RBACApiKey).where(
+                    RBACApiKey.key_hash == key_hash,
+                    RBACApiKey.is_active == True,
+                )
+            )
+            db_key = result.scalar_one_or_none()
+            if not db_key:
+                return None
+            if db_key.expires_at and datetime.utcnow() > db_key.expires_at:
+                return None
 
-    def revoke_api_key(self, key_id: str) -> bool:
-        """Revoke an API key."""
-        api_key = self._api_keys.get(key_id)
-        if not api_key:
-            return False
+            db_key.last_used = datetime.utcnow()
+            db_key.usage_count = (db_key.usage_count or 0) + 1
+            await session.commit()
 
-        api_key.is_active = False
-        logger.info("Revoked API key: %s", key_id)
-        return True
+            return APIKey(
+                id=db_key.id,
+                key=key,
+                name=db_key.name,
+                user_id=db_key.user_id,
+                role=Role(db_key.role),
+                permissions={Permission(p) for p in (db_key.permissions or [])},
+                is_active=db_key.is_active,
+                expires_at=db_key.expires_at,
+                last_used=db_key.last_used,
+                usage_count=db_key.usage_count,
+            )
 
-    def list_api_keys(
+    async def revoke_api_key(self, key_id: str) -> bool:
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(RBACApiKey).where(RBACApiKey.id == key_id)
+            )
+            db_key = result.scalar_one_or_none()
+            if not db_key:
+                return False
+            db_key.is_active = False
+            await session.commit()
+            logger.info("Revoked API key: %s", key_id)
+            return True
+
+    async def list_api_keys(
         self,
         user_id: Optional[str] = None,
         is_active: Optional[bool] = None,
     ) -> List[APIKey]:
-        """List API keys with filters."""
-        keys = list(self._api_keys.values())
-
-        if user_id:
-            keys = [k for k in keys if k.user_id == user_id]
-        if is_active is not None:
-            keys = [k for k in keys if k.is_active == is_active]
-
-        return keys
+        async with async_session_factory() as session:
+            stmt = select(RBACApiKey)
+            if user_id:
+                stmt = stmt.where(RBACApiKey.user_id == user_id)
+            if is_active is not None:
+                stmt = stmt.where(RBACApiKey.is_active == is_active)
+            result = await session.execute(stmt.order_by(RBACApiKey.created_at.desc()))
+            return [
+                APIKey(
+                    id=k.id,
+                    key=k.key_prefix,
+                    name=k.name,
+                    user_id=k.user_id,
+                    role=Role(k.role),
+                    permissions={Permission(p) for p in (k.permissions or [])},
+                    is_active=k.is_active,
+                    expires_at=k.expires_at,
+                    last_used=k.last_used,
+                    usage_count=k.usage_count,
+                )
+                for k in result.scalars().all()
+            ]
 
     # ── Initialization ─────────────────────────────────────
 
-    def create_default_admin(
+    async def create_default_admin(
         self,
         email: str = "admin@example.com",
         password: Optional[str] = None,
     ) -> User:
-        """Create default admin user."""
-        admin = self.create_user(
+        existing = await self.get_user_by_email(email)
+        if existing:
+            return existing
+        return await self.create_user(
             email=email,
             name="Admin",
             role=Role.SUPER_ADMIN,
             metadata={"is_default_admin": True},
         )
-        logger.info("Created default admin user: %s", admin.id)
-        return admin
+
+    # ── Helpers ────────────────────────────────────────────
+
+    def _db_to_user(self, db_user: RBACUser) -> User:
+        return User(
+            id=db_user.id,
+            email=db_user.email,
+            name=db_user.name,
+            role=Role(db_user.role),
+            is_active=db_user.is_active,
+            permissions={Permission(p) for p in (db_user.permissions or [])},
+            metadata=db_user.metadata_json or {},
+            created_at=db_user.created_at,
+            last_login=db_user.last_login,
+            login_count=db_user.login_count or 0,
+        )
 
 
 # Singleton
