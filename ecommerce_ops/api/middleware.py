@@ -10,6 +10,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from ecommerce_ops.config import settings, Environment
 from ecommerce_ops.infra.rate_limiter import check_rate_limit
 from ecommerce_ops.memory.cache import cache, _get_ttl
+from ecommerce_ops.security.hardening import (
+    SecurityHeadersMiddleware,
+    InputSanitizationMiddleware,
+)
 from ecommerce_ops.api.metrics import (
     METRIC_HTTP_REQUESTS, METRIC_HTTP_DURATION, METRIC_RATE_LIMIT_REJECTED,
 )
@@ -122,6 +126,8 @@ def setup_middleware(app: FastAPI):
     if not allowed_origins:
         allowed_origins = ["http://localhost:3000", "http://localhost:5173"]
 
+    app.add_middleware(InputSanitizationMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(ResponseCacheMiddleware)
     app.add_middleware(MetricsMiddleware)
