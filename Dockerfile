@@ -3,7 +3,7 @@
 # Optimized for layer caching, security, and minimal image size
 
 # ── Builder Stage ──────────────────────────────────────────
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 
 LABEL maintainer="Ismail-2001" \
       description="OpsIQ — Autonomous Ecommerce Operations Engine" \
@@ -24,7 +24,7 @@ RUN pip install --no-cache-dir --user hatchling && \
     python -m pip install --no-cache-dir --user -r requirements.txt
 
 # ── Runtime Stage ──────────────────────────────────────────
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
