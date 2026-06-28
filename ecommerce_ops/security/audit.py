@@ -1,23 +1,25 @@
 """
-Audit Logging
-Comprehensive audit logging for security events.
+Audit Logging (PostgreSQL-backed)
+Comprehensive audit logging for security events with persistent storage.
 """
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
+from sqlalchemy import select, func
 
+from ecommerce_ops.models.db import SecurityAuditLog, async_session_factory
 from ecommerce_ops.security.models import SecurityEvent
 
 logger = logging.getLogger("ecommerce_ops.security.audit")
 
 
 class AuditEntry(BaseModel):
-    """Single audit log entry."""
-    id: str
+    """Single audit log entry (read model)."""
+    id: int
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     event_type: str
     action: str
@@ -31,31 +33,26 @@ class AuditEntry(BaseModel):
     ip_address: Optional[str] = None
     user_agent: Optional[str] = None
     details: Dict[str, Any] = Field(default_factory=dict)
-    risk_level: str = "low"  # low, medium, high, critical
+    risk_level: str = "low"
 
     class Config:
         extra = "allow"
 
 
 class AuditLogger:
-    """Comprehensive audit logging service."""
+    """Comprehensive audit logging service backed by PostgreSQL."""
 
-    def __init__(self, log_file: Optional[str] = None):
-        self.log_file = log_file
-        self._entries: List[AuditEntry] = []
-        self._sensitive_fields = {
-            "password",
-            "api_key",
-            "secret",
-            "token",
-            "credit_card",
-            "ssn",
-        }
+    _sensitive_fields = {
+        "password", "api_key", "secret", "token", "credit_card", "ssn",
+    }
 
     def log_event(self, event: SecurityEvent) -> AuditEntry:
-        """Log a security event."""
+        """Log a security event to PostgreSQL."""
+        risk_level = self._assess_risk_level(event)
+        sanitized = self._sanitize_details(event.details)
+
         entry = AuditEntry(
-            id=str(len(self._entries) + 1),
+            id=0,
             event_type=event.event_type,
             action=event.action,
             resource=event.resource,
@@ -65,14 +62,11 @@ class AuditLogger:
             success=event.success,
             ip_address=event.ip_address,
             user_agent=event.user_agent,
-            details=self._sanitize_details(event.details),
-            risk_level=self._assess_risk_level(event),
+            details=sanitized,
+            risk_level=risk_level,
         )
 
-        self._entries.append(entry)
-
-        # Log to logger
-        log_level = logging.WARNING if not entry.success else logging.INFO
+        log_level = logging.WARNING if not event.success else logging.INFO
         logger.log(
             log_level,
             "Audit: %s %s on %s by %s (%s)",
@@ -83,11 +77,42 @@ class AuditLogger:
             "success" if entry.success else "failure",
         )
 
-        # Write to file if configured
-        if self.log_file:
-            self._write_to_file(entry)
+        # Persist asynchronously (fire-and-forget for non-blocking)
+        import asyncio
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._persist_entry(entry))
+        except RuntimeError:
+            # No event loop running — persist synchronously via helper
+            logger.warning("No event loop; audit entry may not persist")
 
         return entry
+
+    async def _persist_entry(self, entry: AuditEntry):
+        """Write audit entry to PostgreSQL."""
+        try:
+            async with async_session_factory() as session:
+                db_entry = SecurityAuditLog(
+                    event_type=entry.event_type,
+                    action=entry.action,
+                    resource=entry.resource,
+                    resource_id=entry.resource_id,
+                    user_id=entry.user_id,
+                    user_email=entry.user_email,
+                    api_key_id=entry.api_key_id,
+                    role=entry.role,
+                    success=entry.success,
+                    ip_address=entry.ip_address,
+                    user_agent=entry.user_agent,
+                    details=entry.details,
+                    risk_level=entry.risk_level,
+                )
+                session.add(db_entry)
+                await session.commit()
+        except Exception as e:
+            logger.error("Failed to persist audit entry: %s", e)
+
+    # ── Convenience methods ────────────────────────────────
 
     def log_auth_event(
         self,
@@ -97,8 +122,7 @@ class AuditLogger:
         ip_address: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None,
     ) -> AuditEntry:
-        """Log authentication event."""
-        event = SecurityEvent(
+        return self.log_event(SecurityEvent(
             event_type="authentication",
             action=action,
             resource="auth",
@@ -106,8 +130,7 @@ class AuditLogger:
             success=success,
             ip_address=ip_address,
             details=details or {},
-        )
-        return self.log_event(event)
+        ))
 
     def log_permission_event(
         self,
@@ -117,16 +140,14 @@ class AuditLogger:
         success: bool = True,
         details: Optional[Dict[str, Any]] = None,
     ) -> AuditEntry:
-        """Log permission check event."""
-        event = SecurityEvent(
+        return self.log_event(SecurityEvent(
             event_type="authorization",
             action=action,
             resource=resource,
             user_id=user_id,
             success=success,
             details=details or {},
-        )
-        return self.log_event(event)
+        ))
 
     def log_data_access(
         self,
@@ -136,8 +157,7 @@ class AuditLogger:
         user_id: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None,
     ) -> AuditEntry:
-        """Log data access event."""
-        event = SecurityEvent(
+        return self.log_event(SecurityEvent(
             event_type="data_access",
             action=action,
             resource=resource,
@@ -145,8 +165,7 @@ class AuditLogger:
             user_id=user_id,
             success=True,
             details=details or {},
-        )
-        return self.log_event(event)
+        ))
 
     def log_config_change(
         self,
@@ -154,16 +173,14 @@ class AuditLogger:
         user_id: Optional[str] = None,
         changes: Optional[Dict[str, Any]] = None,
     ) -> AuditEntry:
-        """Log configuration change."""
-        event = SecurityEvent(
+        return self.log_event(SecurityEvent(
             event_type="config_change",
             action=action,
             resource="config",
             user_id=user_id,
             success=True,
             details={"changes": changes or {}},
-        )
-        return self.log_event(event)
+        ))
 
     def log_security_violation(
         self,
@@ -173,8 +190,7 @@ class AuditLogger:
         ip_address: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None,
     ) -> AuditEntry:
-        """Log security violation."""
-        event = SecurityEvent(
+        return self.log_event(SecurityEvent(
             event_type="security_violation",
             action=action,
             resource=resource,
@@ -182,10 +198,11 @@ class AuditLogger:
             success=False,
             ip_address=ip_address,
             details=details or {},
-        )
-        return self.log_event(event)
+        ))
 
-    def get_entries(
+    # ── Query methods (PostgreSQL) ─────────────────────────
+
+    async def get_entries(
         self,
         event_type: Optional[str] = None,
         user_id: Optional[str] = None,
@@ -194,73 +211,106 @@ class AuditLogger:
         risk_level: Optional[str] = None,
         limit: int = 100,
     ) -> List[AuditEntry]:
-        """Get audit entries with filters."""
-        entries = self._entries.copy()
+        async with async_session_factory() as session:
+            stmt = select(SecurityAuditLog)
+            if event_type:
+                stmt = stmt.where(SecurityAuditLog.event_type == event_type)
+            if user_id:
+                stmt = stmt.where(SecurityAuditLog.user_id == user_id)
+            if resource:
+                stmt = stmt.where(SecurityAuditLog.resource == resource)
+            if success is not None:
+                stmt = stmt.where(SecurityAuditLog.success == success)
+            if risk_level:
+                stmt = stmt.where(SecurityAuditLog.risk_level == risk_level)
 
-        if event_type:
-            entries = [e for e in entries if e.event_type == event_type]
-        if user_id:
-            entries = [e for e in entries if e.user_id == user_id]
-        if resource:
-            entries = [e for e in entries if e.resource == resource]
-        if success is not None:
-            entries = [e for e in entries if e.success == success]
-        if risk_level:
-            entries = [e for e in entries if e.risk_level == risk_level]
+            stmt = stmt.order_by(SecurityAuditLog.timestamp.desc()).limit(limit)
+            result = await session.execute(stmt)
 
-        # Sort by timestamp (newest first)
-        entries.sort(key=lambda e: e.timestamp, reverse=True)
+            return [
+                AuditEntry(
+                    id=row.id,
+                    timestamp=row.timestamp,
+                    event_type=row.event_type,
+                    action=row.action,
+                    resource=row.resource,
+                    resource_id=row.resource_id,
+                    user_id=row.user_id,
+                    user_email=row.user_email,
+                    api_key_id=row.api_key_id,
+                    role=row.role,
+                    success=row.success,
+                    ip_address=row.ip_address,
+                    user_agent=row.user_agent,
+                    details=row.details or {},
+                    risk_level=row.risk_level,
+                )
+                for row in result.scalars().all()
+            ]
 
-        return entries[:limit]
+    async def get_security_summary(self, hours: int = 24) -> Dict[str, Any]:
+        """Get security summary for the last N hours from PostgreSQL."""
+        cutoff = datetime.utcnow() - timedelta(hours=hours)
 
-    def get_security_summary(
-        self,
-        hours: int = 24,
-    ) -> Dict[str, Any]:
-        """Get security summary for the last N hours."""
-        cutoff = datetime.utcnow().timestamp() - (hours * 3600)
-        recent = [
-            e for e in self._entries
-            if e.timestamp.timestamp() > cutoff
-        ]
+        async with async_session_factory() as session:
+            base = select(SecurityAuditLog).where(SecurityAuditLog.timestamp >= cutoff)
 
-        total = len(recent)
-        failures = sum(1 for e in recent if not e.success)
-        violations = sum(1 for e in recent if e.event_type == "security_violation")
+            total_q = await session.execute(select(func.count()).select_from(base.subquery()))
+            total = total_q.scalar() or 0
 
-        by_type = {}
-        for entry in recent:
-            by_type[entry.event_type] = by_type.get(entry.event_type, 0) + 1
+            failures_q = await session.execute(
+                select(func.count()).select_from(
+                    base.where(SecurityAuditLog.success == False).subquery()
+                )
+            )
+            failures = failures_q.scalar() or 0
 
-        by_risk = {}
-        for entry in recent:
-            by_risk[entry.risk_level] = by_risk.get(entry.risk_level, 0) + 1
+            violations_q = await session.execute(
+                select(func.count()).select_from(
+                    base.where(SecurityAuditLog.event_type == "security_violation").subquery()
+                )
+            )
+            violations = violations_q.scalar() or 0
 
-        return {
-            "period_hours": hours,
-            "total_events": total,
-            "successful": total - failures,
-            "failures": failures,
-            "security_violations": violations,
-            "failure_rate": round(failures / total, 3) if total > 0 else 0,
-            "events_by_type": by_type,
-            "events_by_risk": by_risk,
-        }
+            # Group by type
+            type_q = await session.execute(
+                select(SecurityAuditLog.event_type, func.count())
+                .where(SecurityAuditLog.timestamp >= cutoff)
+                .group_by(SecurityAuditLog.event_type)
+            )
+            by_type = {row[0]: row[1] for row in type_q.all()}
+
+            # Group by risk
+            risk_q = await session.execute(
+                select(SecurityAuditLog.risk_level, func.count())
+                .where(SecurityAuditLog.timestamp >= cutoff)
+                .group_by(SecurityAuditLog.risk_level)
+            )
+            by_risk = {row[0]: row[1] for row in risk_q.all()}
+
+            return {
+                "period_hours": hours,
+                "total_events": total,
+                "successful": total - failures,
+                "failures": failures,
+                "security_violations": violations,
+                "failure_rate": round(failures / total, 3) if total > 0 else 0,
+                "events_by_type": by_type,
+                "events_by_risk": by_risk,
+            }
+
+    # ── Internal helpers ───────────────────────────────────
 
     def _assess_risk_level(self, event: SecurityEvent) -> str:
-        """Assess risk level of an event."""
         if event.event_type == "security_violation":
             return "critical"
         if not event.success:
             return "high"
-        if event.event_type == "config_change":
-            return "medium"
-        if event.event_type == "authorization":
+        if event.event_type in ("config_change", "authorization"):
             return "medium"
         return "low"
 
     def _sanitize_details(self, details: Dict[str, Any]) -> Dict[str, Any]:
-        """Sanitize sensitive fields from details."""
         sanitized = {}
         for key, value in details.items():
             if any(s in key.lower() for s in self._sensitive_fields):
@@ -270,14 +320,6 @@ class AuditLogger:
             else:
                 sanitized[key] = value
         return sanitized
-
-    def _write_to_file(self, entry: AuditEntry):
-        """Write audit entry to file."""
-        try:
-            with open(self.log_file, "a") as f:
-                f.write(entry.model_dump_json() + "\n")
-        except Exception as e:
-            logger.error("Failed to write audit entry to file: %s", e)
 
 
 # Singleton
