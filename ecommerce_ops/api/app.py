@@ -10,7 +10,7 @@ from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconn
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
-from sqlalchemy import select, func, desc, update
+from sqlalchemy import select, func, desc, update, text
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -190,6 +190,7 @@ async def health(operator: str = Depends(verify_auth_optional)):
     all_ok = True
     uptime_seconds = time.time() - SERVER_START_TIME
 
+    # Database check
     try:
         async for session in get_db_session():
             await session.execute(select(func.now()))
@@ -198,6 +199,7 @@ async def health(operator: str = Depends(verify_auth_optional)):
         deps["database"] = f"unhealthy: {e}"
         all_ok = False
 
+    # Redis check
     try:
         from ecommerce_ops.memory.cache import cache
         client = await cache.get_client()
@@ -206,17 +208,49 @@ async def health(operator: str = Depends(verify_auth_optional)):
             deps["redis"] = "healthy"
         else:
             deps["redis"] = "unavailable"
+            all_ok = False
     except Exception:
         deps["redis"] = "unavailable"
+        all_ok = False
 
+    # Task queue check
     try:
         task_queue_size = task_queue._queue.qsize() if hasattr(task_queue, "_queue") else 0
         deps["task_queue_depth"] = str(task_queue_size)
+        deps["task_queue"] = "healthy"
     except Exception:
         deps["task_queue"] = "unknown"
 
-    from ecommerce_ops.safety.safety_rules import evaluate_action_safety
-    deps["safety_engine"] = "loaded"
+    # pgvector check
+    try:
+        from ecommerce_ops.memory.vector.persistent_store import PersistentVectorStore
+        from ecommerce_ops.models import async_session_factory
+        async with async_session_factory() as session:
+            result = await session.execute(
+                text("SELECT 1 FROM pg_extension WHERE extname = 'vector'")
+            )
+            if result.fetchone():
+                deps["pgvector"] = "healthy"
+            else:
+                deps["pgvector"] = "not installed"
+    except Exception:
+        deps["pgvector"] = "unavailable"
+
+    # Safety engine check
+    try:
+        from ecommerce_ops.safety.safety_rules import evaluate_action_safety
+        deps["safety_engine"] = "loaded"
+    except Exception:
+        deps["safety_engine"] = "unavailable"
+
+    # Agent status check
+    try:
+        from ecommerce_ops.agents.factory import agent_factory
+        for name in ["fraud", "inventory", "pricing", "reviews", "marketing"]:
+            agent_factory.get_agent(name)
+        deps["agents"] = "loaded"
+    except Exception:
+        deps["agents"] = "degraded"
 
     status_code = 200 if all_ok else 503
     return JSONResponse(
@@ -226,13 +260,15 @@ async def health(operator: str = Depends(verify_auth_optional)):
             "dependencies": deps,
             "uptime_seconds": uptime_seconds,
             "version": app_settings.PROJECT_NAME,
-            "version_number": "0.1.0",
+            "version_number": "0.2.0",
             "environment": app_settings.ENV.value if hasattr(app_settings.ENV, "value") else str(app_settings.ENV),
             "timestamp": datetime.utcnow().isoformat(),
             "checks": {
                 "database": deps.get("database", "unknown"),
                 "redis": deps.get("redis", "unknown"),
-                "task_queue": deps.get("task_queue_depth", "unknown"),
+                "pgvector": deps.get("pgvector", "unknown"),
+                "task_queue": deps.get("task_queue", "unknown"),
+                "agents": deps.get("agents", "unknown"),
             },
         },
     )
