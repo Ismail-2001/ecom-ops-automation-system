@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import AsyncGenerator
+from typing import AsyncGenerator, List, Optional
 
 from sqlalchemy import (
     Column,
@@ -10,8 +10,11 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     JSON,
+    Text,
+    Index,
     select,
     text,
+    func,
 )
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
@@ -104,6 +107,73 @@ class StoreSettings(Base):
     pricing_limit = Column(Float, default=5.0, nullable=False)
     reviews_rating_threshold = Column(Integer, default=4, nullable=False)
 
+
+# ── RBAC Models (Persistent) ──────────────────────────────
+
+class RBACUser(Base):
+    __tablename__ = "rbac_users"
+
+    id = Column(String, primary_key=True)
+    email = Column(String, unique=True, nullable=False, index=True)
+    name = Column(String, nullable=True)
+    role = Column(String, nullable=False, default="viewer", index=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    permissions = Column(JSON, default=list, nullable=False)
+    metadata_json = Column(JSON, default=dict, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    last_login = Column(DateTime, nullable=True)
+    login_count = Column(Integer, default=0, nullable=False)
+
+    __table_args__ = (
+        Index("idx_rbac_users_role_active", "role", "is_active"),
+    )
+
+
+class RBACApiKey(Base):
+    __tablename__ = "rbac_api_keys"
+
+    id = Column(String, primary_key=True)
+    key_hash = Column(String, unique=True, nullable=False, index=True)
+    key_prefix = Column(String, nullable=False)
+    name = Column(String, nullable=False)
+    user_id = Column(String, nullable=False, index=True)
+    role = Column(String, nullable=False)
+    permissions = Column(JSON, default=list, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    expires_at = Column(DateTime, nullable=True)
+    last_used = Column(DateTime, nullable=True)
+    usage_count = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    metadata_json = Column(JSON, default=dict, nullable=False)
+
+
+# ── Security Audit Log (Persistent) ───────────────────────
+
+class SecurityAuditLog(Base):
+    __tablename__ = "security_audit_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_type = Column(String, nullable=False, index=True)
+    action = Column(String, nullable=False, index=True)
+    resource = Column(String, nullable=False, index=True)
+    resource_id = Column(String, nullable=True)
+    user_id = Column(String, nullable=True, index=True)
+    user_email = Column(String, nullable=True)
+    api_key_id = Column(String, nullable=True)
+    role = Column(String, nullable=True)
+    success = Column(Boolean, nullable=False, default=True)
+    ip_address = Column(String, nullable=True)
+    user_agent = Column(String, nullable=True)
+    details = Column(JSON, default=dict, nullable=False)
+    risk_level = Column(String, nullable=False, default="low", index=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    __table_args__ = (
+        Index("idx_security_audit_type_time", "event_type", "timestamp"),
+        Index("idx_security_audit_risk", "risk_level", "timestamp"),
+    )
+
 # Async Generator for DB sessions
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_factory() as session:
@@ -156,5 +226,21 @@ async def init_db():
                     avg_confidence=0.0
                 ))
                 logger.info(f"Initialized agent status for {agent_name}")
-        
+
+        # Seed default admin user if none exists
+        result = await session.execute(select(RBACUser).where(RBACUser.role == "super_admin"))
+        if not result.scalar_one_or_none():
+            import uuid
+            admin = RBACUser(
+                id=str(uuid.uuid4()),
+                email="admin@example.com",
+                name="Admin",
+                role="super_admin",
+                is_active=True,
+                permissions=[],
+                metadata_json={"is_default_admin": True},
+            )
+            session.add(admin)
+            logger.info("Seeded default admin user")
+
         await session.commit()
