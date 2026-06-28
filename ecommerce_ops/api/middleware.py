@@ -87,6 +87,25 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+class BodySizeLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        if request.method in ("GET", "HEAD", "DELETE", "OPTIONS"):
+            return await call_next(request)
+
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > MAX_REQUEST_BODY_BYTES:
+            return Response(
+                status_code=413,
+                content='{"detail":"Request body too large. Max 10MB."}',
+                media_type="application/json",
+            )
+
+        return await call_next(request)
+
+
 class ResponseCacheMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         if request.method != "GET":
@@ -126,6 +145,7 @@ def setup_middleware(app: FastAPI):
     if not allowed_origins:
         allowed_origins = ["http://localhost:3000", "http://localhost:5173"]
 
+    app.add_middleware(BodySizeLimitMiddleware)
     app.add_middleware(InputSanitizationMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RateLimitMiddleware)
