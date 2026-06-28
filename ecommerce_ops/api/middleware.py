@@ -118,10 +118,9 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
 
 
 def setup_middleware(app: FastAPI):
-    if settings.ENV == Environment.PRODUCTION:
-        allowed_origins = settings.CORS_ORIGINS
-    else:
-        allowed_origins = ["*"]
+    allowed_origins = settings.CORS_ORIGINS
+    if not allowed_origins:
+        allowed_origins = ["http://localhost:3000", "http://localhost:5173"]
 
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(ResponseCacheMiddleware)
@@ -130,7 +129,7 @@ def setup_middleware(app: FastAPI):
         CORSMiddleware,
         allow_origins=allowed_origins,
         allow_credentials=True,
-        allow_methods=["*"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
         allow_headers=["*"],
     )
     app.add_middleware(RequestIDMiddleware)
