@@ -1,7 +1,28 @@
 "use client"
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { useState } from "react"
+import { createContext, useCallback, useContext, useMemo, useState } from "react"
+import { useWebSocket, type WSEvent } from "@/lib/useWebSocket"
+
+interface WsContextValue {
+  isConnected: boolean
+  isConnecting: boolean
+  reconnectAttempt: number
+  lastEvent: WSEvent | null
+  reconnect: () => void
+}
+
+const WsContext = createContext<WsContextValue>({
+  isConnected: false,
+  isConnecting: false,
+  reconnectAttempt: 0,
+  lastEvent: null,
+  reconnect: () => {},
+})
+
+export function useWs() {
+  return useContext(WsContext)
+}
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -11,14 +32,39 @@ export function Providers({ children }: { children: React.ReactNode }) {
           queries: {
             staleTime: 10_000,
             refetchInterval: 30_000,
+            retry: 2,
+            refetchOnWindowFocus: true,
           },
         },
-      })
+      }),
+  )
+
+  const onEvent = useCallback((event: WSEvent) => {
+    if (event.type === "action_updated" || event.type === "pipeline_completed") {
+      queryClient.invalidateQueries({ queryKey: ["approvals"] })
+      queryClient.invalidateQueries({ queryKey: ["analytics"] })
+    }
+    if (event.type === "agent_status") {
+      queryClient.invalidateQueries({ queryKey: ["agents"] })
+    }
+  }, [queryClient])
+
+  const ws = useWebSocket({ onEvent, enabled: true })
+
+  const wsValue = useMemo(
+    () => ({
+      isConnected: ws.isConnected,
+      isConnecting: ws.isConnecting,
+      reconnectAttempt: ws.reconnectAttempt,
+      lastEvent: ws.lastEvent,
+      reconnect: ws.reconnect,
+    }),
+    [ws.isConnected, ws.isConnecting, ws.reconnectAttempt, ws.lastEvent, ws.reconnect],
   )
 
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <WsContext.Provider value={wsValue}>{children}</WsContext.Provider>
     </QueryClientProvider>
   )
 }

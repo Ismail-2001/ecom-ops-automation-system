@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Search, Bell, ChevronDown, Command } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { ConnectionStatus } from "@/components/shared/ConnectionStatus"
 
 interface TopbarProps {
   title: string
@@ -53,10 +54,7 @@ export function Topbar({ title, subtitle, actions }: TopbarProps) {
         </button>
 
         {/* Live indicator */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald/10">
-          <div className="dot-active" />
-          <span className="text-xs font-medium text-emerald">Live</span>
-        </div>
+        <ConnectionStatus />
 
         {/* Custom actions */}
         {actions && (
