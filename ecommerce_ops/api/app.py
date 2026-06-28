@@ -46,11 +46,6 @@ from ecommerce_ops.api.memory import router as memory_router
 from ecommerce_ops.api.security import router as security_router
 from ecommerce_ops.api.demo import router as demo_router
 from ecommerce_ops.security.auth import AuthenticationMiddleware
-from ecommerce_ops.security.hardening import (
-    SecurityHeadersMiddleware,
-    RateLimitMiddleware,
-    InputSanitizationMiddleware,
-)
 from ecommerce_ops.security.role_manager import role_manager
 
 logging.basicConfig(level=logging.INFO)
@@ -150,10 +145,7 @@ OpsIQ is an autonomous multi-agent system that manages ecommerce operations incl
 
 setup_middleware(app)
 
-# Security middleware (runs after auth middleware)
-app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(RateLimitMiddleware, requests_per_minute=60, requests_per_hour=1000)
-app.add_middleware(InputSanitizationMiddleware)
+# Authentication middleware (after all other middleware)
 app.add_middleware(AuthenticationMiddleware)
 
 # Include Shopify routes
