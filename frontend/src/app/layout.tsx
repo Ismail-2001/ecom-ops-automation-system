@@ -19,8 +19,38 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "OpsIQ — AI-Powered E-Commerce Operations",
+  title: {
+    default: "OpsIQ — AI-Powered E-Commerce Operations",
+    template: "%s | OpsIQ",
+  },
   description: "Intelligent automation for fraud detection, inventory, pricing, and customer support",
+  keywords: ["ecommerce", "automation", "AI", "fraud detection", "inventory", "pricing", "customer support"],
+  authors: [{ name: "Ismail-2001" }],
+  creator: "OpsIQ",
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: "https://ops-iq.dev",
+    title: "OpsIQ — AI-Powered E-Commerce Operations",
+    description: "Intelligent automation for fraud detection, inventory, pricing, and customer support",
+    siteName: "OpsIQ",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "OpsIQ — AI-Powered E-Commerce Operations",
+    description: "Intelligent automation for fraud detection, inventory, pricing, and customer support",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
+  },
 }
 
 export default function RootLayout({

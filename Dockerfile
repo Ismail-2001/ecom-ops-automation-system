@@ -7,7 +7,7 @@ FROM python:3.12-slim AS builder
 
 LABEL maintainer="Ismail-2001" \
       description="OpsIQ — Autonomous Ecommerce Operations Engine" \
-      version="0.1.0"
+      version="0.2.0"
 
 WORKDIR /build
 
