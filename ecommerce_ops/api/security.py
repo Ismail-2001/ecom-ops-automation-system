@@ -57,14 +57,14 @@ class PermissionCheckRequest(BaseModel):
 async def create_user(req: UserCreateRequest, admin: User = Depends(require_admin)):
     """Create a new user."""
     try:
-        user = role_manager.create_user(
+        user = await role_manager.create_user(
             email=req.email,
             name=req.name,
             role=req.role,
             permissions=set(req.permissions) if req.permissions else None,
         )
 
-        audit_logger.log_event(
+        await audit_logger.log_event(
             event_type="user_management",
             action="create_user",
             resource="user",
@@ -92,7 +92,7 @@ async def list_users(
     admin: User = Depends(require_admin),
 ):
     """List users."""
-    users = role_manager.list_users(role=role, is_active=is_active)
+    users = await role_manager.list_users(role=role, is_active=is_active)
     return {
         "users": [
             {
@@ -113,7 +113,7 @@ async def list_users(
 @router.get("/users/{user_id}")
 async def get_user(user_id: str, admin: User = Depends(require_admin)):
     """Get user details."""
-    user = role_manager.get_user(user_id)
+    user = await role_manager.get_user(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -137,7 +137,7 @@ async def update_user(
     admin: User = Depends(require_admin),
 ):
     """Update user."""
-    success = role_manager.update_user(
+    success = await role_manager.update_user(
         user_id=user_id,
         name=req.name,
         role=req.role,
@@ -148,7 +148,7 @@ async def update_user(
     if not success:
         raise HTTPException(status_code=404, detail="User not found")
 
-    audit_logger.log_event(
+    await audit_logger.log_event(
         event_type="user_management",
         action="update_user",
         resource="user",
@@ -164,12 +164,12 @@ async def update_user(
 @router.delete("/users/{user_id}")
 async def delete_user(user_id: str, admin: User = Depends(require_admin)):
     """Delete user."""
-    success = role_manager.delete_user(user_id)
+    success = await role_manager.delete_user(user_id)
 
     if not success:
         raise HTTPException(status_code=404, detail="User not found")
 
-    audit_logger.log_event(
+    await audit_logger.log_event(
         event_type="user_management",
         action="delete_user",
         resource="user",
@@ -190,7 +190,7 @@ async def create_api_key(
     admin: User = Depends(require_admin),
 ):
     """Create API key."""
-    api_key = role_manager.create_api_key(
+    api_key = await role_manager.create_api_key(
         user_id=admin.id,
         name=req.name,
         role=req.role,
@@ -198,7 +198,7 @@ async def create_api_key(
         permissions=set(req.permissions) if req.permissions else None,
     )
 
-    audit_logger.log_event(
+    await audit_logger.log_event(
         event_type="api_key_management",
         action="create_api_key",
         resource="api_key",
@@ -225,7 +225,7 @@ async def list_api_keys(
     admin: User = Depends(require_admin),
 ):
     """List API keys."""
-    keys = role_manager.list_api_keys(user_id=user_id, is_active=is_active)
+    keys = await role_manager.list_api_keys(user_id=user_id, is_active=is_active)
     return {
         "api_keys": [
             {
@@ -248,12 +248,12 @@ async def list_api_keys(
 @router.delete("/api-keys/{key_id}")
 async def revoke_api_key(key_id: str, admin: User = Depends(require_admin)):
     """Revoke API key."""
-    success = role_manager.revoke_api_key(key_id)
+    success = await role_manager.revoke_api_key(key_id)
 
     if not success:
         raise HTTPException(status_code=404, detail="API key not found")
 
-    audit_logger.log_event(
+    await audit_logger.log_event(
         event_type="api_key_management",
         action="revoke_api_key",
         resource="api_key",
@@ -341,7 +341,7 @@ async def get_audit_summary(
     admin: User = Depends(require_admin),
 ):
     """Get security audit summary."""
-    return audit_logger.get_security_summary(hours=hours)
+    return await audit_logger.get_security_summary(hours=hours)
 
 
 @router.get("/audit/logs")
@@ -352,7 +352,7 @@ async def get_audit_logs(
     admin: User = Depends(require_admin),
 ):
     """Get audit logs."""
-    entries = audit_logger.get_entries(
+    entries = await audit_logger.get_entries(
         event_type=event_type,
         user_id=user_id,
         limit=limit,
