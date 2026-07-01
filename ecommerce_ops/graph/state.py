@@ -7,7 +7,7 @@ class AgentDecision(BaseModel):
     agent_id: str
     action_type: str
     reasoning: str
-    action_data: Dict
+    action_data: Dict = Field(default_factory=dict)
     requires_approval: bool = True
     confidence_score: float
     timestamp: datetime = Field(default_factory=datetime.utcnow)

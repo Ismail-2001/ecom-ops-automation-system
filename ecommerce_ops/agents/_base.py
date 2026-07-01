@@ -41,9 +41,10 @@ class BaseAgent(abc.ABC):
                 timeout=30,
             )
 
-    @abc.abstractmethod
     async def run(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        pass
+        raise NotImplementedError(
+            f"{self.__class__.__name__} must implement 'run' or use a custom method"
+        )
 
     async def load_memory_context(self, state: Dict[str, Any]) -> str:
         recent = await get_recent_memories(self.agent_name, 5)

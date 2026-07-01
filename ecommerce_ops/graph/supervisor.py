@@ -19,10 +19,11 @@ async def planner(state: Dict[str, Any]) -> Dict[str, Any]:
         plan.append("pricing")
     if state.get("reviews_data"):
         plan.append("reviews")
-    plan.append("marketing")
+    if plan:
+        plan.append("marketing")
 
     if not plan:
-        plan = DEFAULT_PLAN
+        plan = list(DEFAULT_PLAN)
 
     state["execution_plan"] = ExecutionPlan(agents_to_run=plan, rationale="dynamic")
     state["step_index"] = 0

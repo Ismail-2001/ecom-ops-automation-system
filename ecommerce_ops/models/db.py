@@ -32,17 +32,21 @@ if settings.ENV == Environment.PRODUCTION and is_sqlite:
         "SQLite is not supported in production. Set DATABASE_URL to a PostgreSQL connection string."
     )
 
-engine = create_async_engine(
-    db_url,
-    echo=False,
-    future=True,
-    pool_size=settings.DB_POOL_SIZE if not is_sqlite else None,
-    max_overflow=settings.DB_MAX_OVERFLOW if not is_sqlite else None,
-    pool_timeout=settings.DB_POOL_TIMEOUT if not is_sqlite else None,
-    pool_pre_ping=True if not is_sqlite else None,
-    pool_recycle=3600 if not is_sqlite else None,
-    connect_args={"timeout": 15} if is_sqlite else {},
-)
+engine_kwargs: dict = dict(echo=False, future=True)
+if not is_sqlite:
+    engine_kwargs.update(
+        pool_size=settings.DB_POOL_SIZE,
+        max_overflow=settings.DB_MAX_OVERFLOW,
+        pool_timeout=settings.DB_POOL_TIMEOUT,
+        pool_pre_ping=True,
+        pool_recycle=3600,
+    )
+else:
+    from sqlalchemy.pool import StaticPool
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+    engine_kwargs["poolclass"] = StaticPool
+
+engine = create_async_engine(db_url, **engine_kwargs)
 
 async_session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 

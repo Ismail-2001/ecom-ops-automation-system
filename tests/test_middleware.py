@@ -15,7 +15,7 @@ def app():
 
     app = Starlette()
     app.add_middleware(BodySizeLimitMiddleware)
-    app.add_route("/", homepage)
+    app.add_route("/", homepage, methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
     return app
 
 

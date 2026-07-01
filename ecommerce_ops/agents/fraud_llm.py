@@ -61,7 +61,7 @@ class FraudDetectionAgentLLM(BaseAgent):
     """LLM-powered fraud detection agent."""
 
     def __init__(self):
-        super().__init__(agent_id="fraud_detection")
+        super().__init__(agent_name="fraud_detection")
         self.message_bus = message_bus
         self.message_bus.subscribe_agent("fraud_detection", self._handle_message)
 

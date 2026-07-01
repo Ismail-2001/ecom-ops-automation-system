@@ -67,7 +67,7 @@ class InventoryManagementAgentLLM(BaseAgent):
     """LLM-powered inventory management agent."""
 
     def __init__(self):
-        super().__init__(agent_id="inventory_management")
+        super().__init__(agent_name="inventory_management")
         self.message_bus = message_bus
         self.message_bus.subscribe_agent("inventory_management", self._handle_message)
 

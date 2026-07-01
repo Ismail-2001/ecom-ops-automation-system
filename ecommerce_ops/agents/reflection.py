@@ -63,5 +63,7 @@ class ReflectionAgent:
         for issue in feedback.issues:
             if "sent to HITL" in issue:
                 corrected.requires_approval = False
+            if "auto-approved" in issue:
+                corrected.requires_approval = True
 
         return corrected

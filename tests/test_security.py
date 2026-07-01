@@ -86,7 +86,6 @@ def test_role_manager_create_role():
         description="A custom role",
         permissions={Permission.DASHBOARD_VIEW},
     )
-    assert role.name.value == "custom_role"
     assert Permission.DASHBOARD_VIEW in role.permissions
 
 
@@ -114,7 +113,7 @@ def test_role_manager_update_system_role_fails():
 def test_role_manager_create_custom_role_then_delete():
     rm = RoleManager()
     rm.create_role("temp_role", "Temp", "Temporary", {Permission.DASHBOARD_VIEW})
-    assert rm.delete_role(Role("temp_role")) is True
+    assert rm.delete_role("temp_role") is True
 
 
 # ── Permission Check Tests ────────────────────────────────

@@ -22,7 +22,7 @@ def test_agent_decision_creation():
         agent_id="fraud",
         action_type="HOLD_ORDER",
         reasoning="High risk order detected",
-        data={"order_id": "o1", "risk_score": 85},
+        action_data={"order_id": "o1", "risk_score": 85},
         requires_approval=True,
         confidence_score=0.92,
     )
@@ -60,7 +60,7 @@ async def test_reflection_passes_valid_decision():
         agent_id="fraud",
         action_type="HOLD_ORDER",
         reasoning="Risk score 85/100. Factors: high_value_order.",
-        data={},
+        action_data={},
         requires_approval=True,
         confidence_score=0.85,
     )
@@ -76,7 +76,7 @@ async def test_reflection_flags_low_confidence():
         agent_id="fraud",
         action_type="HOLD_ORDER",
         reasoning="Uncertain detection with minimal supporting data available",
-        data={},
+        action_data={},
         requires_approval=False,
         confidence_score=0.3,
     )
@@ -93,7 +93,7 @@ async def test_reflection_flags_high_confidence_hitl():
         agent_id="fraud",
         action_type="HOLD_ORDER",
         reasoning="Very confident fraud detection with strong evidence patterns",
-        data={},
+        action_data={},
         requires_approval=True,
         confidence_score=0.99,
     )
@@ -108,7 +108,7 @@ async def test_reflection_flags_empty_reasoning():
         agent_id="fraud",
         action_type="HOLD_ORDER",
         reasoning="short",
-        data={},
+        action_data={},
         confidence_score=0.7,
     )
     feedback = await agent.run([decision])
@@ -122,7 +122,7 @@ async def test_reflection_corrects_confidence():
         agent_id="fraud",
         action_type="HOLD_ORDER",
         reasoning="Low confidence detection without sufficient supporting data",
-        data={},
+        action_data={},
         requires_approval=False,
         confidence_score=0.3,
     )
@@ -139,7 +139,7 @@ async def test_reflection_no_change_when_passed():
         agent_id="fraud",
         action_type="HOLD_ORDER",
         reasoning="Risk score 85/100. Factors: high_value, bulk_order, velocity.",
-        data={},
+        action_data={},
         requires_approval=True,
         confidence_score=0.85,
     )
@@ -206,10 +206,11 @@ async def test_router_ends_at_reflection():
 @pytest.mark.asyncio
 async def test_router_no_plan_ends():
     from ecommerce_ops.graph.supervisor import router
+    from langgraph.graph import END
 
     state = {"execution_plan": None}
     result = await router(state)
-    assert result == "END"
+    assert result == END
 
 
 @pytest.mark.asyncio

@@ -1,7 +1,7 @@
 """Integration tests for the LangGraph supervisor pipeline."""
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock, AsyncMock
 from datetime import datetime
 from typing import Dict, Any
 
@@ -89,20 +89,13 @@ async def test_pipeline_propagates_errors():
     async def failing_run(_state):
         raise RuntimeError("Inventory crashed")
 
-    async def empty_run(_state) -> Dict[str, Any]:
-        return {"decisions": []}
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock(side_effect=RuntimeError("Inventory crashed"))
 
     with patch(
-        "ecommerce_ops.graph.supervisor.AGENTS",
-        {
-            "inventory": _MockAgent(failing_run),
-            "marketing": _MockAgent(empty_run),
-        },
-        create=True,
-    ), patch(
-        "ecommerce_ops.graph.supervisor.DEFAULT_PLAN",
-        ["inventory", "marketing"],
-    ):
+        "ecommerce_ops.graph.supervisor.agent_factory"
+    ) as mock_factory:
+        mock_factory.get_agent.return_value = mock_agent
         supervisor = Supervisor()
         result = await supervisor.run(state)
 
