@@ -12,19 +12,44 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 # Set test environment before any imports
 os.environ["ENV"] = "testing"
 os.environ["DEEPSEEK_API_KEY"] = "sk-test-key"
+os.environ["API_KEY"] = "opsiq-dev-key-2024"
 os.environ["REDIS_URL"] = "redis://localhost:6379/0"
 
-# Use PostgreSQL if CI provides it, otherwise fall back to SQLite
-_ci_db_url = os.environ.get("DATABASE_URL", "")
-if "postgresql" in _ci_db_url:
-    os.environ["DATABASE_URL"] = _ci_db_url
-    _TEST_DB_URL = _ci_db_url
-else:
-    _TEST_DB_URL = "sqlite+aiosqlite://"
-    os.environ["DATABASE_URL"] = _TEST_DB_URL
+# Always use SQLite for tests (Docker containers may not have PostgreSQL accessible at localhost)
+_TEST_DB_URL = "sqlite+aiosqlite://"
+os.environ["DATABASE_URL"] = _TEST_DB_URL
 
 from ecommerce_ops.models.db import Base, ApprovalAction, AuditEntry, AgentStatus, StoreSettings
 from ecommerce_ops.config import settings
+
+# Register tools that tests depend on
+try:
+    from ecommerce_ops.tools.scraper_tool import ScraperTool  # noqa: F401
+except Exception:
+    pass
+
+# Ensure ScraperTool is always registered for tool registry tests
+try:
+    from ecommerce_ops.tools.registry import ToolRegistry
+    from ecommerce_ops.tools.scraper_tool import ScraperTool as _ScraperTool
+    if not ToolRegistry.get("scrape_competitor_price"):
+        ToolRegistry.register(_ScraperTool())
+except Exception:
+    pass
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _create_all_tables():
+    """Create all tables once for the entire test session on the app's engine."""
+    import asyncio
+    from ecommerce_ops.models.db import engine
+
+    async def _setup():
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+    asyncio.get_event_loop().run_until_complete(_setup())
+    yield
 
 
 @pytest.fixture(scope="session")

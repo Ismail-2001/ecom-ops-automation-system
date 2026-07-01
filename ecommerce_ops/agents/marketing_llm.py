@@ -69,7 +69,7 @@ class MarketingAutomationAgentLLM(BaseAgent):
     """LLM-powered marketing automation agent."""
 
     def __init__(self):
-        super().__init__(agent_id="marketing_automation")
+        super().__init__(agent_name="marketing_automation")
         self.message_bus = message_bus
         self.message_bus.subscribe_agent("marketing_automation", self._handle_message)
 

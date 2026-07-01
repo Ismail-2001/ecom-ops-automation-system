@@ -94,10 +94,13 @@ async def test_task_queue_enqueue():
 
 @pytest.mark.asyncio
 async def test_task_queue_max_tasks():
-    from ecommerce_ops.infra.task_queue import TaskQueue, MAX_TASKS
+    from ecommerce_ops.infra.task_queue import TaskQueue, MAX_TASKS, Task, TaskStatus
+    from datetime import datetime
 
     tq = TaskQueue(num_workers=0)
-    tq._tasks = {str(i): MagicMock(created_at=time.time()) for i in range(MAX_TASKS)}
+    tq._tasks = {str(i): Task(str(i), "test", AsyncMock) for i in range(MAX_TASKS)}
+    for t in tq._tasks.values():
+        t.status = TaskStatus.RUNNING
 
     with pytest.raises(RuntimeError, match="full"):
         await tq.enqueue("test", AsyncMock)
@@ -106,10 +109,11 @@ async def test_task_queue_max_tasks():
 @pytest.mark.asyncio
 async def test_task_queue_evicts_expired():
     from ecommerce_ops.infra.task_queue import TaskQueue, Task, TaskStatus
+    from datetime import datetime, timedelta
 
     tq = TaskQueue(num_workers=0)
     old_task = Task("old", "test", AsyncMock)
-    old_task.created_at = time.time() - 86400 * 25
+    old_task.created_at = datetime.utcnow() - timedelta(hours=25)
     old_task.status = TaskStatus.COMPLETED
     tq._tasks["old"] = old_task
 

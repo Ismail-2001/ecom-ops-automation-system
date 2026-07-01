@@ -36,12 +36,16 @@ class RoleManager:
     """Manages roles, users, and permissions with PostgreSQL persistence."""
 
     def __init__(self):
-        self._roles: Dict[Role, RoleDefinition] = dict(DEFAULT_ROLES)
+        self._roles: Dict[str, RoleDefinition] = {
+            role.value: defn for role, defn in DEFAULT_ROLES.items()
+        }
 
     # ── Role Management (in-memory, rarely changes) ────────
 
-    def get_role(self, role: Role) -> Optional[RoleDefinition]:
-        return self._roles.get(role)
+    def get_role(self, role) -> Optional[RoleDefinition]:
+        if isinstance(role, Role):
+            return self._roles.get(role.value)
+        return self._roles.get(str(role))
 
     def list_roles(self) -> List[RoleDefinition]:
         return list(self._roles.values())
@@ -53,22 +57,23 @@ class RoleManager:
         description: str,
         permissions: Set[Permission],
     ) -> RoleDefinition:
-        role = Role(name)
-        if role in self._roles:
+        if name in self._roles:
             raise ValueError(f"Role {name} already exists")
+        role_enum = Role(name) if name in {r.value for r in Role} else None
         definition = RoleDefinition(
-            name=role,
+            name=role_enum if role_enum else Role.VIEWER,
             display_name=display_name,
             description=description,
             permissions=permissions,
             is_system=False,
         )
-        self._roles[role] = definition
+        self._roles[name] = definition
         logger.info("Created role: %s", name)
         return definition
 
-    def update_role_permissions(self, role: Role, permissions: Set[Permission]) -> bool:
-        definition = self._roles.get(role)
+    def update_role_permissions(self, role, permissions: Set[Permission]) -> bool:
+        key = role.value if isinstance(role, Role) else str(role)
+        definition = self._roles.get(key)
         if not definition:
             return False
         if definition.is_system:
@@ -78,13 +83,14 @@ class RoleManager:
         definition.updated_at = datetime.utcnow()
         return True
 
-    def delete_role(self, role: Role) -> bool:
-        definition = self._roles.get(role)
+    def delete_role(self, role) -> bool:
+        key = role.value if isinstance(role, Role) else str(role)
+        definition = self._roles.get(key)
         if not definition:
             return False
         if definition.is_system:
             return False
-        del self._roles[role]
+        del self._roles[key]
         return True
 
     # ── User Management (PostgreSQL) ──────────────────────

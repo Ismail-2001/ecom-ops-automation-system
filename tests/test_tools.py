@@ -1,10 +1,18 @@
 """Tests for Competitor Scraper and Tool Registry."""
 
+import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from ecommerce_ops.connectors.competitor_scraper import _extract_prices
 from ecommerce_ops.tools.registry import Tool, ToolRegistry
+from ecommerce_ops.tools.scraper_tool import ScraperTool  # noqa: F401 — registers tool
+
+
+@pytest.fixture(autouse=True)
+def _ensure_scraper_registered():
+    """Re-register ScraperTool before each test in case another test cleared the registry."""
+    ToolRegistry.register(ScraperTool())
 
 
 # ── Price Extraction Tests ────────────────────────────────
