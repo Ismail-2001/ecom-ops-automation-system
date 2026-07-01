@@ -15,7 +15,7 @@ pydantic-settings==2.5.2
 pydantic==2.9.2
 
 # Database
-sqlalchemy[asyncio]==2.0.35
+sqlalchemy[asyncio]==2.0.51
 asyncpg==0.29.0
 alembic==1.13.2
 
