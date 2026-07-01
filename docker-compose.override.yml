@@ -9,21 +9,25 @@ services:
       context: .
       dockerfile: Dockerfile
       target: builder
+    working_dir: /app
     command: >
-      sh -c "pip install --no-cache-dir -r requirements.txt &&
-             uvicorn ecommerce_ops.api.app:app --reload --host 0.0.0.0 --port 8000 --log-level debug"
+      sh -c "cp -r /build/* /app/ 2>/dev/null; pip install --no-cache-dir -r requirements.txt &&
+             python -m uvicorn ecommerce_ops.api.app:app --host 0.0.0.0 --port 8000 --log-level debug"
     environment:
       ENV: development
       DEBUG: "true"
       SHADOW_MODE: "true"
+      PYTHONPATH: /app
     volumes:
       - ./ecommerce_ops:/app/ecommerce_ops
       - ./alembic:/app/alembic
       - ./alembic.ini:/app/alembic.ini
+      - ./requirements.txt:/app/requirements.txt
+      - ./pyproject.toml:/app/pyproject.toml
       - audit_logs:/app
     ports:
       - "8000:8000"
-      - "5678:5678"  # Debug port (if needed)
+      - "5678:5678"
     develop:
       watch:
         - action: sync
@@ -34,18 +38,25 @@ services:
           target: /app/alembic
 
   dashboard:
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    user: root
+    command: sh -c "npm install --include=dev && npm run dev -- --host 0.0.0.0 --port 5173"
     ports:
       - "5173:5173"
     environment:
       VITE_API_BASE_URL: http://localhost:8000
+      NODE_ENV: development
     volumes:
       - ./dashboard:/app
-      - /app/node_modules
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://0.0.0.0:5173"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 420s
 
   postgres:
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -53,15 +64,15 @@ services:
 
   redis:
     ports:
-      - "6379:6379"
+      - "6380:6379"
 
   prometheus:
     ports:
-      - "9090:9090"
+      - "9093:9090"
 
   grafana:
     ports:
-      - "3000:3000"
+      - "3003:3000"
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_AUTH_ANONYMOUS_ENABLED: "true"
@@ -69,8 +80,8 @@ services:
 
   postgres-exporter:
     ports:
-      - "9187:9187"
+      - "9188:9187"
 
   redis-exporter:
     ports:
-      - "9121:9121"
+      - "9122:9121"
