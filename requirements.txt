@@ -9,7 +9,7 @@ openai==2.44.0
 shopifyapi==12.7.0
 
 # API
-fastapi==0.115.3
+fastapi==0.138.2
 uvicorn[standard]==0.30.6
 pydantic-settings==2.5.2
 pydantic==2.9.2
