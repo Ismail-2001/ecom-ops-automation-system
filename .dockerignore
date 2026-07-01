@@ -18,7 +18,9 @@ test-results/
 *.egg-info
 dist/
 build/
-.pytest_cache/
+venv/
+.venv/
+*.egg-info/
 
 # Frontend
 frontend/.next
@@ -28,6 +30,7 @@ frontend/.env.development.local
 frontend/.env.test.local
 frontend/.env.production.local
 frontend/npm-debug.log*
+frontend/public/robots.txt
 
 # Docker
 docker-compose*.yml
@@ -52,3 +55,11 @@ docs/
 LICENSE
 CONTRIBUTING.md
 SECURITY.md
+
+# Scripts & Config
+scripts/
+monitoring/
+Makefile
+.editorconfig
+.github/
+AGENTS.md
