@@ -36,7 +36,6 @@ class BaseAgent(abc.ABC):
             self.llm = ChatOpenAI(
                 model=settings.LLM_MODEL,
                 openai_api_key="sk-dummy-key",
-                openai_api_base=settings.DEEPSEEK_BASE_URL,
                 temperature=0,
                 timeout=30,
             )

@@ -24,8 +24,8 @@ class Settings(BaseSettings):
     # API Keys
     GOOGLE_API_KEY: Optional[SecretStr] = None
     DEEPSEEK_API_KEY: Optional[SecretStr] = None
-    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com/v1"
-    LLM_MODEL: str = "deepseek-chat"
+    DEEPSEEK_BASE_URL: str = ""
+    LLM_MODEL: str = "gemini-2.0-flash"
     
     SHOPIFY_API_KEY: Optional[SecretStr] = None
     SHOPIFY_PASSWORD: Optional[SecretStr] = None
