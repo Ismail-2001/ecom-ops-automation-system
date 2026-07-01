@@ -3,7 +3,7 @@
 
 global:
   resolve_timeout: 5m
-  slack_api_url: "${SLACK_WEBHOOK_URL:-}"
+  slack_api_url: "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXX"
   smtp_smarthost: "smtp.gmail.com:587"
   smtp_from: "opsiq-alerts@example.com"
   smtp_auth_username: ""
@@ -57,8 +57,9 @@ receivers:
     email_configs:
       - to: 'ops@example.com'
         send_resolved: true
-        subject: '🔴 CRITICAL: {{ .GroupLabels.alertname }}'
-        body: |
+        headers:
+          Subject: '🔴 CRITICAL: {{ .GroupLabels.alertname }}'
+        html: |
           {{ range .Alerts }}
           Alert: {{ .Annotations.summary }}
           Description: {{ .Annotations.description }}
