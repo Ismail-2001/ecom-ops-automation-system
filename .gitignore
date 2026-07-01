@@ -166,3 +166,11 @@ Thumbs.db
 *.db
 *.db-journal
 audit_log.jsonl
+
+# Secrets & certificates
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.csr
