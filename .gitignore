@@ -141,9 +141,6 @@ cython_debug/
 
 # Node.js
 node_modules/
-dashboard/node_modules/
-dashboard/dist/
-dashboard/.tsbuildinfo
 frontend/node_modules/
 frontend/.next/
 frontend/out/
