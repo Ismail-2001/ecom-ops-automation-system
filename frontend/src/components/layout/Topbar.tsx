@@ -1,67 +1,55 @@
 "use client"
+import { Search, Bell, Wifi, WifiOff, User } from "lucide-react"
+import { useWs } from "@/app/providers"
 
-import { useState } from "react"
-import { Search, Bell, ChevronDown, Command } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { ConnectionStatus } from "@/components/shared/ConnectionStatus"
-
-interface TopbarProps {
-  title: string
+export default function Topbar({ title, subtitle, actions }: {
+  title?: string
   subtitle?: string
   actions?: React.ReactNode
-}
-
-export function Topbar({ title, subtitle, actions }: TopbarProps) {
-  const [searchOpen, setSearchOpen] = useState(false)
-
+}) {
+  const { isConnected } = useWs()
   return (
-    <header className="h-14 border-b border-border bg-surface flex items-center justify-between px-6 sticky top-0 z-40">
-      {/* Left: Title */}
-      <div className="flex items-center gap-3">
-        <div>
-          <h1 className="font-display font-bold text-lg text-text-1 tracking-tight">
-            {title}
-          </h1>
-          {subtitle && (
-            <p className="text-xs text-text-3">{subtitle}</p>
-          )}
-        </div>
-      </div>
-
-      {/* Right: Actions */}
-      <div className="flex items-center gap-3">
-        {/* Command search */}
-        <button
-          onClick={() => setSearchOpen(true)}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-2 border border-border text-text-3 text-sm hover:border-border-bright transition-colors"
-        >
-          <Search className="w-3.5 h-3.5" />
-          <span>Search...</span>
-          <div className="flex items-center gap-0.5 ml-4">
-            <kbd className="px-1.5 py-0.5 rounded bg-surface-3 text-[10px] font-mono text-text-3">
-              <Command className="w-2.5 h-2.5 inline" />
-            </kbd>
-            <kbd className="px-1.5 py-0.5 rounded bg-surface-3 text-[10px] font-mono text-text-3">
-              K
-            </kbd>
-          </div>
-        </button>
-
-        {/* Notifications */}
-        <button className="relative p-2 rounded-lg hover:bg-surface-2 transition-colors">
-          <Bell className="w-4 h-4 text-text-2" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red rounded-full" />
-        </button>
-
-        {/* Live indicator */}
-        <ConnectionStatus />
-
-        {/* Custom actions */}
-        {actions && (
-          <div className="flex items-center gap-2">
-            {actions}
+    <header className="sticky top-0 z-40 h-16 bg-void/80 backdrop-blur-xl border-b border-border flex items-center px-6 gap-4">
+      <div className="flex-1 flex items-center gap-4">
+        {title && (
+          <div className="hidden lg:block">
+            <h1 className="font-display font-semibold text-base text-text-primary">{title}</h1>
+            {subtitle && <p className="text-xs text-text-muted mt-0.5">{subtitle}</p>}
           </div>
         )}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <div className="relative hidden md:flex items-center">
+          <Search className="absolute left-3 w-4 h-4 text-text-muted" />
+          <input
+            type="text"
+            placeholder="Search operations, orders, or agents..."
+            className="w-72 h-9 pl-9 pr-4 rounded-button bg-surface border border-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary/30 transition-colors"
+          />
+          <kbd className="absolute right-3 px-1.5 py-0.5 rounded bg-surface-3 text-[10px] font-mono text-text-muted">⌘K</kbd>
+        </div>
+
+        <button className="w-9 h-9 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors relative">
+          <Bell className="w-4 h-4" />
+          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-danger" />
+        </button>
+
+        <div className="w-9 h-9 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors">
+          {isConnected ? <Wifi className="w-4 h-4 text-success" /> : <WifiOff className="w-4 h-4 text-danger" />}
+        </div>
+
+        <div className="flex items-center gap-2.5 pl-2 ml-1 border-l border-border">
+          <div className="text-right hidden sm:block">
+            <div className="text-sm font-medium text-text-primary">Admin User</div>
+            <div className="text-[10px] font-mono uppercase tracking-wider text-text-muted">SUPERUSER_ROOT</div>
+          </div>
+          <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center">
+            <User className="w-4 h-4 text-primary" />
+          </div>
+        </div>
+
+        {actions}
       </div>
     </header>
   )

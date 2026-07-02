@@ -2,186 +2,316 @@
 
 import { useState } from "react"
 import {
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  MessageSquare,
+  AlertTriangle,
   Star,
+  TrendingUp,
+  Clock,
   ThumbsUp,
-  ThumbsDown,
-  Bot,
 } from "lucide-react"
-import { Shell } from "@/components/layout/Shell"
-import { Topbar } from "@/components/layout/Topbar"
-import { StatusBadge } from "@/components/shared/StatusBadge"
-import { ConfidencePill } from "@/components/shared/ConfidencePill"
-import { cn, formatTimestamp } from "@/lib/utils"
+import Shell from "@/components/layout/Shell"
+import { cn } from "@/lib/utils"
 
 const reviews = [
-  { id: "R-1001", customer: "Sarah C.", product: "Wireless Headphones", rating: 5, text: "Absolutely love these headphones! The noise cancellation is incredible.", sentiment: "positive", confidence: 0.96, status: "approved", agent: "review_moderation", timestamp: new Date(Date.now() - 300000).toISOString() },
-  { id: "R-1002", customer: "Mike R.", product: "Ergonomic Mouse", rating: 4, text: "Great mouse, very comfortable for long work sessions.", sentiment: "positive", confidence: 0.89, status: "approved", agent: "review_moderation", timestamp: new Date(Date.now() - 600000).toISOString() },
-  { id: "R-1003", customer: "Spam Bot", product: "USB-C Hub", rating: 1, text: "STOP BUYING THIS GARBAGE!!! Click here for amazing deals: bit.ly/scam", sentiment: "spam", confidence: 0.94, status: "flagged", agent: "review_moderation", timestamp: new Date(Date.now() - 900000).toISOString() },
-  { id: "R-1004", customer: "David L.", product: "Laptop Stand", rating: 5, text: "Perfect for my home office setup. Solid build quality.", sentiment: "positive", confidence: 0.93, status: "approved", agent: "review_moderation", timestamp: new Date(Date.now() - 1200000).toISOString() },
-  { id: "R-1005", customer: "Anna K.", product: "Mechanical Keyboard", rating: 3, text: "Decent keyboard for the price. Keys feel a bit mushy.", sentiment: "neutral", confidence: 0.81, status: "approved", agent: "review_moderation", timestamp: new Date(Date.now() - 1500000).toISOString() },
-  { id: "R-1006", customer: "James T.", product: "Webcam 4K", rating: 2, text: "The webcam works fine but the software crashes on Windows 11.", sentiment: "negative", confidence: 0.87, status: "pending", agent: "review_moderation", timestamp: new Date(Date.now() - 1800000).toISOString() },
+  {
+    id: 1,
+    product: "Wireless Pro Headphones",
+    customer: "Emma Rodriguez",
+    rating: 5,
+    sentiment: "POSITIVE",
+    sentimentClass: "badge-success",
+    reviewText: '"Amazing sound quality and the noise cancellation is top-notch. Worth every penny!"',
+    status: "RESPONDED",
+    statusClass: "badge-success",
+    action: "View",
+    actionIcon: Eye,
+  },
+  {
+    id: 2,
+    product: "Organic Face Serum",
+    customer: "Marcus Williams",
+    rating: 1,
+    sentiment: "NEGATIVE",
+    sentimentClass: "badge-danger",
+    reviewText: '"Caused skin irritation after two days of use. Very disappointed with this product."',
+    status: "PENDING",
+    statusClass: "badge-warning",
+    action: "Respond",
+    actionIcon: MessageSquare,
+  },
+  {
+    id: 3,
+    product: "Smart Fitness Tracker",
+    customer: "Sarah Chen",
+    rating: 4,
+    sentiment: "POSITIVE",
+    sentimentClass: "badge-success",
+    reviewText: '"Good tracker but the app sync could be faster. Overall happy with the purchase."',
+    status: "RESPONDED",
+    statusClass: "badge-success",
+    action: "View",
+    actionIcon: Eye,
+  },
+  {
+    id: 4,
+    product: "Minimalist Desk Lamp",
+    customer: "James O\'Connor",
+    rating: 3,
+    sentiment: "NEUTRAL",
+    sentimentClass: "badge-info",
+    reviewText: '"Decent lamp, takes a while to get used to the touch controls. Build quality is fine."',
+    status: "PENDING",
+    statusClass: "badge-warning",
+    action: "Respond",
+    actionIcon: MessageSquare,
+  },
+  {
+    id: 5,
+    product: "Premium Yoga Mat",
+    customer: "Yuki Tanaka",
+    rating: 5,
+    sentiment: "POSITIVE",
+    sentimentClass: "badge-success",
+    reviewText: '"Perfect thickness and grip. No more knee pain during yoga sessions. Highly recommend!"',
+    status: "RESPONDED",
+    statusClass: "badge-success",
+    action: "View",
+    actionIcon: Eye,
+  },
+  {
+    id: 6,
+    product: "Bluetooth Speaker",
+    customer: "Aisha Patel",
+    rating: 2,
+    sentiment: "NEGATIVE",
+    sentimentClass: "badge-danger",
+    reviewText: '"Speaker stopped working after a week. Terrible quality control. Want a refund."',
+    status: "FLAGGED",
+    statusClass: "badge-danger",
+    action: "Escalate",
+    actionIcon: AlertTriangle,
+  },
 ]
 
-const ratingDistribution = [
-  { stars: 5, count: 1823, percentage: 64 },
-  { stars: 4, count: 570, percentage: 20 },
-  { stars: 3, count: 256, percentage: 9 },
-  { stars: 2, count: 114, percentage: 4 },
-  { stars: 1, count: 84, percentage: 3 },
+const filters = ["All Reviews", "Pending", "Responded", "Flagged"]
+
+const metricCards = [
+  { label: "Total Reviews", value: "12,458", icon: Star, color: "bg-primary/15", iconColor: "text-primary" },
+  { label: "Average Rating", value: "4.2", suffix: "/5", icon: Star, color: "bg-warning/15", iconColor: "text-warning" },
+  { label: "Sentiment Score", value: "78%", suffix: " positive", icon: TrendingUp, color: "bg-success/15", iconColor: "text-success" },
+  { label: "Pending Response", value: "23", icon: Clock, color: "bg-warning/15", iconColor: "text-warning" },
 ]
+
+function StarRating({ rating }: { rating: number }) {
+  return (
+    <div className="flex items-center gap-0.5">
+      {[1, 2, 3, 4, 5].map((s) => (
+        <Star
+          key={s}
+          className={cn(
+            "w-3.5 h-3.5",
+            s <= rating ? "text-warning fill-warning" : "text-surface-3"
+          )}
+        />
+      ))}
+    </div>
+  )
+}
 
 export default function ReviewsPage() {
-  const [filter, setFilter] = useState("all")
+  const [activeFilter, setActiveFilter] = useState("All Reviews")
+  const [searchQuery, setSearchQuery] = useState("")
 
-  const filtered = reviews.filter((r) => {
-    if (filter === "pending") return r.status === "pending"
-    if (filter === "flagged") return r.status === "flagged"
-    if (filter === "negative") return r.sentiment === "negative" || r.sentiment === "spam"
+  const filtered = reviews.filter((review) => {
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      if (
+        !review.product.toLowerCase().includes(q) &&
+        !review.customer.toLowerCase().includes(q)
+      )
+        return false
+    }
+    if (activeFilter === "Pending") return review.status === "PENDING"
+    if (activeFilter === "Responded") return review.status === "RESPONDED"
+    if (activeFilter === "Flagged") return review.status === "FLAGGED"
     return true
   })
 
   return (
-    <Shell>
-      <Topbar title="Reviews" subtitle="AI-powered sentiment analysis and moderation" />
+    <Shell
+      title="Review Intelligence"
+      subtitle="AI-powered review monitoring, sentiment analysis, and automated response orchestration."
+    >
+      <div className="space-y-6">
+        <div className="grid grid-cols-4 gap-4">
+          {metricCards.map((card) => {
+            const Icon = card.icon
+            return (
+              <div key={card.label} className="card group hover:border-border-bright transition-all duration-150">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="label-caps mb-2">{card.label}</div>
+                    <div className="font-display text-display-md text-text-primary">
+                      {card.value}
+                      {card.suffix && (
+                        <span className="text-text-muted text-body-md font-normal">{card.suffix}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center", card.color)}>
+                    <Icon className={cn("w-4 h-4", card.iconColor)} />
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
 
-      <div className="p-6 space-y-6">
-        {/* Stats */}
-        <div className="grid grid-cols-5 gap-4">
-          <div className="card">
-            <div className="section-label mb-2">Total Reviews</div>
-            <div className="metric-value text-display-md text-text-1">2,847</div>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-1 bg-surface rounded-card p-1 border border-border">
+            {filters.map((filter) => (
+              <button
+                key={filter}
+                onClick={() => setActiveFilter(filter)}
+                className={cn(
+                  "px-4 py-2 rounded-button text-sm font-medium transition-all duration-200",
+                  activeFilter === filter
+                    ? "bg-primary text-white shadow-lg shadow-primary/20"
+                    : "text-text-secondary hover:text-text-primary hover:bg-surface-2"
+                )}
+              >
+                {filter}
+              </button>
+            ))}
           </div>
-          <div className="card">
-            <div className="section-label mb-2">Avg Rating</div>
-            <div className="metric-value text-display-md text-amber flex items-center gap-2">
-              4.6 <Star className="w-5 h-5 text-amber fill-amber" />
-            </div>
-          </div>
-          <div className="card">
-            <div className="section-label mb-2">Auto-Approved</div>
-            <div className="metric-value text-display-md text-emerald">2,654</div>
-          </div>
-          <div className="card">
-            <div className="section-label mb-2">Pending</div>
-            <div className="metric-value text-display-md text-amber">12</div>
-          </div>
-          <div className="card">
-            <div className="section-label mb-2">Flagged</div>
-            <div className="metric-value text-display-md text-red">23</div>
+
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+            <input
+              type="text"
+              placeholder="Search reviews..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 pr-4 py-2.5 rounded-button bg-surface border border-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary/30 transition-colors w-72"
+            />
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-6">
-          {/* Reviews list */}
-          <div className="col-span-2 space-y-4">
-            <div className="flex items-center gap-2">
-              {["all", "pending", "flagged", "negative"].map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setFilter(f)}
-                  className={cn(
-                    "px-3 py-2 rounded-lg text-xs font-medium transition-colors",
-                    filter === f ? "bg-indigo/10 text-indigo" : "bg-surface-2 text-text-2 hover:bg-surface-3",
-                  )}
-                >
-                  {f === "all" ? "All Reviews" : f.charAt(0).toUpperCase() + f.slice(1)}
-                </button>
-              ))}
-            </div>
+        <div className="card p-0 overflow-hidden">
+          <div className="table-container">
+            <table className="table">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="label-caps px-5 py-4 text-left">Product</th>
+                  <th className="label-caps px-5 py-4 text-left">Customer</th>
+                  <th className="label-caps px-5 py-4 text-center">Rating</th>
+                  <th className="label-caps px-5 py-4 text-center">Sentiment</th>
+                  <th className="label-caps px-5 py-4 text-left">Review Text</th>
+                  <th className="label-caps px-5 py-4 text-center">Status</th>
+                  <th className="label-caps px-5 py-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((review) => {
+                  const ActionIcon = review.actionIcon
+                  return (
+                    <tr key={review.id} className="group transition-colors">
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-surface-2 flex items-center justify-center">
+                            <Star className="w-4 h-4 text-text-muted" />
+                          </div>
+                          <span className="text-sm font-medium text-text-primary">{review.product}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="text-sm text-text-secondary">{review.customer}</span>
+                      </td>
+                      <td className="px-5 py-4 text-center">
+                        <StarRating rating={review.rating} />
+                      </td>
+                      <td className="px-5 py-4 text-center">
+                        <span className={cn("badge", review.sentimentClass)}>{review.sentiment}</span>
+                      </td>
+                      <td className="px-5 py-4 max-w-[280px]">
+                        <span className="text-sm text-text-secondary line-clamp-2">{review.reviewText}</span>
+                      </td>
+                      <td className="px-5 py-4 text-center">
+                        <span className={cn("badge", review.statusClass)}>{review.status}</span>
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        <button
+                          className={cn(
+                            "btn-ghost text-xs gap-1.5",
+                            review.action === "Escalate"
+                              ? "text-danger hover:bg-danger/10 hover:text-danger"
+                              : review.action === "Respond"
+                                ? "text-primary hover:bg-primary/10 hover:text-primary"
+                                : "text-text-secondary"
+                          )}
+                        >
+                          <ActionIcon className="w-3.5 h-3.5" />
+                          {review.action}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-            <div className="space-y-3">
-              {filtered.map((review) => (
-                <div key={review.id} className="card">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-surface-3 flex items-center justify-center">
-                        <span className="text-xs font-medium text-text-2">{review.customer.split(" ").map((n) => n[0]).join("")}</span>
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-text-1">{review.customer}</span>
-                          <span className="text-xs text-text-3">on</span>
-                          <span className="text-xs text-indigo">{review.product}</span>
-                        </div>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          {[1, 2, 3, 4, 5].map((s) => (
-                            <Star key={s} className={cn("w-3 h-3", s <= review.rating ? "text-amber fill-amber" : "text-surface-3")} />
-                          ))}
-                          <span className="text-xs text-text-3">{formatTimestamp(review.timestamp)}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <ConfidencePill value={review.confidence} />
-                      <StatusBadge status={review.status} />
-                    </div>
-                  </div>
-                  <p className="text-sm text-text-2 leading-relaxed">{review.text}</p>
-                  <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border/50">
-                    <div className="flex items-center gap-1.5">
-                      <div className={cn(
-                        "w-2 h-2 rounded-full",
-                        review.sentiment === "positive" ? "bg-emerald" : review.sentiment === "negative" || review.sentiment === "spam" ? "bg-red" : "bg-amber",
-                      )} />
-                      <span className="text-xs text-text-3 capitalize">{review.sentiment}</span>
-                    </div>
-                    <div className="flex items-center gap-1 text-xs text-text-4">
-                      <Bot className="w-3 h-3" /> review_moderation
-                    </div>
-                    {review.status === "pending" && (
-                      <div className="flex items-center gap-2 ml-auto">
-                        <button className="flex items-center gap-1 px-2 py-1 rounded bg-emerald/10 text-emerald text-xs hover:bg-emerald/20 transition-colors">
-                          <ThumbsUp className="w-3 h-3" /> Approve
-                        </button>
-                        <button className="flex items-center gap-1 px-2 py-1 rounded bg-red/10 text-red text-xs hover:bg-red/20 transition-colors">
-                          <ThumbsDown className="w-3 h-3" /> Reject
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <div className="dot-green" />
+              <span className="text-sm text-text-secondary">
+                Positive: <span className="font-mono text-data-sm text-success">78%</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="dot-amber" />
+              <span className="text-sm text-text-secondary">
+                Neutral: <span className="font-mono text-data-sm text-warning">15%</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="dot-red" />
+              <span className="text-sm text-text-secondary">
+                Negative: <span className="font-mono text-data-sm text-danger">7%</span>
+              </span>
             </div>
           </div>
 
-          {/* Sidebar */}
-          <div className="space-y-6">
-            <div className="card">
-              <h3 className="font-display font-semibold text-text-1 mb-4">Rating Distribution</h3>
-              <div className="space-y-2">
-                {ratingDistribution.map((r) => (
-                  <div key={r.stars} className="flex items-center gap-3">
-                    <div className="flex items-center gap-1 w-12">
-                      <span className="text-xs text-text-2">{r.stars}</span>
-                      <Star className="w-3 h-3 text-amber fill-amber" />
-                    </div>
-                    <div className="flex-1 h-2 bg-surface-3 rounded-full overflow-hidden">
-                      <div className="h-full bg-amber rounded-full" style={{ width: `${r.percentage}%` }} />
-                    </div>
-                    <span className="text-xs text-text-3 w-8 text-right">{r.percentage}%</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="card">
-              <h3 className="font-display font-semibold text-text-1 mb-4">Sentiment Analysis</h3>
-              <div className="space-y-3">
-                {[
-                  { label: "Positive", pct: 78, color: "emerald" },
-                  { label: "Neutral", pct: 15, color: "amber" },
-                  { label: "Negative", pct: 5, color: "red" },
-                  { label: "Spam", pct: 2, color: "violet" },
-                ].map((item) => (
-                  <div key={item.label} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-3 h-3 rounded-full bg-${item.color}`} />
-                      <span className="text-sm text-text-2">{item.label}</span>
-                    </div>
-                    <span className={`text-sm font-medium text-${item.color}`}>{item.pct}%</span>
-                  </div>
-                ))}
-              </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-text-muted">
+              Showing <span className="text-text-secondary font-medium">6</span> of <span className="text-text-secondary font-medium">12,458</span> reviews
+            </span>
+            <div className="flex items-center gap-1">
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center bg-primary text-white shadow-lg shadow-primary/20 transition-colors">
+                1
+              </button>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                2
+              </button>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                3
+              </button>
+              <span className="text-text-muted px-1">...</span>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                2077
+              </button>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
           </div>
         </div>

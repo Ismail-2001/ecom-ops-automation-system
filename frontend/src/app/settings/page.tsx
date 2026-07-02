@@ -1,200 +1,337 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import {
-  Settings as SettingsIcon,
+  Key,
   Bell,
+  Mail,
+  MessageSquare,
+  Smartphone,
   Globe,
+  Trash2,
+  RotateCcw,
+  FileText,
+  AlertTriangle,
   Save,
-  RefreshCw,
   CheckCircle,
   Loader2,
+  Eye,
+  EyeOff,
 } from "lucide-react"
-import { Shell } from "@/components/layout/Shell"
-import { Topbar } from "@/components/layout/Topbar"
-import { useSettings, useUpdateSettings } from "@/lib/hooks"
-import { cn } from "@/lib/utils"
+import Shell from "@/components/layout/Shell"
+
+function Toggle({
+  enabled,
+  onToggle,
+}: {
+  enabled: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
+        enabled ? "bg-primary" : "bg-surface-3"
+      }`}
+    >
+      <div
+        className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform duration-200 ${
+          enabled ? "left-6" : "left-1"
+        }`}
+      />
+    </button>
+  )
+}
 
 export default function SettingsPage() {
-  const settingsQuery = useSettings()
-  const updateMutation = useUpdateSettings()
   const [saved, setSaved] = useState(false)
-  const [local, setLocal] = useState({
-    shadow_mode: true,
-    fraud_threshold: 70,
-    po_limit: 1000,
-    pricing_limit: 20,
-    reviews_rating_threshold: 3,
-    notify_on_failure: true,
-    notify_on_hitl: true,
-    notify_on_graduation: false,
-    slack_channel: "",
+  const [saving, setSaving] = useState(false)
+  const [showApiKey, setShowApiKey] = useState(false)
+
+  const [apiConfig, setApiConfig] = useState({
+    provider: "Google Gemini",
+    apiKey: "AIzaSyC...xK9mNpQrStUvWxYz",
+    model: "gemini-2.0-flash",
   })
 
-  useEffect(() => {
-    if (settingsQuery.data) {
-      const s = settingsQuery.data
-      setLocal({
-        shadow_mode: s.shadow_mode,
-        fraud_threshold: s.fraud_threshold,
-        po_limit: s.po_limit,
-        pricing_limit: s.pricing_limit,
-        reviews_rating_threshold: s.reviews_rating_threshold,
-        notify_on_failure: s.notify_on_failure,
-        notify_on_hitl: s.notify_on_hitl,
-        notify_on_graduation: s.notify_on_graduation,
-        slack_channel: s.slack_channel,
-      })
-    }
-  }, [settingsQuery.data])
+  const [notifications, setNotifications] = useState({
+    email: true,
+    slack: true,
+    sms: false,
+    browserPush: true,
+  })
 
   const handleSave = () => {
-    updateMutation.mutate(local, {
-      onSuccess: () => {
-        setSaved(true)
-        setTimeout(() => setSaved(false), 2000)
-      },
-    })
+    setSaving(true)
+    setTimeout(() => {
+      setSaving(false)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    }, 1000)
   }
 
   return (
-    <Shell>
-      <Topbar title="Settings" subtitle="System configuration and preferences" />
-
-      <div className="p-6 space-y-6 max-w-4xl">
-        {/* General */}
-        <div className="card">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-8 h-8 rounded-lg bg-indigo/10 flex items-center justify-center">
-              <SettingsIcon className="w-4 h-4 text-indigo" />
-            </div>
-            <h2 className="font-display font-semibold text-text-1">General</h2>
-          </div>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 rounded-lg hover:bg-surface-2 transition-colors">
-              <div>
-                <div className="text-sm font-medium text-text-1">Shadow Mode</div>
-                <div className="text-xs text-text-3">Agents suggest but don't execute actions</div>
+    <Shell
+      title="System Settings"
+      subtitle="Configure system parameters, API keys, and operational preferences."
+    >
+      <div className="space-y-6 max-w-6xl">
+        <div className="grid grid-cols-2 gap-6">
+          {/* API Configuration */}
+          <div className="card border-l-4 border-l-primary">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-9 h-9 rounded-button bg-primary/10 flex items-center justify-center">
+                <Key className="w-4 h-4 text-primary" />
               </div>
+              <div>
+                <h3 className="font-display text-display-sm text-text-primary">
+                  API Configuration
+                </h3>
+                <p className="text-body-sm text-text-muted mt-0.5">
+                  Manage LLM provider credentials
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-5">
+              <div>
+                <label className="label-caps mb-2 block">LLM Provider</label>
+                <select
+                  value={apiConfig.provider}
+                  onChange={(e) =>
+                    setApiConfig((p) => ({ ...p, provider: e.target.value }))
+                  }
+                  className="w-full px-4 py-2.5 rounded-button bg-surface-2 border border-border text-text-primary text-body-md focus:border-border-bright focus:outline-none transition-colors appearance-none"
+                >
+                  <option>Google Gemini</option>
+                  <option>OpenAI</option>
+                  <option>Anthropic</option>
+                  <option>Azure OpenAI</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="label-caps mb-2 block">API Key</label>
+                <div className="relative">
+                  <input
+                    type={showApiKey ? "text" : "password"}
+                    value={apiConfig.apiKey}
+                    onChange={(e) =>
+                      setApiConfig((p) => ({ ...p, apiKey: e.target.value }))
+                    }
+                    className="w-full px-4 py-2.5 pr-10 rounded-button bg-surface-2 border border-border text-text-primary font-mono text-body-sm focus:border-border-bright focus:outline-none transition-colors"
+                  />
+                  <button
+                    onClick={() => setShowApiKey(!showApiKey)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary transition-colors"
+                  >
+                    {showApiKey ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="label-caps mb-2 block">Model</label>
+                <input
+                  type="text"
+                  value={apiConfig.model}
+                  onChange={(e) =>
+                    setApiConfig((p) => ({ ...p, model: e.target.value }))
+                  }
+                  className="w-full px-4 py-2.5 rounded-button bg-surface-2 border border-border text-text-primary text-body-md font-mono focus:border-border-bright focus:outline-none transition-colors"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 pt-5 border-t border-border">
               <button
-                onClick={() => setLocal((p) => ({ ...p, shadow_mode: !p.shadow_mode }))}
-                className={cn(
-                  "w-10 h-6 rounded-full transition-colors relative",
-                  local.shadow_mode ? "bg-indigo" : "bg-surface-3",
-                )}
+                onClick={handleSave}
+                disabled={saving}
+                className="btn-primary w-full justify-center"
               >
-                <div className={cn(
-                  "w-4 h-4 rounded-full bg-white absolute top-1 transition-transform",
-                  local.shadow_mode ? "left-5" : "left-1",
-                )} />
+                {saving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Saving...
+                  </>
+                ) : saved ? (
+                  <>
+                    <CheckCircle className="w-4 h-4" /> Saved Successfully
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" /> Save Changes
+                  </>
+                )}
               </button>
             </div>
           </div>
+
+          {/* Notification Settings */}
+          <div className="card border-l-4 border-l-primary">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-9 h-9 rounded-button bg-warning/10 flex items-center justify-center">
+                <Bell className="w-4 h-4 text-warning" />
+              </div>
+              <div>
+                <h3 className="font-display text-display-sm text-text-primary">
+                  Notification Settings
+                </h3>
+                <p className="text-body-sm text-text-muted mt-0.5">
+                  Configure alert delivery channels
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              {[
+                {
+                  key: "email" as const,
+                  icon: Mail,
+                  label: "Email Notifications",
+                  description: "Receive alerts via email",
+                  iconBg: "bg-info/10",
+                  iconColor: "text-info",
+                },
+                {
+                  key: "slack" as const,
+                  icon: MessageSquare,
+                  label: "Slack Alerts",
+                  description: "Post alerts to Slack channel",
+                  iconBg: "bg-primary/10",
+                  iconColor: "text-primary",
+                },
+                {
+                  key: "sms" as const,
+                  icon: Smartphone,
+                  label: "SMS Alerts",
+                  description: "Critical alerts via text message",
+                  iconBg: "bg-danger/10",
+                  iconColor: "text-danger",
+                },
+                {
+                  key: "browserPush" as const,
+                  icon: Globe,
+                  label: "Browser Push",
+                  description: "Real-time browser notifications",
+                  iconBg: "bg-success/10",
+                  iconColor: "text-success",
+                },
+              ].map((item) => {
+                const Icon = item.icon
+                return (
+                  <div
+                    key={item.key}
+                    className="flex items-center justify-between p-3 rounded-button hover:bg-surface-2 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`w-8 h-8 rounded-button ${item.iconBg} flex items-center justify-center`}
+                      >
+                        <Icon className={`w-4 h-4 ${item.iconColor}`} />
+                      </div>
+                      <div>
+                        <div className="text-body-md text-text-primary font-medium">
+                          {item.label}
+                        </div>
+                        <div className="text-body-sm text-text-muted">
+                          {item.description}
+                        </div>
+                      </div>
+                    </div>
+                    <Toggle
+                      enabled={notifications[item.key]}
+                      onToggle={() =>
+                        setNotifications((p) => ({
+                          ...p,
+                          [item.key]: !p[item.key],
+                        }))
+                      }
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         </div>
 
-        {/* Notifications */}
-        <div className="card">
+        {/* System Maintenance */}
+        <div className="card border-l-4 border-l-primary">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-8 h-8 rounded-lg bg-amber/10 flex items-center justify-center">
-              <Bell className="w-4 h-4 text-amber" />
+            <div className="w-9 h-9 rounded-button bg-danger/10 flex items-center justify-center">
+              <AlertTriangle className="w-4 h-4 text-danger" />
             </div>
-            <h2 className="font-display font-semibold text-text-1">Notifications</h2>
+            <div>
+              <h3 className="font-display text-display-sm text-text-primary">
+                System Maintenance
+              </h3>
+              <p className="text-body-sm text-text-muted mt-0.5">
+                Administrative actions and system management
+              </p>
+            </div>
           </div>
-          <div className="space-y-4">
+
+          <div className="grid grid-cols-4 gap-4">
             {[
-              { key: "notify_on_failure" as const, label: "Failure alerts", description: "Get notified when agents fail" },
-              { key: "notify_on_hitl" as const, label: "Human-in-the-loop", description: "Alert when decisions need approval" },
-              { key: "notify_on_graduation" as const, label: "Graduation alerts", description: "Notify when agents increase autonomy" },
-            ].map((item) => (
-              <div key={item.key} className="flex items-center justify-between p-3 rounded-lg hover:bg-surface-2 transition-colors">
-                <div>
-                  <div className="text-sm font-medium text-text-1">{item.label}</div>
-                  <div className="text-xs text-text-3">{item.description}</div>
-                </div>
+              {
+                icon: Trash2,
+                label: "Clear Cache",
+                description: "Purge all cached data",
+                iconBg: "bg-warning/10",
+                iconColor: "text-warning",
+                hoverBorder: "hover:border-warning/30",
+              },
+              {
+                icon: RotateCcw,
+                label: "Restart Agents",
+                description: "Restart all AI agents",
+                iconBg: "bg-info/10",
+                iconColor: "text-info",
+                hoverBorder: "hover:border-info/30",
+              },
+              {
+                icon: FileText,
+                label: "Export Logs",
+                description: "Download system logs",
+                iconBg: "bg-primary/10",
+                iconColor: "text-primary",
+                hoverBorder: "hover:border-primary/30",
+              },
+              {
+                icon: AlertTriangle,
+                label: "Reset Defaults",
+                description: "Restore factory settings",
+                iconBg: "bg-danger/10",
+                iconColor: "text-danger",
+                hoverBorder: "hover:border-danger/30",
+              },
+            ].map((item) => {
+              const Icon = item.icon
+              return (
                 <button
-                  onClick={() => setLocal((p) => ({ ...p, [item.key]: !p[item.key] }))}
-                  className={cn(
-                    "w-10 h-6 rounded-full transition-colors relative",
-                    local[item.key] ? "bg-indigo" : "bg-surface-3",
-                  )}
+                  key={item.label}
+                  className={`flex flex-col items-center gap-3 p-5 rounded-card bg-surface-2 border border-border ${item.hoverBorder} transition-all duration-200 hover:bg-surface-3 text-center group`}
                 >
-                  <div className={cn(
-                    "w-4 h-4 rounded-full bg-white absolute top-1 transition-transform",
-                    local[item.key] ? "left-5" : "left-1",
-                  )} />
+                  <div
+                    className={`w-11 h-11 rounded-button ${item.iconBg} flex items-center justify-center transition-transform group-hover:scale-110`}
+                  >
+                    <Icon className={`w-5 h-5 ${item.iconColor}`} />
+                  </div>
+                  <div>
+                    <div className="text-body-md text-text-primary font-medium">
+                      {item.label}
+                    </div>
+                    <div className="text-body-sm text-text-muted mt-0.5">
+                      {item.description}
+                    </div>
+                  </div>
                 </button>
-              </div>
-            ))}
+              )
+            })}
           </div>
-        </div>
-
-        {/* AI Agent Settings */}
-        <div className="card">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-8 h-8 rounded-lg bg-emerald/10 flex items-center justify-center">
-              <Globe className="w-4 h-4 text-emerald" />
-            </div>
-            <h2 className="font-display font-semibold text-text-1">AI Agent Configuration</h2>
-          </div>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-text-3 uppercase tracking-wider mb-2">
-                Fraud Detection Threshold
-              </label>
-              <div className="flex items-center gap-4">
-                <input
-                  type="range" min="0" max="100"
-                  value={local.fraud_threshold}
-                  onChange={(e) => setLocal((p) => ({ ...p, fraud_threshold: Number(e.target.value) }))}
-                  className="flex-1 accent-indigo"
-                />
-                <span className="font-mono text-data-sm text-indigo w-10 text-right">{(local.fraud_threshold / 100).toFixed(2)}</span>
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-text-3 uppercase tracking-wider mb-2">
-                Purchase Order Limit ($)
-              </label>
-              <input
-                type="number" min={0}
-                value={local.po_limit}
-                onChange={(e) => setLocal((p) => ({ ...p, po_limit: Number(e.target.value) }))}
-                className="w-32 px-4 py-2.5 rounded-lg bg-surface-2 border border-border text-text-1 text-sm focus:border-border-bright focus:outline-none transition-colors"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-text-3 uppercase tracking-wider mb-2">
-                Max Price Change (%)
-              </label>
-              <input
-                type="number" min={0} max={100}
-                value={local.pricing_limit}
-                onChange={(e) => setLocal((p) => ({ ...p, pricing_limit: Number(e.target.value) }))}
-                className="w-32 px-4 py-2.5 rounded-lg bg-surface-2 border border-border text-text-1 text-sm focus:border-border-bright focus:outline-none transition-colors"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Save */}
-        <div className="flex items-center justify-end gap-3">
-          <button
-            onClick={() => settingsQuery.refetch()}
-            className="btn-ghost"
-            disabled={settingsQuery.isFetching}
-          >
-            <RefreshCw className={cn("w-4 h-4", settingsQuery.isFetching && "animate-spin")} />
-            Refresh
-          </button>
-          <button onClick={handleSave} disabled={updateMutation.isPending} className={cn("btn-primary", saved && "bg-emerald")}>
-            {updateMutation.isPending ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
-            ) : saved ? (
-              <><CheckCircle className="w-4 h-4" /> Saved!</>
-            ) : (
-              <><Save className="w-4 h-4" /> Save Changes</>
-            )}
-          </button>
         </div>
       </div>
     </Shell>

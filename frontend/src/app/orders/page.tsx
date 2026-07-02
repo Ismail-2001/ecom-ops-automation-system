@@ -1,168 +1,258 @@
 "use client"
 
 import { useState } from "react"
-import {
-  Search,
-  Filter,
-  Download,
-  Eye,
-  CheckCircle,
-  XCircle,
-} from "lucide-react"
-import { Shell } from "@/components/layout/Shell"
-import { Topbar } from "@/components/layout/Topbar"
-import { StatusBadge } from "@/components/shared/StatusBadge"
-import { ConfidencePill } from "@/components/shared/ConfidencePill"
-import { RiskScore } from "@/components/shared/RiskScore"
-import { MetricCardSkeleton } from "@/components/shared/Skeleton"
-import { useApprovals, useApproveAction, useRejectAction } from "@/lib/hooks"
-import { cn, formatCurrency, formatTimestamp } from "@/lib/utils"
-import type { ApprovalAction } from "@/lib/api"
+import { Search, ChevronLeft, ChevronRight, Eye, ShieldAlert, CheckCircle, Truck, Ban, Clock } from "lucide-react"
+import Shell from "@/components/layout/Shell"
+import { cn } from "@/lib/utils"
 
-const fallbackOrders: ApprovalAction[] = [
-  { id: "ORD-8854", action_type: "fraud_review", agent: "fraud_detection", action: "approve", rationale: "Low risk indicators", risk_level: "low", confidence: 0.95, financial_impact: 284.97, status: "executed", shopify_entity_id: null, shopify_entity_type: null, suggested_response: null, draft_response: null, execution_result: null, error_message: null, executed_at: new Date().toISOString(), expires_at: null, metadata: null, created_at: new Date(Date.now() - 300000).toISOString(), updated_at: new Date().toISOString() },
-  { id: "ORD-8853", action_type: "fraud_review", agent: "fraud_detection", action: "flag", rationale: "Medium risk — new customer", risk_level: "medium", confidence: 0.78, financial_impact: 549.99, status: "pending", shopify_entity_id: null, shopify_entity_type: null, suggested_response: null, draft_response: null, execution_result: null, error_message: null, executed_at: null, expires_at: null, metadata: null, created_at: new Date(Date.now() - 600000).toISOString(), updated_at: new Date().toISOString() },
-  { id: "ORD-8852", action_type: "fraud_review", agent: "fraud_detection", action: "reject", rationale: "High risk — fraud patterns", risk_level: "high", confidence: 0.94, financial_impact: 1249.95, status: "pending", shopify_entity_id: null, shopify_entity_type: null, suggested_response: null, draft_response: null, execution_result: null, error_message: null, executed_at: null, expires_at: null, metadata: null, created_at: new Date(Date.now() - 900000).toISOString(), updated_at: new Date().toISOString() },
+const orders = [
+  {
+    id: "ORD-7042",
+    customer: "Sarah Chen",
+    amount: "$2,847.00",
+    status: "Processing",
+    statusClass: "badge-primary",
+    fraudScore: 87,
+    riskClass: "bg-danger",
+    riskLevel: "risk-high",
+    confidence: 98.2,
+    confidenceClass: "confidence-high",
+    action: "Review",
+    actionIcon: Eye,
+  },
+  {
+    id: "ORD-7041",
+    customer: "Marcus Williams",
+    amount: "$129.99",
+    status: "Delivered",
+    statusClass: "badge-success",
+    fraudScore: 12,
+    riskClass: "bg-success",
+    riskLevel: "risk-low",
+    confidence: 99.1,
+    confidenceClass: "confidence-high",
+    action: "View",
+    actionIcon: Eye,
+  },
+  {
+    id: "ORD-7040",
+    customer: "Emma Rodriguez",
+    amount: "$4,521.00",
+    status: "Flagged",
+    statusClass: "badge-danger",
+    fraudScore: 94,
+    riskClass: "bg-danger",
+    riskLevel: "risk-high",
+    confidence: 82.4,
+    confidenceClass: "confidence-low",
+    action: "Block",
+    actionIcon: Ban,
+  },
+  {
+    id: "ORD-7039",
+    customer: "James O'Connor",
+    amount: "$89.99",
+    status: "Processing",
+    statusClass: "badge-primary",
+    fraudScore: 23,
+    riskClass: "bg-success",
+    riskLevel: "risk-low",
+    confidence: 95.7,
+    confidenceClass: "confidence-high",
+    action: "Review",
+    actionIcon: Eye,
+  },
+  {
+    id: "ORD-7038",
+    customer: "Yuki Tanaka",
+    amount: "$1,245.00",
+    status: "Pending",
+    statusClass: "badge-warning",
+    fraudScore: 67,
+    riskClass: "bg-warning",
+    riskLevel: "risk-medium",
+    confidence: 88.9,
+    confidenceClass: "confidence-medium",
+    action: "Approve",
+    actionIcon: CheckCircle,
+  },
+  {
+    id: "ORD-7037",
+    customer: "Aisha Patel",
+    amount: "$342.00",
+    status: "Shipped",
+    statusClass: "badge-info",
+    fraudScore: 8,
+    riskClass: "bg-success",
+    riskLevel: "risk-low",
+    confidence: 97.3,
+    confidenceClass: "confidence-high",
+    action: "Track",
+    actionIcon: Truck,
+  },
 ]
 
-const statusFilters = ["All", "pending", "executed", "rejected", "flagged"]
+const filters = ["All Orders", "Pending Review", "Flagged", "Completed"]
 
 export default function OrdersPage() {
-  const [activeFilter, setActiveFilter] = useState("All")
+  const [activeFilter, setActiveFilter] = useState("All Orders")
   const [searchQuery, setSearchQuery] = useState("")
-  const approvalsQuery = useApprovals({ status: activeFilter === "All" ? undefined : activeFilter })
-  const approveMutation = useApproveAction()
-  const rejectMutation = useRejectAction()
 
-  const orders = approvalsQuery.data?.length ? approvalsQuery.data : fallbackOrders
-  const filtered = orders.filter((o) => {
-    if (searchQuery && !o.id.toLowerCase().includes(searchQuery.toLowerCase())) return false
+  const filteredOrders = orders.filter((order) => {
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      if (!order.id.toLowerCase().includes(q) && !order.customer.toLowerCase().includes(q)) {
+        return false
+      }
+    }
+    if (activeFilter === "Pending Review") return order.status === "Pending"
+    if (activeFilter === "Flagged") return order.status === "Flagged"
+    if (activeFilter === "Completed") return order.status === "Delivered"
     return true
   })
 
   return (
-    <Shell>
-      <Topbar
-        title="Orders"
-        subtitle="Manage orders and fraud decisions"
-        actions={
-          <button className="btn-ghost">
-            <Download className="w-3.5 h-3.5" />
-            Export
-          </button>
-        }
-      />
-
-      <div className="p-6 space-y-4">
-        {/* Filter bar */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {statusFilters.map((f) => (
+    <Shell
+      title="Order Intelligence"
+      subtitle="AI-powered order tracking, fraud detection, and fulfillment optimization."
+    >
+      <div className="space-y-6">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-1 bg-surface rounded-card p-1 border border-border">
+            {filters.map((filter) => (
               <button
-                key={f}
-                onClick={() => setActiveFilter(f)}
+                key={filter}
+                onClick={() => setActiveFilter(filter)}
                 className={cn(
-                  "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
-                  activeFilter === f
-                    ? "bg-indigo/10 text-indigo"
-                    : "text-text-3 hover:text-text-2 hover:bg-surface-2",
+                  "px-4 py-2 rounded-button text-sm font-medium transition-all duration-200",
+                  activeFilter === filter
+                    ? "bg-primary text-white shadow-lg shadow-primary/20"
+                    : "text-text-secondary hover:text-text-primary hover:bg-surface-2"
                 )}
               >
-                {f.charAt(0).toUpperCase() + f.slice(1)}
+                {filter}
               </button>
             ))}
           </div>
 
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-3" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
             <input
               type="text"
               placeholder="Search orders..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 pr-4 py-2 rounded-lg bg-surface-2 border border-border text-sm text-text-1 placeholder:text-text-3 focus:outline-none focus:border-border-bright w-64"
+              className="pl-10 pr-4 py-2.5 rounded-button bg-surface border border-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary/30 transition-colors w-72"
             />
           </div>
         </div>
 
-        {/* Table */}
         <div className="card p-0 overflow-hidden">
-          {approvalsQuery.isLoading ? (
-            <div className="p-6 space-y-3">
-              <MetricCardSkeleton /><MetricCardSkeleton /><MetricCardSkeleton />
-            </div>
-          ) : (
-            <table className="w-full">
+          <div className="table-container">
+            <table className="table">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="text-left px-4 py-3 section-label text-[10px]">Order</th>
-                  <th className="text-left px-4 py-3 section-label text-[10px]">Agent</th>
-                  <th className="text-left px-4 py-3 section-label text-[10px]">Type</th>
-                  <th className="text-left px-4 py-3 section-label text-[10px]">Risk</th>
-                  <th className="text-left px-4 py-3 section-label text-[10px]">Confidence</th>
-                  <th className="text-left px-4 py-3 section-label text-[10px]">Impact</th>
-                  <th className="text-left px-4 py-3 section-label text-[10px]">Status</th>
-                  <th className="text-left px-4 py-3 section-label text-[10px]">Time</th>
-                  <th className="text-right px-4 py-3 section-label text-[10px]">Actions</th>
+                  <th className="label-caps px-5 py-4 text-left">Order ID</th>
+                  <th className="label-caps px-5 py-4 text-left">Customer</th>
+                  <th className="label-caps px-5 py-4 text-right">Amount</th>
+                  <th className="label-caps px-5 py-4 text-center">Status</th>
+                  <th className="label-caps px-5 py-4 text-left">Fraud Score</th>
+                  <th className="label-caps px-5 py-4 text-center">AI Confidence</th>
+                  <th className="label-caps px-5 py-4 text-right">Action</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((order) => (
-                  <tr key={order.id} className="border-b border-white/3 hover:bg-indigo/4 transition-colors">
-                    <td className="px-4 py-3">
-                      <span className="font-mono text-data-sm text-indigo">{order.id}</span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-text-2">{order.agent}</td>
-                    <td className="px-4 py-3 text-sm text-text-3">{order.action_type}</td>
-                    <td className="px-4 py-3"><RiskScore score={order.risk_level === "high" ? 0.8 : order.risk_level === "medium" ? 0.5 : 0.15} /></td>
-                    <td className="px-4 py-3"><ConfidencePill value={order.confidence} /></td>
-                    <td className="px-4 py-3">
-                      <span className="font-mono text-data-sm text-text-1">{formatCurrency(order.financial_impact)}</span>
-                    </td>
-                    <td className="px-4 py-3"><StatusBadge status={order.status} /></td>
-                    <td className="px-4 py-3">
-                      <span className="text-xs text-text-3">{formatTimestamp(order.created_at)}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        {order.status === "pending" && (
-                          <>
-                            <button
-                              onClick={() => approveMutation.mutate({ id: order.id })}
-                              disabled={approveMutation.isPending}
-                              className="p-1.5 rounded hover:bg-emerald/10 transition-colors"
-                            >
-                              <CheckCircle className="w-3.5 h-3.5 text-emerald" />
-                            </button>
-                            <button
-                              onClick={() => rejectMutation.mutate({ id: order.id, reason: "Manual rejection" })}
-                              disabled={rejectMutation.isPending}
-                              className="p-1.5 rounded hover:bg-red/10 transition-colors"
-                            >
-                              <XCircle className="w-3.5 h-3.5 text-red" />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {filteredOrders.map((order) => {
+                  const ActionIcon = order.actionIcon
+                  return (
+                    <tr key={order.id} className="group transition-colors">
+                      <td className="px-5 py-4">
+                        <span className="font-mono text-data-sm text-primary">{order.id}</span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="text-sm font-medium text-text-primary">{order.customer}</span>
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        <span className="font-mono text-data-sm text-text-primary">{order.amount}</span>
+                      </td>
+                      <td className="px-5 py-4 text-center">
+                        <span className={cn("badge", order.statusClass)}>{order.status}</span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3 min-w-[140px]">
+                          <div className="risk-bar flex-1">
+                            <div
+                              className={cn("risk-bar-fill", order.riskClass)}
+                              style={{ width: `${order.fraudScore}%` }}
+                            />
+                          </div>
+                          <span className="font-mono text-data-sm text-text-secondary w-10 text-right">
+                            {order.fraudScore}%
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 text-center">
+                        <span className={cn("confidence-pill", order.confidenceClass)}>
+                          {order.confidence}%
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        <button
+                          className={cn(
+                            "btn-ghost text-xs gap-1.5",
+                            order.action === "Block" && "text-danger hover:bg-danger/10 hover:text-danger"
+                          )}
+                        >
+                          <ActionIcon className="w-3.5 h-3.5" />
+                          {order.action}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
-          )}
-
-          {filtered.length === 0 && !approvalsQuery.isLoading && (
-            <div className="flex flex-col items-center justify-center py-12">
-              <CheckCircle className="w-12 h-12 text-emerald mb-3" />
-              <p className="text-sm text-text-2">No orders match your filters</p>
-            </div>
-          )}
+          </div>
         </div>
 
         <div className="flex items-center justify-between">
-          <span className="text-xs text-text-3">
-            Showing {filtered.length} of {orders.length} orders
-          </span>
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <div className="dot-red" />
+              <span className="text-sm text-text-secondary">Total Flagged Orders: <span className="font-mono text-data-sm text-danger">18</span></span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="dot-blue" />
+              <span className="text-sm text-text-secondary">Avg Processing Time: <span className="font-mono text-data-sm text-primary">2.3s</span></span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-text-muted">
+              Showing <span className="text-text-secondary font-medium">6</span> of <span className="text-text-secondary font-medium">2,847</span> orders
+            </span>
+            <div className="flex items-center gap-1">
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center bg-primary text-white shadow-lg shadow-primary/20 transition-colors">
+                1
+              </button>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                2
+              </button>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                3
+              </button>
+              <span className="text-text-muted px-1">...</span>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                475
+              </button>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </Shell>

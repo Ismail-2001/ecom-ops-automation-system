@@ -1,164 +1,104 @@
 "use client"
-
-import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
-  LayoutDashboard,
-  Bot,
-  ShoppingCart,
-  RefreshCw,
-  HeadphonesIcon,
-  Package,
-  Star,
-  BarChart3,
-  ShoppingBag,
-  Shield,
-  Settings,
-  ChevronLeft,
-  Zap,
+  LayoutDashboard, Bot, ShoppingCart, Headphones, Package,
+  Star, BarChart3, Store, Shield, Settings, Zap, Plus
 } from "lucide-react"
-import { cn } from "@/lib/utils"
 
 const navSections = [
   {
-    label: "Overview",
+    label: null,
     items: [
-      { name: "Dashboard", href: "/", icon: LayoutDashboard },
+      { href: "/", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/agents", label: "Agents", icon: Bot },
     ],
   },
   {
-    label: "Agents",
+    label: null,
     items: [
-      { name: "AI Agents", href: "/agents", icon: Bot },
+      { href: "/orders", label: "Orders", icon: ShoppingCart },
+      { href: "/cart-recovery", label: "Cart Recovery", icon: Package },
+      { href: "/support", label: "Support", icon: Headphones },
     ],
   },
   {
-    label: "Operations",
+    label: null,
     items: [
-      { name: "Orders", href: "/orders", icon: ShoppingCart },
-      { name: "Cart Recovery", href: "/cart-recovery", icon: RefreshCw },
-      { name: "Support", href: "/support", icon: HeadphonesIcon },
+      { href: "/products", label: "Products", icon: Package },
+      { href: "/reviews", label: "Reviews", icon: Star },
     ],
   },
   {
-    label: "Commerce",
+    label: null,
     items: [
-      { name: "Products", href: "/products", icon: Package },
-      { name: "Reviews", href: "/reviews", icon: Star },
+      { href: "/analytics", label: "Analytics", icon: BarChart3 },
+      { href: "/shopify", label: "Shopify", icon: Store },
     ],
   },
   {
-    label: "Insights",
+    label: "SYSTEM",
     items: [
-      { name: "Analytics", href: "/analytics", icon: BarChart3 },
-      { name: "Shopify", href: "/shopify", icon: ShoppingBag },
-    ],
-  },
-  {
-    label: "System",
-    items: [
-      { name: "Security", href: "/security", icon: Shield },
-      { name: "Settings", href: "/settings", icon: Settings },
+      { href: "/security", label: "Security", icon: Shield },
+      { href: "/settings", label: "Settings", icon: Settings },
     ],
   },
 ]
 
-export function Sidebar() {
+export default function Sidebar() {
   const pathname = usePathname()
-  const [collapsed, setCollapsed] = useState(false)
-
   return (
-    <aside
-      className={cn(
-        "fixed left-0 top-0 h-screen bg-surface border-r border-border z-50 flex flex-col transition-all duration-200",
-        collapsed ? "w-[68px]" : "w-[220px]"
-      )}
-    >
-      {/* Logo */}
-      <div className="h-14 flex items-center px-4 border-b border-border">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-indigo flex items-center justify-center">
-            <Zap className="w-4 h-4 text-white" />
-          </div>
-          {!collapsed && (
-            <span className="font-display font-bold text-lg text-text-1 tracking-tight">
-              OpsIQ
-            </span>
-          )}
+    <aside className="fixed left-0 top-0 bottom-0 w-[240px] bg-void border-r border-border flex flex-col z-50">
+      <div className="p-5 flex items-center gap-3">
+        <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
+          <Zap className="w-4 h-4 text-primary" />
+        </div>
+        <div>
+          <div className="font-display font-bold text-sm text-text-primary leading-tight">OpsIQ</div>
+          <div className="text-[10px] font-mono uppercase tracking-widest text-text-muted">AI Automation</div>
         </div>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-4 px-2">
-        {navSections.map((section) => (
-          <div key={section.label} className="mb-4">
-            {!collapsed && (
-              <div className="px-3 mb-2 section-label">
-                {section.label}
-              </div>
+      <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto">
+        {navSections.map((section, si) => (
+          <div key={si}>
+            {section.label && (
+              <div className="label-caps px-3 pt-5 pb-2">{section.label}</div>
             )}
-            <div className="space-y-0.5">
-              {section.items.map((item) => {
-                const isActive = pathname === item.href || 
-                  (item.href !== "/" && pathname.startsWith(item.href))
-                const Icon = item.icon
-
-                return (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    className={cn(
-                      "flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150",
-                      isActive
-                        ? "bg-indigo/10 text-indigo"
-                        : "text-text-2 hover:bg-surface-2 hover:text-text-1"
-                    )}
-                  >
-                    <Icon className="w-4 h-4 shrink-0" />
-                    {!collapsed && <span>{item.name}</span>}
-                  </Link>
-                )
-              })}
-            </div>
+            {section.items.map((item) => {
+              const active = pathname === item.href
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={active ? "sidebar-link-active" : "sidebar-link"}
+                >
+                  <item.icon className="w-4 h-4 shrink-0" />
+                  <span>{item.label}</span>
+                </Link>
+              )
+            })}
           </div>
         ))}
       </nav>
 
-      {/* Collapse toggle */}
-      <div className="p-2 border-t border-border">
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-text-3 hover:text-text-2 hover:bg-surface-2 transition-colors"
-        >
-          <ChevronLeft
-            className={cn(
-              "w-4 h-4 transition-transform duration-200",
-              collapsed && "rotate-180"
-            )}
-          />
-          {!collapsed && <span className="text-xs">Collapse</span>}
-        </button>
+      <div className="p-3 border-t border-border">
+        <Link href="/agents" className="btn-primary w-full text-sm">
+          <Plus className="w-4 h-4" />
+          Deploy Agent
+        </Link>
       </div>
 
-      {/* User chip */}
-      {!collapsed && (
-        <div className="p-3 border-t border-border">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-surface-3 flex items-center justify-center">
-              <span className="text-xs font-medium text-text-2">IS</span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-text-1 truncate">
-                Ismail Sajid
-              </div>
-              <div className="text-xs text-text-3 truncate">
-                Admin
-              </div>
-            </div>
-          </div>
+      <div className="px-5 py-3 border-t border-border">
+        <div className="flex items-center gap-2 text-xs">
+          <div className="dot-green" />
+          <span className="text-text-secondary">System Healthy</span>
+          <span className="ml-auto font-mono text-success">94%</span>
         </div>
-      )}
+        <div className="progress-bar mt-2">
+          <div className="progress-fill bg-success" style={{ width: "94%" }} />
+        </div>
+      </div>
     </aside>
   )
 }

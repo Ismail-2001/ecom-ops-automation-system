@@ -1,139 +1,252 @@
 "use client"
 
 import {
-  ShoppingBag,
-  RefreshCw,
+  CheckCircle,
+  ExternalLink,
   Package,
   ShoppingCart,
-  DollarSign,
-  TrendingUp,
-  CheckCircle,
+  Users,
+  RefreshCw,
+  Clock,
   AlertCircle,
-  ExternalLink,
-  Loader2,
+  ArrowRight,
 } from "lucide-react"
-import { Shell } from "@/components/layout/Shell"
-import { Topbar } from "@/components/layout/Topbar"
-import { StatusBadge } from "@/components/shared/StatusBadge"
-import { MetricCardSkeleton } from "@/components/shared/Skeleton"
-import { useShopifyStatus, useShopifySync } from "@/lib/hooks"
-import { cn, formatTimestamp } from "@/lib/utils"
+import Shell from "@/components/layout/Shell"
+
+const syncStats = [
+  {
+    label: "Products Synced",
+    value: "1,847",
+    icon: Package,
+    iconBg: "bg-success/10",
+    iconColor: "text-success",
+    accentColor: "text-success",
+  },
+  {
+    label: "Orders Synced",
+    value: "2,847",
+    icon: ShoppingCart,
+    iconBg: "bg-info/10",
+    iconColor: "text-info",
+    accentColor: "text-info",
+  },
+  {
+    label: "Customers Synced",
+    value: "12,458",
+    icon: Users,
+    iconBg: "bg-warning/10",
+    iconColor: "text-warning",
+    accentColor: "text-warning",
+  },
+]
+
+const recentActivity = [
+  {
+    timestamp: "14:22:01",
+    type: "Order",
+    status: "success" as const,
+    details: "ORD-7042 synced",
+  },
+  {
+    timestamp: "14:21:45",
+    type: "Product",
+    status: "success" as const,
+    details: "SKU-441 inventory updated",
+  },
+  {
+    timestamp: "14:20:33",
+    type: "Customer",
+    status: "pending" as const,
+    details: "New customer import",
+  },
+  {
+    timestamp: "14:18:55",
+    type: "Order",
+    status: "error" as const,
+    details: "ORD-7039 retry required",
+  },
+]
+
+function StatusDot({ status }: { status: "success" | "pending" | "error" }) {
+  return (
+    <span className="relative flex h-2.5 w-2.5">
+      {status === "success" && (
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-40" />
+      )}
+      <span
+        className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
+          status === "success"
+            ? "bg-success"
+            : status === "pending"
+              ? "bg-warning"
+              : "bg-danger"
+        }`}
+      />
+    </span>
+  )
+}
+
+function StatusBadge({ status }: { status: "success" | "pending" | "error" }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-badge text-body-sm font-medium ${
+        status === "success"
+          ? "badge-success"
+          : status === "pending"
+            ? "badge-warning"
+            : "badge-danger"
+      }`}
+    >
+      <StatusDot status={status} />
+      {status === "success" ? "Success" : status === "pending" ? "Pending" : "Error"}
+    </span>
+  )
+}
 
 export default function ShopifyPage() {
-  const statusQuery = useShopifyStatus()
-  const syncMutation = useShopifySync()
-  const status = statusQuery.data
-
   return (
-    <Shell>
-      <Topbar title="Shopify Integration" subtitle="Connected store management and sync status" />
-
-      <div className="p-6 space-y-6">
-        {/* Connection status */}
-        <div className={cn(
-          "flex items-center gap-3 p-3 rounded-lg border",
-          status?.configured ? "bg-emerald/10 border-emerald/20" : "bg-amber/10 border-amber/20",
-        )}>
-          {status?.configured ? (
-            <CheckCircle className="w-4 h-4 text-emerald" />
-          ) : (
-            <AlertCircle className="w-4 h-4 text-amber" />
-          )}
-          <span className={cn("text-sm", status?.configured ? "text-emerald" : "text-amber")}>
-            {status?.configured
-              ? `Connected to ${status.shop_domain} — API ${status.api_version}`
-              : "Shopify not configured — add credentials to .env"}
-          </span>
-          {status?.configured && (
-            <button
-              onClick={() => syncMutation.mutate(false)}
-              disabled={syncMutation.isPending}
-              className="ml-auto btn-ghost text-xs py-1.5 px-3"
-            >
-              {syncMutation.isPending ? (
-                <><Loader2 className="w-3 h-3 animate-spin" /> Syncing...</>
-              ) : (
-                <><RefreshCw className="w-3 h-3" /> Sync Now</>
-              )}
+    <Shell
+      title="Shopify Integration"
+      subtitle="Monitor and manage your connected Shopify store."
+    >
+      <div className="space-y-6 max-w-6xl">
+        {/* Connection Status */}
+        <div className="card border-l-4 border-l-success">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <div className="w-14 h-14 rounded-card bg-success/10 flex items-center justify-center">
+                  <CheckCircle className="w-7 h-7 text-success" />
+                </div>
+                <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-40" />
+                  <span className="relative inline-flex rounded-full h-4 w-4 bg-success" />
+                </span>
+              </div>
+              <div>
+                <h3 className="font-display text-display-md text-text-primary">
+                  Connected to Shopify
+                </h3>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-body-md text-text-secondary font-mono">
+                    mystore.myshopify.com
+                  </span>
+                  <a
+                    href="https://mystore.myshopify.com/admin"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary hover:text-primary-hover transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              </div>
+            </div>
+            <button className="btn-primary">
+              <RefreshCw className="w-4 h-4" /> Sync Now
             </button>
-          )}
-        </div>
-
-        {/* Sync result */}
-        {syncMutation.data && (
-          <div className="flex items-center gap-3 p-3 rounded-lg bg-indigo/10 border border-indigo/20">
-            <CheckCircle className="w-4 h-4 text-indigo" />
-            <span className="text-sm text-indigo">
-              Sync complete — {syncMutation.data.products_synced} products, {syncMutation.data.orders_synced} orders, {syncMutation.data.customers_synced} customers ({syncMutation.data.duration_seconds.toFixed(1)}s)
-            </span>
           </div>
-        )}
 
-        {/* Stats */}
-        <div className="grid grid-cols-4 gap-4">
-          {statusQuery.isLoading ? (
-            Array.from({ length: 4 }).map((_, i) => <MetricCardSkeleton key={i} />)
-          ) : (
-            <>
-              <div className="card">
-                <div className="section-label mb-2">Status</div>
-                <div className={cn("metric-value text-display-md", status?.configured ? "text-emerald" : "text-amber")}>
-                  {status?.configured ? "Connected" : "Not Configured"}
-                </div>
+          <div className="grid grid-cols-3 gap-6 mt-6 pt-6 border-t border-border">
+            <div>
+              <div className="label-caps mb-1.5">Last Sync</div>
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-text-muted" />
+                <span className="text-data-md text-text-primary">2 minutes ago</span>
               </div>
-              <div className="card">
-                <div className="section-label mb-2">API Version</div>
-                <div className="metric-value text-display-md text-text-1">{status?.api_version ?? "—"}</div>
+            </div>
+            <div>
+              <div className="label-caps mb-1.5">Products Synced</div>
+              <div className="flex items-center gap-2">
+                <Package className="w-4 h-4 text-success" />
+                <span className="font-display text-data-lg text-success">1,847</span>
               </div>
-              <div className="card">
-                <div className="section-label mb-2">Store Domain</div>
-                <div className="metric-value text-display-md text-indigo truncate">{status?.shop_domain ?? "—"}</div>
+            </div>
+            <div>
+              <div className="label-caps mb-1.5">Orders Today</div>
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="w-4 h-4 text-info" />
+                <span className="font-display text-data-lg text-info">142</span>
               </div>
-              <div className="card">
-                <div className="section-label mb-2">Webhooks</div>
-                <div className="metric-value text-display-md text-text-1">{status?.webhook_topics?.length ?? 0}</div>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Webhooks */}
-        {status?.webhook_topics && status.webhook_topics.length > 0 && (
-          <div className="card">
-            <h2 className="font-display font-semibold text-text-1 mb-4">Webhook Topics</h2>
-            <div className="space-y-2">
-              {status.webhook_topics.map((topic) => (
-                <div key={topic} className="flex items-center justify-between p-3 rounded-lg hover:bg-surface-2 transition-colors">
-                  <span className="font-mono text-data-sm text-indigo">{topic}</span>
-                  <StatusBadge status="active" />
-                </div>
-              ))}
             </div>
           </div>
-        )}
+        </div>
 
-        {/* Quick actions */}
+        {/* Sync Overview */}
+        <div>
+          <h3 className="label-caps mb-4">Sync Overview</h3>
+          <div className="grid grid-cols-3 gap-4">
+            {syncStats.map((stat) => {
+              const Icon = stat.icon
+              return (
+                <div key={stat.label} className="card">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div
+                      className={`w-9 h-9 rounded-button ${stat.iconBg} flex items-center justify-center`}
+                    >
+                      <Icon className={`w-4 h-4 ${stat.iconColor}`} />
+                    </div>
+                    <span className="label-caps">{stat.label}</span>
+                  </div>
+                  <div
+                    className={`font-display text-data-lg ${stat.accentColor}`}
+                  >
+                    {stat.value}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Recent Sync Activity */}
         <div className="card">
-          <h2 className="font-display font-semibold text-text-1 mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-3 gap-3">
-            <button
-              onClick={() => syncMutation.mutate(true)}
-              disabled={syncMutation.isPending}
-              className="btn-primary justify-center"
-            >
-              {syncMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-              Full Sync
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="label-caps">Recent Sync Activity</h3>
+            <button className="btn-ghost text-body-sm">
+              View All <ArrowRight className="w-3.5 h-3.5" />
             </button>
-            <button
-              onClick={() => syncMutation.mutate(false)}
-              disabled={syncMutation.isPending}
-              className="btn-ghost justify-center"
-            >
-              <Package className="w-4 h-4" /> Incremental Sync
-            </button>
-            <a href={`https://${status?.shop_domain || "your-store"}.myshopify.com/admin`} target="_blank" rel="noreferrer" className="btn-ghost justify-center">
-              <ExternalLink className="w-4 h-4" /> Shopify Admin
-            </a>
+          </div>
+          <div className="table-container">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>TIMESTAMP</th>
+                  <th>TYPE</th>
+                  <th>STATUS</th>
+                  <th>DETAILS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentActivity.map((row, i) => (
+                  <tr key={i}>
+                    <td className="font-mono text-data-sm text-text-secondary">
+                      {row.timestamp}
+                    </td>
+                    <td>
+                      <span className="inline-flex items-center gap-1.5 text-body-md text-text-primary">
+                        {row.type === "Order" && (
+                          <ShoppingCart className="w-3.5 h-3.5 text-info" />
+                        )}
+                        {row.type === "Product" && (
+                          <Package className="w-3.5 h-3.5 text-success" />
+                        )}
+                        {row.type === "Customer" && (
+                          <Users className="w-3.5 h-3.5 text-warning" />
+                        )}
+                        {row.type}
+                      </span>
+                    </td>
+                    <td>
+                      <StatusBadge status={row.status} />
+                    </td>
+                    <td className="text-body-md text-text-secondary">
+                      {row.details}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
