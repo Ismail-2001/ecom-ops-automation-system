@@ -2,160 +2,275 @@
 
 import { useState } from "react"
 import {
-  Package,
   Search,
-  Filter,
-  TrendingUp,
-  TrendingDown,
-  AlertTriangle,
-  ExternalLink,
-  DollarSign,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
   ShoppingCart,
+  AlertTriangle,
+  TrendingUp,
+  ArrowUpRight,
+  Package,
+  Zap,
+  Percent,
 } from "lucide-react"
-import { Shell } from "@/components/layout/Shell"
-import { Topbar } from "@/components/layout/Topbar"
-import { StatusBadge } from "@/components/shared/StatusBadge"
-import { ConfidencePill } from "@/components/shared/ConfidencePill"
-import { cn, formatCurrency, formatNumber } from "@/lib/utils"
+import Shell from "@/components/layout/Shell"
+import { cn } from "@/lib/utils"
 
-const mockProducts = [
-  { id: "PROD-2847", name: "Wireless Noise-Canceling Headphones", sku: "WNC-001", price: 89.99, suggestedPrice: 79.99, stock: 342, sales30d: 187, status: "active", priceConfidence: 0.91, trend: "up" as const },
-  { id: "PROD-1234", name: "Ergonomic Wireless Mouse", sku: "EWM-002", price: 49.99, suggestedPrice: 44.99, stock: 128, sales30d: 94, status: "active", priceConfidence: 0.89, trend: "up" as const },
-  { id: "PROD-3456", name: "Ultra-Slim Laptop Stand", sku: "ULS-003", price: 34.99, suggestedPrice: 34.99, stock: 567, sales30d: 234, status: "active", priceConfidence: 0.85, trend: "up" as const },
-  { id: "PROD-5678", name: "USB-C Hub 7-in-1", sku: "UCH-004", price: 29.99, suggestedPrice: 27.99, stock: 23, sales30d: 156, status: "low_stock", priceConfidence: 0.82, trend: "down" as const },
-  { id: "PROD-7890", name: "Mechanical Keyboard RGB", sku: "MKR-005", price: 129.99, suggestedPrice: 119.99, stock: 89, sales30d: 67, status: "active", priceConfidence: 0.88, trend: "up" as const },
-  { id: "PROD-9012", name: "Webcam 4K Pro", sku: "W4K-006", price: 79.99, suggestedPrice: 74.99, stock: 0, sales30d: 45, status: "out_of_stock", priceConfidence: 0.79, trend: "down" as const },
-  { id: "PROD-3457", name: "Portable Charger 20000mAh", sku: "PC2-007", price: 39.99, suggestedPrice: 36.99, stock: 456, sales30d: 312, status: "active", priceConfidence: 0.93, trend: "up" as const },
-  { id: "PROD-6789", name: "Smart LED Desk Lamp", sku: "SLD-008", price: 59.99, suggestedPrice: 54.99, stock: 15, sales30d: 28, status: "low_stock", priceConfidence: 0.76, trend: "down" as const },
+const products = [
+  {
+    sku: "SKU-441",
+    name: "Wireless Pro Headphones",
+    stock: 24,
+    status: "LOW STOCK",
+    statusClass: "badge-warning",
+    sales30d: "1,892",
+    suggestion: "Increase +15% stock",
+    suggestionIcon: TrendingUp,
+    suggestionColor: "text-warning",
+    action: "Restock",
+    actionIcon: ShoppingCart,
+  },
+  {
+    sku: "SKU-112",
+    name: "Organic Face Serum",
+    stock: 0,
+    status: "OUT OF STOCK",
+    statusClass: "badge-danger",
+    sales30d: "2,341",
+    suggestion: "Priority restock 500 units",
+    suggestionIcon: AlertTriangle,
+    suggestionColor: "text-danger",
+    action: "Emergency",
+    actionIcon: Zap,
+  },
+  {
+    sku: "SKU-789",
+    name: "Smart Fitness Tracker",
+    stock: 542,
+    status: "OPTIMAL",
+    statusClass: "badge-success",
+    sales30d: "456",
+    suggestion: "Maintain current levels",
+    suggestionIcon: Package,
+    suggestionColor: "text-success",
+    action: "View",
+    actionIcon: Eye,
+  },
+  {
+    sku: "SKU-203",
+    name: "Minimalist Desk Lamp",
+    stock: 18,
+    status: "LOW STOCK",
+    statusClass: "badge-warning",
+    sales30d: "1,203",
+    suggestion: "Increase +20% stock",
+    suggestionIcon: TrendingUp,
+    suggestionColor: "text-warning",
+    action: "Restock",
+    actionIcon: ShoppingCart,
+  },
+  {
+    sku: "SKU-567",
+    name: "Premium Yoga Mat",
+    stock: 128,
+    status: "OPTIMAL",
+    statusClass: "badge-success",
+    sales30d: "678",
+    suggestion: "Consider 10% price increase",
+    suggestionIcon: ArrowUpRight,
+    suggestionColor: "text-success",
+    action: "Adjust",
+    actionIcon: TrendingUp,
+  },
+  {
+    sku: "SKU-890",
+    name: "Bluetooth Speaker",
+    stock: 1240,
+    status: "EXCESS",
+    statusClass: "badge-info",
+    sales30d: "234",
+    suggestion: "Run promotion -15% discount",
+    suggestionIcon: Percent,
+    suggestionColor: "text-info",
+    action: "Promote",
+    actionIcon: Percent,
+  },
 ]
 
-export default function ProductsPage() {
-  const [search, setSearch] = useState("")
-  const [filter, setFilter] = useState("all")
+const filters = ["All Products", "Low Stock", "Optimized", "New Arrivals"]
 
-  const filteredProducts = mockProducts.filter(p => {
-    if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.sku.toLowerCase().includes(search.toLowerCase())) return false
-    if (filter === "low_stock" && p.stock > 50) return false
-    if (filter === "out_of_stock" && p.stock > 0) return false
-    if (filter === "price_change" && p.price === p.suggestedPrice) return false
+export default function ProductsPage() {
+  const [activeFilter, setActiveFilter] = useState("All Products")
+  const [searchQuery, setSearchQuery] = useState("")
+
+  const filteredProducts = products.filter((product) => {
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      if (!product.sku.toLowerCase().includes(q) && !product.name.toLowerCase().includes(q)) {
+        return false
+      }
+    }
+    if (activeFilter === "Low Stock") return product.status === "LOW STOCK"
+    if (activeFilter === "Optimized") return product.status === "OPTIMAL"
+    if (activeFilter === "New Arrivals") return false
     return true
   })
 
   return (
-    <Shell>
-      <Topbar title="Products" subtitle="AI-optimized pricing and inventory management" />
-      
-      <div className="p-6 space-y-6">
-        {/* Stats */}
-        <div className="grid grid-cols-4 gap-4">
-          <div className="card">
-            <div className="section-label mb-2">Total Products</div>
-            <div className="metric-value text-display-md text-text-1">{mockProducts.length.toLocaleString()}</div>
-          </div>
-          <div className="card">
-            <div className="section-label mb-2">Low Stock</div>
-            <div className="metric-value text-display-md text-amber">{mockProducts.filter(p => p.stock <= 50 && p.stock > 0).length}</div>
-          </div>
-          <div className="card">
-            <div className="section-label mb-2">Out of Stock</div>
-            <div className="metric-value text-display-md text-red">{mockProducts.filter(p => p.stock === 0).length}</div>
-          </div>
-          <div className="card">
-            <div className="section-label mb-2">Price Suggestions</div>
-            <div className="metric-value text-display-md text-indigo">{mockProducts.filter(p => p.price !== p.suggestedPrice).length}</div>
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div className="flex items-center gap-3">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-3" />
-            <input
-              type="text"
-              placeholder="Search products by name or SKU..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 rounded-lg bg-surface border border-border text-text-1 text-sm focus:border-border-bright focus:outline-none transition-colors placeholder:text-text-3"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            {["all", "low_stock", "out_of_stock", "price_change"].map((f) => (
+    <Shell
+      title="Product Catalog"
+      subtitle="AI-powered inventory management and catalog optimization."
+    >
+      <div className="space-y-6">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-1 bg-surface rounded-card p-1 border border-border">
+            {filters.map((filter) => (
               <button
-                key={f}
-                onClick={() => setFilter(f)}
+                key={filter}
+                onClick={() => setActiveFilter(filter)}
                 className={cn(
-                  "px-3 py-2 rounded-lg text-xs font-medium transition-colors",
-                  filter === f ? "bg-indigo/10 text-indigo" : "bg-surface-2 text-text-2 hover:bg-surface-3"
+                  "px-4 py-2 rounded-button text-sm font-medium transition-all duration-200",
+                  activeFilter === filter
+                    ? "bg-primary text-white shadow-lg shadow-primary/20"
+                    : "text-text-secondary hover:text-text-primary hover:bg-surface-2"
                 )}
               >
-                {f === "all" ? "All" : f === "low_stock" ? "Low Stock" : f === "out_of_stock" ? "Out of Stock" : "Price Changes"}
+                {filter}
               </button>
             ))}
           </div>
+
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+            <input
+              type="text"
+              placeholder="Search products..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 pr-4 py-2.5 rounded-button bg-surface border border-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary/30 transition-colors w-72"
+            />
+          </div>
         </div>
 
-        {/* Products table */}
-        <div className="card overflow-hidden p-0">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="text-left text-xs font-semibold text-text-3 uppercase tracking-wider px-4 py-3">Product</th>
-                <th className="text-left text-xs font-semibold text-text-3 uppercase tracking-wider px-4 py-3">SKU</th>
-                <th className="text-right text-xs font-semibold text-text-3 uppercase tracking-wider px-4 py-3">Price</th>
-                <th className="text-right text-xs font-semibold text-text-3 uppercase tracking-wider px-4 py-3">AI Suggested</th>
-                <th className="text-right text-xs font-semibold text-text-3 uppercase tracking-wider px-4 py-3">Stock</th>
-                <th className="text-right text-xs font-semibold text-text-3 uppercase tracking-wider px-4 py-3">Sales (30d)</th>
-                <th className="text-center text-xs font-semibold text-text-3 uppercase tracking-wider px-4 py-3">Confidence</th>
-                <th className="text-center text-xs font-semibold text-text-3 uppercase tracking-wider px-4 py-3">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProducts.map((product) => (
-                <tr key={product.id} className="border-b border-border/50 hover:bg-surface-2 transition-colors">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-surface-3 flex items-center justify-center">
-                        <Package className="w-4 h-4 text-text-3" />
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium text-text-1">{product.name}</div>
-                        <div className="text-xs text-text-3">{product.id}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-data-sm text-indigo">{product.sku}</td>
-                  <td className="px-4 py-3 text-right font-mono text-data-sm text-text-1">{formatCurrency(product.price)}</td>
-                  <td className="px-4 py-3 text-right">
-                    {product.price !== product.suggestedPrice ? (
-                      <div className="flex items-center justify-end gap-1.5">
-                        <span className="font-mono text-data-sm text-emerald">{formatCurrency(product.suggestedPrice)}</span>
-                        {product.suggestedPrice < product.price ? (
-                          <TrendingDown className="w-3 h-3 text-emerald" />
-                        ) : (
-                          <TrendingUp className="w-3 h-3 text-amber" />
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-xs text-text-3">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <span className={cn(
-                      "font-mono text-data-sm",
-                      product.stock === 0 ? "text-red" : product.stock <= 50 ? "text-amber" : "text-text-1"
-                    )}>
-                      {product.stock.toLocaleString()}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-data-sm text-text-2">{product.sales30d}</td>
-                  <td className="px-4 py-3 text-center"><ConfidencePill value={product.priceConfidence} /></td>
-                  <td className="px-4 py-3 text-center">
-                    <StatusBadge status={product.stock === 0 ? "flagged" : product.stock <= 50 ? "pending" : "approved"} />
-                  </td>
+        <div className="card p-0 overflow-hidden">
+          <div className="table-container">
+            <table className="table">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="label-caps px-5 py-4 text-left">SKU</th>
+                  <th className="label-caps px-5 py-4 text-left">Product Name</th>
+                  <th className="label-caps px-5 py-4 text-right">Stock</th>
+                  <th className="label-caps px-5 py-4 text-center">Status</th>
+                  <th className="label-caps px-5 py-4 text-right">Sales/30D</th>
+                  <th className="label-caps px-5 py-4 text-left">AI Suggestion</th>
+                  <th className="label-caps px-5 py-4 text-right">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filteredProducts.map((product) => {
+                  const SuggestionIcon = product.suggestionIcon
+                  const ActionIcon = product.actionIcon
+                  return (
+                    <tr key={product.sku} className="group transition-colors">
+                      <td className="px-5 py-4">
+                        <span className="font-mono text-data-sm text-primary">{product.sku}</span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="text-sm font-medium text-text-primary">{product.name}</span>
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        <span
+                          className={cn(
+                            "font-mono text-data-sm",
+                            product.stock === 0
+                              ? "text-danger"
+                              : product.stock <= 50
+                                ? "text-warning"
+                                : product.stock > 1000
+                                  ? "text-info"
+                                  : "text-text-primary"
+                          )}
+                        >
+                          {product.stock.toLocaleString()}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-center">
+                        <span className={cn("badge", product.statusClass)}>
+                          {product.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        <span className="font-mono text-data-sm text-text-secondary">{product.sales30d}</span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-2">
+                          <SuggestionIcon className={cn("w-4 h-4 shrink-0", product.suggestionColor)} />
+                          <span className="text-sm text-text-secondary">{product.suggestion}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        <button
+                          className={cn(
+                            "btn-ghost text-xs gap-1.5",
+                            product.action === "Emergency" &&
+                              "text-danger hover:bg-danger/10 hover:text-danger border border-danger/20"
+                          )}
+                        >
+                          <ActionIcon className="w-3.5 h-3.5" />
+                          {product.action}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <div className="dot-amber" />
+              <span className="text-sm text-text-secondary">
+                Low Stock Items: <span className="font-mono text-data-sm text-warning">12</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="dot-red" />
+              <span className="text-sm text-text-secondary">
+                Revenue at Risk: <span className="font-mono text-data-sm text-danger">$24,891</span>
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-text-muted">
+              Showing <span className="text-text-secondary font-medium">6</span> of <span className="text-text-secondary font-medium">1,847</span> products
+            </span>
+            <div className="flex items-center gap-1">
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center bg-primary text-white shadow-lg shadow-primary/20 transition-colors">
+                1
+              </button>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                2
+              </button>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                3
+              </button>
+              <span className="text-text-muted px-1">...</span>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                308
+              </button>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </Shell>

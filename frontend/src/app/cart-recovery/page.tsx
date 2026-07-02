@@ -2,205 +2,273 @@
 
 import { useState } from "react"
 import {
-  RefreshCw,
-  Mail,
-  DollarSign,
-  TrendingUp,
+  Search,
+  ChevronLeft,
+  ChevronRight,
   Send,
-  Percent,
-  Truck,
-  Zap,
-  Users,
-  Loader2,
+  Eye,
+  Mail,
+  MessageSquare,
+  Bell,
+  TrendingUp,
+  DollarSign,
+  Megaphone,
+  ShoppingCart,
 } from "lucide-react"
-import { Shell } from "@/components/layout/Shell"
-import { Topbar } from "@/components/layout/Topbar"
-import { StatusBadge } from "@/components/shared/StatusBadge"
-import { ConfidencePill } from "@/components/shared/ConfidencePill"
-import { MetricCard } from "@/components/shared/MetricCard"
-import { MetricCardSkeleton } from "@/components/shared/Skeleton"
-import { useCartRecoveryAnalytics, useCartRecover } from "@/lib/hooks"
-import { cn, formatCurrency, formatTimestamp } from "@/lib/utils"
+import Shell from "@/components/layout/Shell"
+import { cn } from "@/lib/utils"
 
-interface Cart {
-  id: string
-  customerEmail: string
-  customerName: string
-  items: { name: string; price: number; quantity: number }[]
-  total: number
-  abandonedAt: string
-  strategy: string
-  status: "pending" | "sent" | "recovered" | "expired"
-  discountCode?: string
-  confidence: number
-}
-
-const fallbackCarts: Cart[] = [
-  { id: "CART-4821", customerEmail: "sarah.chen@example.com", customerName: "Sarah Chen", items: [{ name: "Wireless Headphones", price: 79.99, quantity: 1 }, { name: "Phone Case", price: 29.99, quantity: 2 }], total: 139.97, abandonedAt: new Date(Date.now() - 3600000).toISOString(), strategy: "discount_10", status: "sent", discountCode: "SAVE10-SARAH", confidence: 0.82 },
-  { id: "CART-4820", customerEmail: "mike.johnson@example.com", customerName: "Mike Johnson", items: [{ name: "Smart Watch", price: 199.99, quantity: 1 }], total: 199.99, abandonedAt: new Date(Date.now() - 7200000).toISOString(), strategy: "free_shipping", status: "recovered", confidence: 0.78 },
-  { id: "CART-4819", customerEmail: "emma.wilson@example.com", customerName: "Emma Wilson", items: [{ name: "Running Shoes", price: 129.99, quantity: 1 }], total: 179.98, abandonedAt: new Date(Date.now() - 14400000).toISOString(), strategy: "urgency", status: "pending", confidence: 0.85 },
-  { id: "CART-4818", customerEmail: "james.brown@example.com", customerName: "James Brown", items: [{ name: "Laptop Stand", price: 49.99, quantity: 1 }], total: 89.98, abandonedAt: new Date(Date.now() - 28800000).toISOString(), strategy: "discount_15", status: "expired", confidence: 0.71 },
+const carts = [
+  {
+    id: 1,
+    customer: "Michael C.",
+    cartValue: "$342.00",
+    items: 3,
+    abandoned: "2h ago",
+    outlook: "HIGH POTENTIAL",
+    outlookClass: "badge-success",
+    lastTouchpoint: "Email Sent 14:30",
+    action: "Remind",
+  },
+  {
+    id: 2,
+    customer: "Jessica L.",
+    cartValue: "$128.00",
+    items: 1,
+    abandoned: "5h ago",
+    outlook: "MEDIUM",
+    outlookClass: "badge-warning",
+    lastTouchpoint: "SMS Queued",
+    action: "Remind",
+  },
+  {
+    id: 3,
+    customer: "David R.",
+    cartValue: "$1,247.00",
+    items: 7,
+    abandoned: "1d ago",
+    outlook: "LOW",
+    outlookClass: "badge-danger",
+    lastTouchpoint: "Email Sent Yesterday",
+    action: "View",
+  },
+  {
+    id: 4,
+    customer: "Sarah M.",
+    cartValue: "$89.00",
+    items: 2,
+    abandoned: "3h ago",
+    outlook: "HIGH POTENTIAL",
+    outlookClass: "badge-success",
+    lastTouchpoint: "Push Sent 14:32",
+    action: "Remind",
+  },
+  {
+    id: 5,
+    customer: "Chris W.",
+    cartValue: "$567.00",
+    items: 4,
+    abandoned: "8h ago",
+    outlook: "MEDIUM",
+    outlookClass: "badge-warning",
+    lastTouchpoint: "Email Sent 09:15",
+    action: "Remind",
+  },
+  {
+    id: 6,
+    customer: "Anna K.",
+    cartValue: "$234.00",
+    items: 2,
+    abandoned: "30m ago",
+    outlook: "NEW",
+    outlookClass: "badge-info",
+    lastTouchpoint: "Just Abandoned",
+    action: "Remind",
+  },
 ]
 
-const strategyLabels: Record<string, string> = {
-  discount_10: "10% Discount", discount_15: "15% Discount",
-  free_shipping: "Free Shipping", urgency: "Urgency Message", social_proof: "Social Proof",
-}
-
-const strategyIcons: Record<string, any> = {
-  discount_10: Percent, discount_15: Percent,
-  free_shipping: Truck, urgency: Zap, social_proof: Users,
-}
+const filters = ["All Carts", "Recoverable", "Recovered", "Lost"]
 
 export default function CartRecoveryPage() {
-  const [selectedCart, setSelectedCart] = useState<Cart>(fallbackCarts[0])
-  const analyticsQuery = useCartRecoveryAnalytics(7)
-  const recoverMutation = useCartRecover()
-  const analytics = analyticsQuery.data
+  const [activeFilter, setActiveFilter] = useState("All Carts")
+  const [searchQuery, setSearchQuery] = useState("")
+
+  const filtered = carts.filter((cart) => {
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      if (!cart.customer.toLowerCase().includes(q)) return false
+    }
+    if (activeFilter === "Recoverable") return cart.outlook === "HIGH POTENTIAL" || cart.outlook === "MEDIUM"
+    if (activeFilter === "Recovered") return false
+    if (activeFilter === "Lost") return cart.outlook === "LOW"
+    return true
+  })
 
   return (
-    <Shell>
-      <Topbar title="Cart Recovery" subtitle="AI-powered abandoned cart recovery" />
-
-      <div className="p-6 space-y-6">
-        {/* Metrics */}
-        {analyticsQuery.isLoading ? (
-          <div className="grid grid-cols-4 gap-4">
-            <MetricCardSkeleton /><MetricCardSkeleton /><MetricCardSkeleton /><MetricCardSkeleton />
-          </div>
-        ) : (
-          <div className="grid grid-cols-4 gap-4">
-            <MetricCard
-              label="Carts Abandoned"
-              value={analytics?.total_abandoned ?? 45}
-              icon={<RefreshCw className="w-4 h-4 text-amber" />}
-              color="bg-amber/10"
-            />
-            <MetricCard
-              label="Recovery Rate"
-              value={`${((analytics?.recovery_rate ?? 0.185) * 100).toFixed(1)}%`}
-              icon={<TrendingUp className="w-4 h-4 text-emerald" />}
-              color="bg-emerald/10"
-            />
-            <MetricCard
-              label="Revenue Recovered"
-              value={formatCurrency(analytics?.total_revenue_recovered ?? 12500)}
-              icon={<DollarSign className="w-4 h-4 text-indigo" />}
-              color="bg-indigo/10"
-            />
-            <MetricCard
-              label="Avg Cart Value"
-              value={formatCurrency(analytics?.average_cart_value ?? 145)}
-              icon={<Mail className="w-4 h-4 text-cyan" />}
-              color="bg-cyan/10"
-            />
-          </div>
-        )}
-
-        <div className="grid grid-cols-3 gap-6">
-          {/* Cart list */}
-          <div className="col-span-2 space-y-3">
-            {fallbackCarts.map((cart) => {
-              const StrategyIcon = strategyIcons[cart.strategy] || RefreshCw
-              return (
-                <button
-                  key={cart.id}
-                  onClick={() => setSelectedCart(cart)}
-                  className={cn(
-                    "card w-full text-left transition-all duration-150",
-                    selectedCart.id === cart.id && "border-indigo card-glow",
-                  )}
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-data-sm text-indigo">{cart.id}</span>
-                      <StatusBadge status={cart.status} />
-                    </div>
-                    <ConfidencePill value={cart.confidence} />
-                  </div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <div className="text-sm text-text-1">{cart.customerName}</div>
-                      <div className="text-xs text-text-3">{cart.customerEmail}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-mono text-data-sm text-text-1">{formatCurrency(cart.total)}</div>
-                      <div className="text-xs text-text-3">{cart.items.length} items</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <StrategyIcon className="w-3.5 h-3.5 text-violet" />
-                      <span className="text-xs text-text-2">{strategyLabels[cart.strategy]}</span>
-                    </div>
-                    <span className="text-xs text-text-3">{formatTimestamp(cart.abandonedAt)}</span>
-                  </div>
-                </button>
-              )
-            })}
+    <Shell
+      title="Cart Recovery"
+      subtitle="AI-powered abandoned cart detection and automated drip campaign orchestration."
+    >
+      <div className="space-y-6">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-1 bg-surface rounded-card p-1 border border-border">
+            {filters.map((filter) => (
+              <button
+                key={filter}
+                onClick={() => setActiveFilter(filter)}
+                className={cn(
+                  "px-4 py-2 rounded-button text-sm font-medium transition-all duration-200",
+                  activeFilter === filter
+                    ? "bg-primary text-white shadow-lg shadow-primary/20"
+                    : "text-text-secondary hover:text-text-primary hover:bg-surface-2"
+                )}
+              >
+                {filter}
+              </button>
+            ))}
           </div>
 
-          {/* Detail */}
-          <div className="space-y-4">
-            <div className="card">
-              <h3 className="section-label mb-4">Cart Details</h3>
-              <div className="space-y-3">
-                {selectedCart.items.map((item, i) => (
-                  <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-surface-2">
-                    <div>
-                      <div className="text-sm text-text-1">{item.name}</div>
-                      <div className="text-xs text-text-3">Qty: {item.quantity}</div>
-                    </div>
-                    <span className="font-mono text-data-sm text-text-2">{formatCurrency(item.price * item.quantity)}</span>
-                  </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+            <input
+              type="text"
+              placeholder="Search abandoned carts..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 pr-4 py-2.5 rounded-button bg-surface border border-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary/30 transition-colors w-72"
+            />
+          </div>
+        </div>
+
+        <div className="card p-0 overflow-hidden">
+          <div className="table-container">
+            <table className="table">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="label-caps px-5 py-4 text-left">Customer</th>
+                  <th className="label-caps px-5 py-4 text-right">Cart Value</th>
+                  <th className="label-caps px-5 py-4 text-center">Items</th>
+                  <th className="label-caps px-5 py-4 text-left">Abandoned</th>
+                  <th className="label-caps px-5 py-4 text-center">AI Outlook</th>
+                  <th className="label-caps px-5 py-4 text-left">Last Touchpoint</th>
+                  <th className="label-caps px-5 py-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((cart) => (
+                  <tr key={cart.id} className="group transition-colors">
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center">
+                          <span className="text-xs font-medium text-primary">
+                            {cart.customer.split(" ").map((n) => n[0]).join("")}
+                          </span>
+                        </div>
+                        <span className="text-sm font-medium text-text-primary">{cart.customer}</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      <span className="font-mono text-data-sm text-text-primary">{cart.cartValue}</span>
+                    </td>
+                    <td className="px-5 py-4 text-center">
+                      <span className="font-mono text-data-sm text-text-secondary">{cart.items}</span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className="text-sm text-text-secondary">{cart.abandoned}</span>
+                    </td>
+                    <td className="px-5 py-4 text-center">
+                      <span className={cn("badge", cart.outlookClass)}>{cart.outlook}</span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-2">
+                        {cart.lastTouchpoint.includes("Email") && (
+                          <Mail className="w-3.5 h-3.5 text-primary" />
+                        )}
+                        {cart.lastTouchpoint.includes("SMS") && (
+                          <MessageSquare className="w-3.5 h-3.5 text-info" />
+                        )}
+                        {cart.lastTouchpoint.includes("Push") && (
+                          <Bell className="w-3.5 h-3.5 text-success" />
+                        )}
+                        {cart.lastTouchpoint === "Just Abandoned" && (
+                          <ShoppingCart className="w-3.5 h-3.5 text-text-muted" />
+                        )}
+                        <span className="text-sm text-text-secondary">{cart.lastTouchpoint}</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      <button
+                        className={cn(
+                          "btn-ghost text-xs gap-1.5",
+                          cart.action === "View" ? "text-text-secondary" : "text-primary hover:bg-primary/10 hover:text-primary"
+                        )}
+                      >
+                        {cart.action === "Remind" ? (
+                          <>
+                            <Send className="w-3.5 h-3.5" />
+                            {cart.action}
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="w-3.5 h-3.5" />
+                            {cart.action}
+                          </>
+                        )}
+                      </button>
+                    </td>
+                  </tr>
                 ))}
-                <div className="flex items-center justify-between pt-2 border-t border-border">
-                  <span className="text-sm font-medium text-text-1">Total</span>
-                  <span className="font-mono text-data-sm text-indigo">{formatCurrency(selectedCart.total)}</span>
-                </div>
-              </div>
-            </div>
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-            <div className="card">
-              <h3 className="section-label mb-4">Strategy</h3>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-text-2">Strategy</span>
-                  <span className="text-sm text-text-1">{strategyLabels[selectedCart.strategy]}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-text-2">Confidence</span>
-                  <ConfidencePill value={selectedCart.confidence} />
-                </div>
-                {selectedCart.discountCode && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-text-2">Discount Code</span>
-                    <span className="font-mono text-data-sm text-violet">{selectedCart.discountCode}</span>
-                  </div>
-                )}
-              </div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <div className="dot-green" />
+              <span className="text-sm text-text-secondary">
+                Recovery Rate: <span className="font-mono text-data-sm text-success">22.4%</span>
+              </span>
             </div>
+            <div className="flex items-center gap-2">
+              <div className="dot-red" />
+              <span className="text-sm text-text-secondary">
+                Revenue at Risk: <span className="font-mono text-data-sm text-danger">$48,291</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="dot-blue" />
+              <span className="text-sm text-text-secondary">
+                Active Campaigns: <span className="font-mono text-data-sm text-primary">38</span>
+              </span>
+            </div>
+          </div>
 
-            <div className="card">
-              <h3 className="section-label mb-4">Actions</h3>
-              <div className="space-y-2">
-                {selectedCart.status === "pending" && (
-                  <button
-                    onClick={() => recoverMutation.mutate({ cartId: selectedCart.id, strategy: selectedCart.strategy })}
-                    disabled={recoverMutation.isPending}
-                    className="w-full btn-primary justify-center"
-                  >
-                    {recoverMutation.isPending ? (
-                      <><Loader2 className="w-4 h-4 animate-spin" /> Sending...</>
-                    ) : (
-                      <><Send className="w-4 h-4" /> Send Recovery Email</>
-                    )}
-                  </button>
-                )}
-                <button className="w-full btn-ghost justify-center">
-                  <Mail className="w-4 h-4" /> View Customer
-                </button>
-              </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-text-muted">
+              Showing <span className="text-text-secondary font-medium">6</span> of <span className="text-text-secondary font-medium">142</span> abandoned carts
+            </span>
+            <div className="flex items-center gap-1">
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center bg-primary text-white shadow-lg shadow-primary/20 transition-colors">
+                1
+              </button>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                2
+              </button>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                3
+              </button>
+              <span className="text-text-muted px-1">...</span>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                24
+              </button>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
           </div>
         </div>

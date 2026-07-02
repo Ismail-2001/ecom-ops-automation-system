@@ -2,182 +2,279 @@
 
 import { useState } from "react"
 import {
-  Bot,
   Shield,
-  Package,
+  ClipboardList,
   DollarSign,
-  Star,
+  MessageSquare,
   Megaphone,
-  HeadphonesIcon,
-  RefreshCw,
+  ShoppingCart,
+  Headphones,
+  Plus,
   Activity,
-  Zap,
-  Clock,
-  CheckCircle,
-  AlertCircle,
-  TrendingUp,
-  Settings,
 } from "lucide-react"
-import { Shell } from "@/components/layout/Shell"
-import { Topbar } from "@/components/layout/Topbar"
-import { StatusBadge } from "@/components/shared/StatusBadge"
-import { ConfidencePill } from "@/components/shared/ConfidencePill"
-import { MetricCardSkeleton } from "@/components/shared/Skeleton"
-import { useAgentStatus } from "@/lib/hooks"
-import { cn } from "@/lib/utils"
-import type { AgentStatus } from "@/lib/api"
+import Shell from "@/components/layout/Shell"
 
-const fallbackAgents: AgentStatus[] = [
-  { name: "fraud_detection", display_name: "Fraud Detection", status: "active", accuracy: 95.2, confidence: 0.92, processed_today: 120, last_activity: new Date().toISOString(), uptime: 99.9, error_rate: 0.1, avg_response_time: 1.2 },
-  { name: "inventory_management", display_name: "Inventory Management", status: "active", accuracy: 88.5, confidence: 0.87, processed_today: 45, last_activity: new Date().toISOString(), uptime: 99.8, error_rate: 0.2, avg_response_time: 2.1 },
-  { name: "price_optimization", display_name: "Price Optimization", status: "active", accuracy: 91.3, confidence: 0.89, processed_today: 89, last_activity: new Date().toISOString(), uptime: 99.7, error_rate: 0.1, avg_response_time: 0.5 },
-  { name: "review_moderation", display_name: "Review Moderation", status: "active", accuracy: 90.1, confidence: 0.85, processed_today: 34, last_activity: new Date().toISOString(), uptime: 99.9, error_rate: 0.0, avg_response_time: 0.8 },
-  { name: "marketing_automation", display_name: "Marketing Automation", status: "active", accuracy: 87.2, confidence: 0.83, processed_today: 28, last_activity: new Date().toISOString(), uptime: 99.8, error_rate: 0.1, avg_response_time: 1.5 },
-  { name: "cart_recovery", display_name: "Cart Recovery", status: "active", accuracy: 85.6, confidence: 0.81, processed_today: 52, last_activity: new Date().toISOString(), uptime: 99.9, error_rate: 0.0, avg_response_time: 2.5 },
-  { name: "customer_support", display_name: "Customer Support", status: "active", accuracy: 89.4, confidence: 0.86, processed_today: 67, last_activity: new Date().toISOString(), uptime: 99.8, error_rate: 0.1, avg_response_time: 2.8 },
+type AgentStatus = "ACTIVE" | "BUSY" | "IDLE"
+
+interface Agent {
+  id: string
+  name: string
+  description: string
+  icon: any
+  status: AgentStatus
+  metrics: { label: string; value: string }[]
+  sparkColor: string
+}
+
+const agents: Agent[] = [
+  {
+    id: "fraud",
+    name: "Fraud Detection",
+    description: "Real-time transaction auditing.",
+    icon: Shield,
+    status: "ACTIVE",
+    metrics: [
+      { label: "ACCURACY", value: "98.2%" },
+      { label: "DECISIONS", value: "1,242" },
+    ],
+    sparkColor: "#10B981",
+  },
+  {
+    id: "inventory",
+    name: "Inventory",
+    description: "Stock optimization & replenishment.",
+    icon: ClipboardList,
+    status: "ACTIVE",
+    metrics: [
+      { label: "PRECISION", value: "99.1%" },
+      { label: "DECISIONS", value: "456" },
+    ],
+    sparkColor: "#06B6D4",
+  },
+  {
+    id: "price",
+    name: "Price Optimizer",
+    description: "Dynamic market re-pricing.",
+    icon: DollarSign,
+    status: "BUSY",
+    metrics: [
+      { label: "PROFIT Δ", value: "+14.2%" },
+      { label: "DECISIONS", value: "8,902" },
+    ],
+    sparkColor: "#F59E0B",
+  },
+  {
+    id: "review",
+    name: "Review Moderator",
+    description: "Sentiment & spam filtering.",
+    icon: MessageSquare,
+    status: "IDLE",
+    metrics: [
+      { label: "SENTIMENT", value: "Neutral" },
+      { label: "DECISIONS", value: "129" },
+    ],
+    sparkColor: "#64748B",
+  },
+  {
+    id: "marketing",
+    name: "Marketing",
+    description: "Ad spend and copy generation.",
+    icon: Megaphone,
+    status: "ACTIVE",
+    metrics: [
+      { label: "ROAS", value: "4.2x" },
+      { label: "DECISIONS", value: "231" },
+    ],
+    sparkColor: "#6366F1",
+  },
+  {
+    id: "cart",
+    name: "Cart Recovery",
+    description: "Drip campaigns & offer intent.",
+    icon: ShoppingCart,
+    status: "ACTIVE",
+    metrics: [
+      { label: "RECOVERY", value: "22.4%" },
+      { label: "DECISIONS", value: "3,110" },
+    ],
+    sparkColor: "#10B981",
+  },
+  {
+    id: "support",
+    name: "Customer Support",
+    description: "Tier-1 automated ticket resolution.",
+    icon: Headphones,
+    status: "BUSY",
+    metrics: [
+      { label: "RESOLUTION", value: "84%" },
+      { label: "AVG RESPONSE", value: "1.2s" },
+      { label: "TICKETS", value: "5,412" },
+    ],
+    sparkColor: "#EF4444",
+  },
 ]
 
-const agentIcons: Record<string, any> = {
-  fraud_detection: Shield,
-  inventory_management: Package,
-  price_optimization: DollarSign,
-  review_moderation: Star,
-  marketing_automation: Megaphone,
-  cart_recovery: RefreshCw,
-  customer_support: HeadphonesIcon,
+const inferenceLogs = [
+  {
+    timestamp: "14:22:01.04",
+    agent: "Fraud Detector",
+    action: "Blocked Tx #9012 (High Risk)",
+    result: "PREVENTED",
+    resultClass: "badge-success",
+    latency: "82ms",
+  },
+  {
+    timestamp: "14:21:58.21",
+    agent: "Inventory",
+    action: "Restock triggered: SKU-441",
+    result: "ORDERED",
+    resultClass: "badge-info",
+    latency: "114ms",
+  },
+  {
+    timestamp: "14:21:44.92",
+    agent: "Price Optimizer",
+    action: "Adjusted MSRP +2.1% (Competitor Out)",
+    result: "APPLIED",
+    resultClass: "badge-success",
+    latency: "45ms",
+  },
+]
+
+function Sparkline({ color }: { color: string }) {
+  return (
+    <svg viewBox="0 0 120 32" className="w-full h-8 mt-3 opacity-60">
+      <path
+        d="M0,24 C10,22 15,18 25,20 C35,22 40,14 50,16 C60,18 65,10 75,12 C85,14 90,8 100,10 C110,12 115,6 120,8"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M0,24 C10,22 15,18 25,20 C35,22 40,14 50,16 C60,18 65,10 75,12 C85,14 90,8 100,10 C110,12 115,6 120,8 L120,32 L0,32 Z"
+        fill={color}
+        opacity="0.1"
+      />
+    </svg>
+  )
 }
 
-const agentColors: Record<string, string> = {
-  fraud_detection: "red",
-  inventory_management: "cyan",
-  price_optimization: "amber",
-  review_moderation: "violet",
-  marketing_automation: "indigo",
-  cart_recovery: "emerald",
-  customer_support: "cyan",
+const statusConfig: Record<AgentStatus, { dot: string; badge: string; label: string }> = {
+  ACTIVE: { dot: "dot-green", badge: "badge-success", label: "ACTIVE" },
+  BUSY: { dot: "dot-amber", badge: "badge-warning", label: "BUSY" },
+  IDLE: { dot: "dot-gray", badge: "badge-muted", label: "IDLE" },
 }
+
+const filterTabs = ["All Agents", "Active", "Maintenance"] as const
 
 export default function AgentsPage() {
-  const agentsQuery = useAgentStatus()
-  const agents = agentsQuery.data?.length ? agentsQuery.data : fallbackAgents
-  const [selected, setSelected] = useState<AgentStatus>(agents[0])
+  const [activeFilter, setActiveFilter] = useState<string>("All Agents")
+
+  const filteredAgents = agents.filter((agent) => {
+    if (activeFilter === "All Agents") return true
+    if (activeFilter === "Active") return agent.status === "ACTIVE" || agent.status === "BUSY"
+    if (activeFilter === "Maintenance") return agent.status === "IDLE"
+    return true
+  })
 
   return (
-    <Shell>
-      <Topbar
-        title="AI Agents"
-        subtitle="Manage and monitor intelligent automation"
-        actions={
-          <button className="btn-primary">
-            <Settings className="w-3.5 h-3.5" />
-            Configure
-          </button>
-        }
-      />
-
-      <div className="p-6">
-        <div className="grid grid-cols-3 gap-6">
-          {/* Agent cards */}
-          <div className="col-span-2">
-            {agentsQuery.isLoading ? (
-              <div className="grid grid-cols-2 gap-4">
-                <MetricCardSkeleton /><MetricCardSkeleton />
-                <MetricCardSkeleton /><MetricCardSkeleton />
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-4">
-                {agents.map((agent) => {
-                  const Icon = agentIcons[agent.name] || Bot
-                  const color = agentColors[agent.name] || "indigo"
-                  const isSelected = selected.name === agent.name
-
-                  return (
-                    <button
-                      key={agent.name}
-                      onClick={() => setSelected(agent)}
-                      className={cn(
-                        "card text-left transition-all duration-150",
-                        isSelected && "border-indigo card-glow",
-                      )}
-                    >
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                          <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center", `bg-${color}/10`)}>
-                            <Icon className={cn("w-5 h-5", `text-${color}`)} />
-                          </div>
-                          <div>
-                            <h3 className="font-display font-semibold text-text-1">{agent.display_name}</h3>
-                            <div className="flex items-center gap-2 mt-1">
-                              <div className={agent.status === "active" ? "dot-active" : "dot-paused"} />
-                              <StatusBadge status={agent.status} />
-                            </div>
-                          </div>
-                        </div>
-                        <ConfidencePill value={agent.confidence} />
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-3">
-                        <div>
-                          <div className="section-label text-[9px] mb-1">Accuracy</div>
-                          <div className="font-mono text-data-sm text-emerald">{agent.accuracy}%</div>
-                        </div>
-                        <div>
-                          <div className="section-label text-[9px] mb-1">Processed</div>
-                          <div className="font-mono text-data-sm text-text-2">{agent.processed_today}</div>
-                        </div>
-                        <div>
-                          <div className="section-label text-[9px] mb-1">Avg Time</div>
-                          <div className="font-mono text-data-sm text-text-2">{agent.avg_response_time}s</div>
-                        </div>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Detail panel */}
-          <div className="space-y-4">
-            <div className="card">
-              <div className="flex items-center gap-3 mb-4">
-                <div className={cn("w-12 h-12 rounded-lg flex items-center justify-center", `bg-${agentColors[selected.name] || "indigo"}/10`)}>
-                  {(() => {
-                    const Icon = agentIcons[selected.name] || Bot
-                    return <Icon className={cn("w-6 h-6", `text-${agentColors[selected.name] || "indigo"}`)} />
-                  })()}
+    <Shell
+      title="Autonomous Agents"
+      subtitle="Manage and monitor your AI-driven operational workforce."
+      actions={
+        <div className="flex items-center gap-1 bg-surface rounded-card p-1 border border-border">
+          {filterTabs.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveFilter(tab)}
+              className={
+                activeFilter === tab
+                  ? "px-3 py-1.5 rounded-button text-xs font-medium bg-primary/15 text-primary transition-colors"
+                  : "px-3 py-1.5 rounded-button text-xs font-medium text-text-muted hover:text-text-secondary transition-colors"
+              }
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+      }
+    >
+      <div className="grid grid-cols-4 gap-4">
+        {filteredAgents.map((agent) => {
+          const Icon = agent.icon
+          const sc = statusConfig[agent.status]
+          return (
+            <div key={agent.id} className="card-hover group">
+              <div className="flex items-start justify-between mb-3">
+                <div className="w-10 h-10 rounded-button bg-primary/10 flex items-center justify-center">
+                  <Icon className="w-5 h-5 text-primary" />
                 </div>
-                <div>
-                  <h2 className="font-display font-bold text-lg text-text-1">{selected.display_name}</h2>
-                  <div className="flex items-center gap-2 mt-1">
-                    <div className={selected.status === "active" ? "dot-active" : "dot-paused"} />
-                    <StatusBadge status={selected.status} size="md" />
-                  </div>
-                </div>
+                <span className={sc.badge}>{sc.label}</span>
               </div>
-            </div>
-
-            <div className="card">
-              <h3 className="section-label mb-4">Performance</h3>
-              <div className="space-y-4">
-                {[
-                  { icon: CheckCircle, label: "Accuracy", value: `${selected.accuracy}%`, color: "emerald" },
-                  { icon: Zap, label: "Confidence", pill: <ConfidencePill value={selected.confidence} /> },
-                  { icon: Activity, label: "Processed Today", value: String(selected.processed_today), color: "text-text-2" },
-                  { icon: Clock, label: "Avg Response", value: `${selected.avg_response_time}s`, color: "text-text-2" },
-                  { icon: AlertCircle, label: "Error Rate", value: `${selected.error_rate}%`, color: "text-text-2" },
-                  { icon: TrendingUp, label: "Uptime", value: `${selected.uptime}%`, color: "emerald" },
-                ].map(({ icon: Icon, label, value, pill, color }) => (
-                  <div key={label} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Icon className={`w-4 h-4 text-${color || "indigo"}`} />
-                      <span className="text-sm text-text-2">{label}</span>
-                    </div>
-                    {pill || <span className={`font-mono text-data-sm text-${color}`}>{value}</span>}
+              <h3 className="font-display font-semibold text-text-primary mb-1">{agent.name}</h3>
+              <p className="text-body-sm text-text-muted mb-3">{agent.description}</p>
+              <div className="flex gap-4">
+                {agent.metrics.map((m) => (
+                  <div key={m.label}>
+                    <div className="label-caps text-[10px] mb-0.5">{m.label}</div>
+                    <div className="font-mono text-data-sm text-text-primary">{m.value}</div>
                   </div>
                 ))}
               </div>
+              <Sparkline color={agent.sparkColor} />
             </div>
+          )
+        })}
+
+        <button className="card border-2 border-dashed border-border hover:border-primary/40 flex flex-col items-center justify-center gap-3 min-h-[200px] transition-all duration-200 group">
+          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+            <Plus className="w-6 h-6 text-primary" />
+          </div>
+          <span className="label-caps text-text-muted group-hover:text-primary transition-colors">Deploy New Agent</span>
+        </button>
+      </div>
+
+      <div className="mt-6 grid grid-cols-3 gap-4">
+        <div className="col-span-2 card">
+          <h3 className="label-caps mb-4">Inference Logs</h3>
+          <div className="table-container">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>TIMESTAMP</th>
+                  <th>AGENT</th>
+                  <th>ACTION TAKEN</th>
+                  <th>RESULT</th>
+                  <th>LATENCY</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inferenceLogs.map((log, i) => (
+                  <tr key={i}>
+                    <td className="font-mono text-data-sm text-text-secondary">{log.timestamp}</td>
+                    <td className="text-body-md text-text-primary">{log.agent}</td>
+                    <td className="text-body-md text-text-secondary">{log.action}</td>
+                    <td><span className={log.resultClass}>{log.result}</span></td>
+                    <td className="font-mono text-data-sm text-text-muted">{log.latency}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="card flex flex-col justify-center">
+          <div className="flex items-center gap-3 mb-3">
+            <Activity className="w-5 h-5 text-success" />
+            <span className="font-display font-semibold text-text-primary">System Healthy</span>
+          </div>
+          <div className="progress-bar">
+            <div className="progress-fill bg-success" style={{ width: "94%" }} />
+          </div>
+          <div className="flex justify-between mt-2">
+            <span className="text-body-sm text-text-muted">Uptime</span>
+            <span className="font-mono text-data-sm text-success">94%</span>
           </div>
         </div>
       </div>

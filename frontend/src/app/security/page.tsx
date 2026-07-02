@@ -1,186 +1,302 @@
 "use client"
 
+import { useState } from "react"
 import {
   Shield,
-  Key,
-  Activity,
-  RefreshCw,
-  Plus,
-  CheckCircle,
-  AlertTriangle,
+  ShieldAlert,
+  UserX,
+  Users,
+  TrendingUp,
+  TrendingDown,
+  ChevronLeft,
+  ChevronRight,
+  Lock,
+  Eye,
 } from "lucide-react"
-import { Shell } from "@/components/layout/Shell"
-import { Topbar } from "@/components/layout/Topbar"
-import { StatusBadge } from "@/components/shared/StatusBadge"
-import { MetricCardSkeleton } from "@/components/shared/Skeleton"
-import { useSecurityUsers, useSecurityApiKeys, useSecurityAuditLogs, useSecurityAuditSummary } from "@/lib/hooks"
-import { cn, formatTimestamp } from "@/lib/utils"
+import Shell from "@/components/layout/Shell"
+import { cn } from "@/lib/utils"
 
-const fallbackUsers = [
-  { id: "u-1", name: "Ismail Sajid", email: "ismail@example.com", role: "super_admin", is_active: true, created_at: new Date(Date.now() - 86400000 * 30).toISOString(), last_login: new Date(Date.now() - 300000).toISOString() },
-  { id: "u-2", name: "Admin User", email: "admin@example.com", role: "admin", is_active: true, created_at: new Date(Date.now() - 86400000 * 15).toISOString(), last_login: new Date(Date.now() - 3600000).toISOString() },
-  { id: "u-3", name: "Viewer Account", email: "viewer@example.com", role: "viewer", is_active: true, created_at: new Date(Date.now() - 86400000 * 7).toISOString(), last_login: new Date(Date.now() - 86400000).toISOString() },
+const filters = ["All Events", "Critical", "Warning", "Info"]
+
+const metrics = [
+  {
+    label: "SECURITY SCORE",
+    value: "A+",
+    icon: Shield,
+    iconBg: "bg-success/10",
+    iconColor: "text-success",
+  },
+  {
+    label: "THREATS BLOCKED",
+    value: "1,247",
+    change: "+23%",
+    changeDir: "up" as const,
+    icon: ShieldAlert,
+    iconBg: "bg-primary/10",
+    iconColor: "text-primary",
+  },
+  {
+    label: "FAILED LOGINS",
+    value: "12",
+    change: "-45%",
+    changeDir: "down" as const,
+    icon: UserX,
+    iconBg: "bg-danger/10",
+    iconColor: "text-danger",
+  },
+  {
+    label: "ACTIVE SESSIONS",
+    value: "847",
+    icon: Users,
+    iconBg: "bg-info/10",
+    iconColor: "text-info",
+  },
 ]
 
-const fallbackKeys = [
-  { id: "key-1", name: "Production API", user_id: "u-1", role: "admin", is_active: true, expires_at: null, last_used: new Date(Date.now() - 60000).toISOString(), usage_count: 1240, created_at: new Date(Date.now() - 86400000 * 30).toISOString() },
-  { id: "key-2", name: "Staging API", user_id: "u-2", role: "viewer", is_active: true, expires_at: null, last_used: new Date(Date.now() - 3600000).toISOString(), usage_count: 320, created_at: new Date(Date.now() - 86400000 * 10).toISOString() },
-]
-
-const fallbackAudit = [
-  { id: "a-1", timestamp: new Date(Date.now() - 300000).toISOString(), event_type: "auth", action: "login", resource: "user", resource_id: "u-1", user_id: "u-1", success: true, risk_level: "low" },
-  { id: "a-2", timestamp: new Date(Date.now() - 600000).toISOString(), event_type: "api_key", action: "created", resource: "api_key", resource_id: "key-1", user_id: "u-1", success: true, risk_level: "low" },
-  { id: "a-3", timestamp: new Date(Date.now() - 1200000).toISOString(), event_type: "config", action: "updated", resource: "settings", resource_id: null, user_id: "u-1", success: true, risk_level: "medium" },
+const events = [
+  {
+    id: "SEC-001",
+    time: "14:22:01",
+    type: "Brute Force",
+    typeClass: "badge-danger",
+    severity: "CRITICAL",
+    severityClass: "badge-danger",
+    ip: "192.168.1.105",
+    user: "unknown",
+    action: "BLOCKED",
+    actionClass: "badge-success",
+  },
+  {
+    id: "SEC-002",
+    time: "14:21:45",
+    type: "SQL Injection",
+    typeClass: "badge-danger",
+    severity: "HIGH",
+    severityClass: "badge-danger",
+    ip: "10.0.0.52",
+    user: "admin",
+    action: "PREVENTED",
+    actionClass: "badge-success",
+  },
+  {
+    id: "SEC-003",
+    time: "14:20:33",
+    type: "Privilege Escalation",
+    typeClass: "badge-danger",
+    severity: "CRITICAL",
+    severityClass: "badge-danger",
+    ip: "172.16.0.88",
+    user: "moderator",
+    action: "BLOCKED",
+    actionClass: "badge-success",
+  },
+  {
+    id: "SEC-004",
+    time: "14:19:12",
+    type: "API Rate Limit",
+    typeClass: "badge-warning",
+    severity: "WARNING",
+    severityClass: "badge-warning",
+    ip: "192.168.1.201",
+    user: "api-user",
+    action: "THROTTLED",
+    actionClass: "badge-warning",
+  },
+  {
+    id: "SEC-005",
+    time: "14:18:55",
+    type: "Successful Login",
+    typeClass: "badge-info",
+    severity: "INFO",
+    severityClass: "badge-info",
+    ip: "10.0.0.15",
+    user: "admin",
+    action: "ALLOWED",
+    actionClass: "badge-info",
+  },
+  {
+    id: "SEC-006",
+    time: "14:17:30",
+    type: "File Upload",
+    typeClass: "badge-warning",
+    severity: "WARNING",
+    severityClass: "badge-warning",
+    ip: "172.16.0.44",
+    user: "uploader",
+    action: "SCANNING",
+    actionClass: "badge-warning",
+  },
 ]
 
 export default function SecurityPage() {
-  const usersQuery = useSecurityUsers()
-  const keysQuery = useSecurityApiKeys()
-  const auditLogsQuery = useSecurityAuditLogs({ limit: 10 })
-  const auditSummaryQuery = useSecurityAuditSummary(24)
+  const [activeFilter, setActiveFilter] = useState("All Events")
 
-  const users = usersQuery.data?.users?.length ? usersQuery.data.users : fallbackUsers
-  const keys = keysQuery.data?.api_keys?.length ? keysQuery.data.api_keys : fallbackKeys
-  const logs = auditLogsQuery.data?.entries?.length ? auditLogsQuery.data.entries : fallbackAudit
-  const summary = auditSummaryQuery.data
+  const filteredEvents = events.filter((event) => {
+    if (activeFilter === "Critical") return event.severity === "CRITICAL"
+    if (activeFilter === "Warning") return event.severity === "WARNING"
+    if (activeFilter === "Info") return event.severity === "INFO"
+    return true
+  })
 
   return (
-    <Shell>
-      <Topbar title="Security" subtitle="Access control, API keys, and audit logging" />
-
-      <div className="p-6 space-y-6">
-        {/* Security stats */}
-        <div className="grid grid-cols-5 gap-4">
-          {usersQuery.isLoading ? (
-            Array.from({ length: 5 }).map((_, i) => <MetricCardSkeleton key={i} />)
-          ) : (
-            <>
-              <div className="card">
-                <div className="section-label mb-2">Security Score</div>
-                <div className="metric-value text-display-md text-emerald">87/100</div>
-                <div className="progress-bar mt-2">
-                  <div className="progress-bar-fill" style={{ width: "87%" }} />
-                </div>
-              </div>
-              <div className="card">
-                <div className="section-label mb-2">Active Users</div>
-                <div className="metric-value text-display-md text-text-1">{users.filter((u) => u.is_active).length}</div>
-              </div>
-              <div className="card">
-                <div className="section-label mb-2">API Keys</div>
-                <div className="metric-value text-display-md text-indigo">{keys.length}</div>
-              </div>
-              <div className="card">
-                <div className="section-label mb-2">Failed Logins (24h)</div>
-                <div className="metric-value text-display-md text-amber">{summary?.failed_logins ?? 0}</div>
-              </div>
-              <div className="card">
-                <div className="section-label mb-2">Audit Events</div>
-                <div className="metric-value text-display-md text-text-1">{(summary?.total_events ?? logs.length).toLocaleString()}</div>
-              </div>
-            </>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 gap-6">
-          {/* Users */}
-          <div className="card">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-display font-semibold text-text-1">Users</h2>
-              <button className="btn-primary text-xs py-1.5 px-3">
-                <Plus className="w-3 h-3" /> Add User
-              </button>
-            </div>
-            <div className="space-y-3">
-              {users.map((user) => (
-                <div key={user.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-surface-2 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-surface-3 flex items-center justify-center">
-                      <span className="text-xs font-medium text-text-2">
-                        {user.name.split(" ").map((n) => n[0]).join("")}
-                      </span>
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-text-1">{user.name}</div>
-                      <div className="text-xs text-text-3">{user.email}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="badge badge-active text-[10px]">{user.role.replace("_", " ")}</span>
-                    <span className="text-xs text-text-3">{user.last_login ? formatTimestamp(user.last_login) : "never"}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* API Keys */}
-          <div className="card">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-display font-semibold text-text-1">API Keys</h2>
-              <button className="btn-primary text-xs py-1.5 px-3">
-                <Key className="w-3 h-3" /> Generate Key
-              </button>
-            </div>
-            <div className="space-y-3">
-              {keys.map((key) => (
-                <div key={key.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-surface-2 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-indigo/10 flex items-center justify-center">
-                      <Key className="w-4 h-4 text-indigo" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-text-1">{key.name}</div>
-                      <div className="font-mono text-data-xs text-text-3">{key.role} • {key.usage_count} uses</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <StatusBadge status={key.is_active ? "active" : "paused"} />
-                    <span className="text-xs text-text-3">{key.last_used ? formatTimestamp(key.last_used) : "never"}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Audit log */}
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display font-semibold text-text-1">Audit Log</h2>
-            <button onClick={() => auditLogsQuery.refetch()} className="btn-ghost text-xs py-1.5 px-3">
-              <RefreshCw className={cn("w-3 h-3", auditLogsQuery.isFetching && "animate-spin")} />
-              Refresh
+    <Shell
+      title="Security Operations"
+      subtitle="Real-time threat detection, access control monitoring, and compliance management."
+    >
+      <div className="space-y-6">
+        <div className="flex items-center gap-1 bg-surface rounded-card p-1 border border-border w-fit">
+          {filters.map((filter) => (
+            <button
+              key={filter}
+              onClick={() => setActiveFilter(filter)}
+              className={cn(
+                "px-4 py-2 rounded-button text-sm font-medium transition-all duration-200",
+                activeFilter === filter
+                  ? "bg-primary text-white shadow-lg shadow-primary/20"
+                  : "text-text-secondary hover:text-text-primary hover:bg-surface-2"
+              )}
+            >
+              {filter}
             </button>
-          </div>
-          <div className="space-y-2">
-            {logs.map((event) => (
-              <div key={event.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-surface-2 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className={cn(
-                    "w-8 h-8 rounded-lg flex items-center justify-center",
-                    event.event_type === "auth" ? "bg-emerald/10" :
-                    event.event_type === "api_key" ? "bg-indigo/10" :
-                    "bg-amber/10",
-                  )}>
-                    {event.success ? (
-                      <CheckCircle className="w-4 h-4 text-emerald" />
-                    ) : (
-                      <AlertTriangle className="w-4 h-4 text-amber" />
+          ))}
+        </div>
+
+        <div className="grid grid-cols-4 gap-4">
+          {metrics.map((m) => {
+            const Icon = m.icon
+            return (
+              <div key={m.label} className="card">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className={`w-9 h-9 rounded-button ${m.iconBg} flex items-center justify-center`}>
+                    <Icon className={`w-4 h-4 ${m.iconColor}`} />
+                  </div>
+                  <span className="label-caps">{m.label}</span>
+                </div>
+                <div className={cn(
+                  "font-display text-data-lg",
+                  m.value === "A+" ? "text-success" : "text-text-primary"
+                )}>
+                  {m.value}
+                </div>
+                {m.change && (
+                  <div className="mt-1">
+                    {m.changeDir === "up" && (
+                      <span className="inline-flex items-center gap-1 text-body-sm text-success font-medium">
+                        <TrendingUp className="w-3 h-3" />{m.change}
+                      </span>
+                    )}
+                    {m.changeDir === "down" && (
+                      <span className="inline-flex items-center gap-1 text-body-sm text-success font-medium">
+                        <TrendingDown className="w-3 h-3" />{m.change}
+                      </span>
                     )}
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-data-xs text-indigo">{event.action}</span>
-                      <span className="text-xs text-text-3">on</span>
-                      <span className="text-xs text-text-2">{event.resource}</span>
-                    </div>
-                    <div className="text-xs text-text-3 mt-0.5">Risk: {event.risk_level}</div>
-                  </div>
-                </div>
-                <span className="text-xs text-text-3">{formatTimestamp(event.timestamp)}</span>
+                )}
               </div>
-            ))}
+            )
+          })}
+        </div>
+
+        <div className="card p-0 overflow-hidden">
+          <div className="table-container">
+            <table className="table">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="label-caps px-5 py-4 text-left">EVENT ID</th>
+                  <th className="label-caps px-5 py-4 text-left">TIMESTAMP</th>
+                  <th className="label-caps px-5 py-4 text-left">EVENT TYPE</th>
+                  <th className="label-caps px-5 py-4 text-center">SEVERITY</th>
+                  <th className="label-caps px-5 py-4 text-left">SOURCE IP</th>
+                  <th className="label-caps px-5 py-4 text-left">USER</th>
+                  <th className="label-caps px-5 py-4 text-center">ACTION</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredEvents.map((event) => (
+                  <tr key={event.id} className="group transition-colors">
+                    <td className="px-5 py-4">
+                      <span className="font-mono text-data-sm text-primary">{event.id}</span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className="font-mono text-data-sm text-text-secondary">{event.time}</span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className={event.typeClass}>{event.type}</span>
+                    </td>
+                    <td className="px-5 py-4 text-center">
+                      <span className={event.severityClass}>{event.severity}</span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className="font-mono text-data-sm text-text-secondary">{event.ip}</span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-2">
+                        <div className={cn(
+                          "w-6 h-6 rounded-full flex items-center justify-center shrink-0",
+                          event.user === "unknown" ? "bg-danger/15" : "bg-surface-3"
+                        )}>
+                          {event.user === "unknown" ? (
+                            <UserX className="w-3 h-3 text-danger" />
+                          ) : (
+                            <span className="text-[10px] font-medium text-text-secondary">
+                              {event.user.slice(0, 2).toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-sm text-text-primary">{event.user}</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4 text-center">
+                      <span className={event.actionClass}>{event.action}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <div className="dot-red" />
+              <span className="text-sm text-text-secondary">
+                Critical Threats Blocked: <span className="font-mono text-data-sm text-danger">3</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="dot-green" />
+              <span className="text-sm text-text-secondary">
+                Firewall Status: <span className="font-mono text-data-sm text-success">ACTIVE</span>
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-text-muted">
+              Showing <span className="text-text-secondary font-medium">6</span> of <span className="text-text-secondary font-medium">1,247</span> events
+            </span>
+            <div className="flex items-center gap-1">
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center bg-primary text-white shadow-lg shadow-primary/20 transition-colors">
+                1
+              </button>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                2
+              </button>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                3
+              </button>
+              <span className="text-text-muted px-1">...</span>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                208
+              </button>
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
