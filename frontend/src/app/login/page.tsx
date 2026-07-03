@@ -18,13 +18,13 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-void flex items-center justify-center p-6">
+    <div className="min-h-screen bg-white flex items-center justify-center p-6">
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center">
-              <Zap className="w-6 h-6 text-primary" />
+            <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center">
+              <Zap className="w-6 h-6 text-white" />
             </div>
           </div>
           <h1 className="font-display text-3xl font-bold text-text-primary">OpsIQ</h1>
@@ -32,18 +32,18 @@ export default function LoginPage() {
         </div>
 
         {/* Form Card */}
-        <form onSubmit={handleSubmit} className="rounded-xl bg-surface border border-border p-6 space-y-5">
-          <h2 className="font-display text-display-sm text-text-primary text-center">
+        <form onSubmit={handleSubmit} className="card">
+          <h2 className="font-display text-lg text-text-primary text-center mb-5">
             Enter API Key to Access Command Center
           </h2>
 
-          <div>
+          <div className="mb-5">
             <div className="flex items-center justify-between mb-1.5">
-              <label className="flex items-center gap-1.5 text-label font-semibold uppercase tracking-widest text-text-muted">
+              <label className="flex items-center gap-1.5 label-caps">
                 <KeyRound className="w-3 h-3" />
                 API Key
               </label>
-              <span className="label-caps text-primary">ENCRYPTED</span>
+              <span className="badge-success text-[10px]">ENCRYPTED</span>
             </div>
             <div className="relative">
               <input
@@ -54,7 +54,7 @@ export default function LoginPage() {
                   clearError()
                 }}
                 placeholder="opsiq-dev-key-2024"
-                className="w-full px-4 py-3 rounded-lg bg-surface-2 border border-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all font-mono"
+                className="w-full px-4 py-3 rounded-button bg-surface-2 border border-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-mono"
                 autoFocus
               />
               <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
@@ -62,7 +62,7 @@ export default function LoginPage() {
           </div>
 
           {error && (
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-danger/10 border border-danger/20">
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-danger-light border border-danger/20 mb-5">
               <AlertCircle className="w-4 h-4 text-danger shrink-0" />
               <span className="text-sm text-danger">{error}</span>
             </div>
@@ -103,7 +103,7 @@ export default function LoginPage() {
         {/* System Status */}
         <div className="flex items-center justify-center gap-2 mt-8 text-xs font-mono text-success">
           <span className="dot-green" />
-          SYSTEMS OPERATIONAL
+          System Operational
         </div>
       </div>
     </div>

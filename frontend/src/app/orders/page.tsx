@@ -13,8 +13,7 @@ const orders = [
     status: "Processing",
     statusClass: "badge-primary",
     fraudScore: 87,
-    riskClass: "bg-danger",
-    riskLevel: "risk-high",
+    riskClass: "risk-high",
     confidence: 98.2,
     confidenceClass: "confidence-high",
     action: "Review",
@@ -27,8 +26,7 @@ const orders = [
     status: "Delivered",
     statusClass: "badge-success",
     fraudScore: 12,
-    riskClass: "bg-success",
-    riskLevel: "risk-low",
+    riskClass: "risk-low",
     confidence: 99.1,
     confidenceClass: "confidence-high",
     action: "View",
@@ -41,8 +39,7 @@ const orders = [
     status: "Flagged",
     statusClass: "badge-danger",
     fraudScore: 94,
-    riskClass: "bg-danger",
-    riskLevel: "risk-high",
+    riskClass: "risk-high",
     confidence: 82.4,
     confidenceClass: "confidence-low",
     action: "Block",
@@ -55,8 +52,7 @@ const orders = [
     status: "Processing",
     statusClass: "badge-primary",
     fraudScore: 23,
-    riskClass: "bg-success",
-    riskLevel: "risk-low",
+    riskClass: "risk-low",
     confidence: 95.7,
     confidenceClass: "confidence-high",
     action: "Review",
@@ -69,8 +65,7 @@ const orders = [
     status: "Pending",
     statusClass: "badge-warning",
     fraudScore: 67,
-    riskClass: "bg-warning",
-    riskLevel: "risk-medium",
+    riskClass: "risk-medium",
     confidence: 88.9,
     confidenceClass: "confidence-medium",
     action: "Approve",
@@ -83,8 +78,7 @@ const orders = [
     status: "Shipped",
     statusClass: "badge-info",
     fraudScore: 8,
-    riskClass: "bg-success",
-    riskLevel: "risk-low",
+    riskClass: "risk-low",
     confidence: 97.3,
     confidenceClass: "confidence-high",
     action: "Track",
@@ -118,7 +112,7 @@ export default function OrdersPage() {
     >
       <div className="space-y-6">
         <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-1 bg-surface rounded-card p-1 border border-border">
+          <div className="flex items-center gap-1 bg-surface-2 rounded-card p-1 border border-border">
             {filters.map((filter) => (
               <button
                 key={filter}
@@ -126,8 +120,8 @@ export default function OrdersPage() {
                 className={cn(
                   "px-4 py-2 rounded-button text-sm font-medium transition-all duration-200",
                   activeFilter === filter
-                    ? "bg-primary text-white shadow-lg shadow-primary/20"
-                    : "text-text-secondary hover:text-text-primary hover:bg-surface-2"
+                    ? "bg-primary text-white shadow-sm"
+                    : "text-text-secondary hover:text-text-primary hover:bg-surface-3"
                 )}
               >
                 {filter}
@@ -142,12 +136,12 @@ export default function OrdersPage() {
               placeholder="Search orders..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 pr-4 py-2.5 rounded-button bg-surface border border-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary/30 transition-colors w-72"
+              className="pl-10 pr-4 py-2.5 rounded-button bg-white border border-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all w-72"
             />
           </div>
         </div>
 
-        <div className="card p-0 overflow-hidden">
+        <div className="bg-white rounded-card shadow-card border border-border overflow-hidden">
           <div className="table-container">
             <table className="table">
               <thead>
@@ -165,7 +159,7 @@ export default function OrdersPage() {
                 {filteredOrders.map((order) => {
                   const ActionIcon = order.actionIcon
                   return (
-                    <tr key={order.id} className="group transition-colors">
+                    <tr key={order.id} className="border-b border-border last:border-b-0 hover:bg-surface-2 transition-colors">
                       <td className="px-5 py-4">
                         <span className="font-mono text-data-sm text-primary">{order.id}</span>
                       </td>
@@ -232,23 +226,23 @@ export default function OrdersPage() {
               Showing <span className="text-text-secondary font-medium">6</span> of <span className="text-text-secondary font-medium">2,847</span> orders
             </span>
             <div className="flex items-center gap-1">
-              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-3 hover:text-text-primary transition-colors border border-border">
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <button className="w-8 h-8 rounded-button flex items-center justify-center bg-primary text-white shadow-lg shadow-primary/20 transition-colors">
+              <button className="w-8 h-8 rounded-button flex items-center justify-center bg-primary text-white shadow-sm transition-colors">
                 1
               </button>
-              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-3 hover:text-text-primary transition-colors border border-border">
                 2
               </button>
-              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-3 hover:text-text-primary transition-colors border border-border">
                 3
               </button>
               <span className="text-text-muted px-1">...</span>
-              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-3 hover:text-text-primary transition-colors border border-border">
                 475
               </button>
-              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
+              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-3 hover:text-text-primary transition-colors border border-border">
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
