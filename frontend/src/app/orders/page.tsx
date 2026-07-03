@@ -5,6 +5,8 @@ import { Search, ChevronLeft, ChevronRight, Eye, ShieldAlert, CheckCircle, Truck
 import Shell from "@/components/layout/Shell"
 import { cn } from "@/lib/utils"
 
+// TODO: Add useOrders hook when backend endpoint is ready
+
 const orders = [
   {
     id: "ORD-7042",

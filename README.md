@@ -126,6 +126,38 @@ open http://localhost:3001
 # Login: admin / demo
 ```
 
+### Frontend (Next.js)
+
+```bash
+# Install dependencies
+cd frontend
+npm install
+
+# Start development server
+npm run dev
+# → http://localhost:3000
+
+# Run E2E tests
+npm run test:e2e
+
+# Build for production
+npm run build
+npm start
+```
+
+**Frontend Stack:** Next.js 14, Tailwind CSS, TanStack Query, Zustand, Recharts, Sonner, Lucide Icons
+
+**Features:**
+- 13 pages: Dashboard, Agents, Analytics, Orders, Products, Cart Recovery, Reviews, Support, Security, Settings, Shopify, Login, 404
+- Stitch-designed dark theme (void #0B1120, primary #6366F1)
+- ⌘K Command Palette with 17 commands
+- Skeleton loading states + error boundaries per page
+- Server-side auth middleware + cookie sync
+- Responsive mobile sidebar drawer
+- ARIA landmarks + skip-to-content
+- Sonner toast notifications
+- Real API hooks with mock data fallback
+
 ## API Endpoints
 
 ### Core Routes

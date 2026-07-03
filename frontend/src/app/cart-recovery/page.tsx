@@ -17,8 +17,9 @@ import {
 } from "lucide-react"
 import Shell from "@/components/layout/Shell"
 import { cn } from "@/lib/utils"
+import { useCartRecoveryAnalytics } from "@/lib/hooks"
 
-const carts = [
+const fallbackCarts = [
   {
     id: 1,
     customer: "Michael C.",
@@ -92,6 +93,14 @@ const filters = ["All Carts", "Recoverable", "Recovered", "Lost"]
 export default function CartRecoveryPage() {
   const [activeFilter, setActiveFilter] = useState("All Carts")
   const [searchQuery, setSearchQuery] = useState("")
+  const { data: analyticsData, isLoading } = useCartRecoveryAnalytics()
+
+  const analytics = (analyticsData ?? { recovery_rate: 22.4, total_revenue_lost: 48291, total_abandoned: 142 }) as Record<string, unknown>
+  const recoveryRate = (analytics.recovery_rate as number) || 22.4
+  const revenueAtRisk = (analytics.total_revenue_lost as number) || 48291
+  const activeCampaigns = (analytics.active_campaigns as number) || 38
+  const totalAbandoned = (analytics.total_abandoned as number) || 142
+  const carts = fallbackCarts
 
   const filtered = carts.filter((cart) => {
     if (searchQuery) {
@@ -228,26 +237,26 @@ export default function CartRecoveryPage() {
             <div className="flex items-center gap-2">
               <div className="dot-green" />
               <span className="text-sm text-text-secondary">
-                Recovery Rate: <span className="font-mono text-data-sm text-success">22.4%</span>
+                Recovery Rate: <span className="font-mono text-data-sm text-success">{recoveryRate}%</span>
               </span>
             </div>
             <div className="flex items-center gap-2">
               <div className="dot-red" />
               <span className="text-sm text-text-secondary">
-                Revenue at Risk: <span className="font-mono text-data-sm text-danger">$48,291</span>
+                Revenue at Risk: <span className="font-mono text-data-sm text-danger">${revenueAtRisk.toLocaleString()}</span>
               </span>
             </div>
             <div className="flex items-center gap-2">
               <div className="dot-blue" />
               <span className="text-sm text-text-secondary">
-                Active Campaigns: <span className="font-mono text-data-sm text-primary">38</span>
+                Active Campaigns: <span className="font-mono text-data-sm text-primary">{activeCampaigns}</span>
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
             <span className="text-sm text-text-muted">
-              Showing <span className="text-text-secondary font-medium">6</span> of <span className="text-text-secondary font-medium">142</span> abandoned carts
+              Showing <span className="text-text-secondary font-medium">{carts.length}</span> of <span className="text-text-secondary font-medium">{totalAbandoned}</span> abandoned carts
             </span>
             <div className="flex items-center gap-1">
               <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">

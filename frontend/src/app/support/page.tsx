@@ -18,10 +18,11 @@ import {
 } from "lucide-react"
 import Shell from "@/components/layout/Shell"
 import { cn } from "@/lib/utils"
+import { useSupportTickets, useSupportAnalytics } from "@/lib/hooks"
 
 const filters = ["All Tickets", "Escalated", "AI Resolved", "Pending"]
 
-const metrics = [
+const fallbackMetrics = [
   {
     label: "TOTAL TICKETS",
     value: "5,412",
@@ -60,7 +61,7 @@ const metrics = [
   },
 ]
 
-const tickets = [
+const fallbackTickets = [
   {
     id: "TK-8901",
     customer: "Emily Watson",
@@ -149,6 +150,54 @@ const actionIcons: Record<string, typeof Eye> = {
 
 export default function SupportPage() {
   const [activeFilter, setActiveFilter] = useState("All Tickets")
+  const { data: ticketsData, isLoading: ticketsLoading } = useSupportTickets()
+  const { data: analyticsData, isLoading: analyticsLoading } = useSupportAnalytics()
+
+   const tickets = ticketsData?.tickets || fallbackTickets
+   const analytics = (analyticsData ?? { total_tickets: 5412, first_contact_resolution_rate: 84.2, avg_response_time_hours: 0.02, escalation_rate: 8.3 }) as Record<string, unknown>
+   const totalTickets = (analytics.total_tickets as number) || 5412
+   const resolutionRate = (analytics.first_contact_resolution_rate as number) || 84.2
+   const avgResponseTime = (analytics.avg_response_time_hours as number) || 0.02
+   const escalationRate = (analytics.escalation_rate as number) || 8.3
+
+  const metrics = [
+    {
+      label: "TOTAL TICKETS",
+      value: totalTickets.toLocaleString(),
+      change: "+12%",
+      changeDir: "up" as const,
+      icon: MessageSquare,
+      iconBg: "bg-primary/10",
+      iconColor: "text-primary",
+    },
+    {
+      label: "RESOLUTION RATE",
+      value: `${resolutionRate}%`,
+      change: "+3%",
+      changeDir: "up" as const,
+      icon: CheckCircle2,
+      iconBg: "bg-success/10",
+      iconColor: "text-success",
+    },
+    {
+      label: "AVG RESPONSE TIME",
+      value: `${avgResponseTime}s`,
+      change: "improving",
+      changeDir: "down" as const,
+      icon: Clock,
+      iconBg: "bg-info/10",
+      iconColor: "text-info",
+    },
+    {
+      label: "ESCALATION RATE",
+      value: `${escalationRate}%`,
+      change: "decreasing",
+      changeDir: "down" as const,
+      icon: AlertTriangle,
+      iconBg: "bg-warning/10",
+      iconColor: "text-warning",
+    },
+  ]
 
   const filteredTickets = tickets.filter((ticket) => {
     if (activeFilter === "Escalated") return ticket.status === "ESCALATED"
@@ -287,7 +336,7 @@ export default function SupportPage() {
 
           <div className="flex items-center gap-3">
             <span className="text-sm text-text-muted">
-              Showing <span className="text-text-secondary font-medium">6</span> of <span className="text-text-secondary font-medium">5,412</span> tickets
+               Showing <span className="text-text-secondary font-medium">{tickets.length}</span> of <span className="text-text-secondary font-medium">{totalTickets.toLocaleString()}</span> tickets
             </span>
             <div className="flex items-center gap-1">
               <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
