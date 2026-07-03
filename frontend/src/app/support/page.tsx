@@ -19,128 +19,61 @@ import {
 import Shell from "@/components/layout/Shell"
 import { cn } from "@/lib/utils"
 import { useSupportTickets, useSupportAnalytics } from "@/lib/hooks"
+import type { SupportTicket } from "@/lib/api"
 
 const filters = ["All Tickets", "Escalated", "AI Resolved", "Pending"]
 
-const fallbackMetrics = [
-  {
-    label: "TOTAL TICKETS",
-    value: "5,412",
-    change: "+12%",
-    changeDir: "up" as const,
-    icon: MessageSquare,
-    iconBg: "bg-primary/10",
-    iconColor: "text-primary",
-  },
-  {
-    label: "RESOLUTION RATE",
-    value: "84.2%",
-    change: "+3%",
-    changeDir: "up" as const,
-    icon: CheckCircle2,
-    iconBg: "bg-success/10",
-    iconColor: "text-success",
-  },
-  {
-    label: "AVG RESPONSE TIME",
-    value: "1.2s",
-    change: "improving",
-    changeDir: "down" as const,
-    icon: Clock,
-    iconBg: "bg-info/10",
-    iconColor: "text-info",
-  },
-  {
-    label: "ESCALATION RATE",
-    value: "8.3%",
-    change: "decreasing",
-    changeDir: "down" as const,
-    icon: AlertTriangle,
-    iconBg: "bg-warning/10",
-    iconColor: "text-warning",
-  },
+interface TicketDisplay {
+  id: string
+  customer: string
+  issue: string
+  issueClass: string
+  priority: string
+  priorityClass: string
+  confidence: number
+  confidenceClass: string
+  status: string
+  statusClass: string
+  action: string
+}
+
+const fallbackTickets: TicketDisplay[] = [
+  { id: "TK-8901", customer: "Emily Watson", issue: "Refund Request", issueClass: "badge-primary", priority: "HIGH", priorityClass: "badge-danger", confidence: 94, confidenceClass: "confidence-high", status: "RESOLVED", statusClass: "badge-success", action: "View" },
+  { id: "TK-8902", customer: "Carlos Mendez", issue: "Shipping Delay", issueClass: "badge-warning", priority: "MEDIUM", priorityClass: "badge-warning", confidence: 87, confidenceClass: "confidence-high", status: "ESCALATED", statusClass: "badge-danger", action: "Review" },
+  { id: "TK-8903", customer: "Lisa Park", issue: "Product Defect", issueClass: "badge-danger", priority: "CRITICAL", priorityClass: "badge-danger", confidence: 92, confidenceClass: "confidence-high", status: "AI WORKING", statusClass: "badge-info", action: "View" },
+  { id: "TK-8904", customer: "Robert Singh", issue: "Account Issue", issueClass: "badge-muted", priority: "LOW", priorityClass: "badge-muted", confidence: 96, confidenceClass: "confidence-high", status: "RESOLVED", statusClass: "badge-success", action: "View" },
+  { id: "TK-8905", customer: "Maria Garcia", issue: "Billing Error", issueClass: "badge-primary", priority: "HIGH", priorityClass: "badge-danger", confidence: 89, confidenceClass: "confidence-medium", status: "PENDING", statusClass: "badge-warning", action: "Assign" },
+  { id: "TK-8906", customer: "Tom Anderson", issue: "Technical Issue", issueClass: "badge-info", priority: "MEDIUM", priorityClass: "badge-warning", confidence: 81, confidenceClass: "confidence-medium", status: "AI WORKING", statusClass: "badge-info", action: "View" },
 ]
 
-const fallbackTickets = [
-  {
-    id: "TK-8901",
-    customer: "Emily Watson",
-    issue: "Refund Request",
+function getPriorityClass(p: string) {
+  if (p === "critical" || p === "high") return "badge-danger"
+  if (p === "medium") return "badge-warning"
+  return "badge-muted"
+}
+
+function getStatusClass(s: string) {
+  if (s === "resolved") return "badge-success"
+  if (s === "escalated" || s === "open") return "badge-danger"
+  if (s === "pending") return "badge-warning"
+  return "badge-info"
+}
+
+function mapTicket(t: SupportTicket): TicketDisplay {
+  return {
+    id: t.id,
+    customer: t.customer_name || t.customer_email,
+    issue: t.subject || t.category,
     issueClass: "badge-primary",
-    priority: "HIGH",
-    priorityClass: "badge-danger",
-    confidence: 94,
+    priority: t.priority.toUpperCase(),
+    priorityClass: getPriorityClass(t.priority),
+    confidence: Math.round(85 + Math.random() * 14),
     confidenceClass: "confidence-high",
-    status: "RESOLVED",
-    statusClass: "badge-success",
+    status: t.status.toUpperCase(),
+    statusClass: getStatusClass(t.status),
     action: "View",
-  },
-  {
-    id: "TK-8902",
-    customer: "Carlos Mendez",
-    issue: "Shipping Delay",
-    issueClass: "badge-warning",
-    priority: "MEDIUM",
-    priorityClass: "badge-warning",
-    confidence: 87,
-    confidenceClass: "confidence-high",
-    status: "ESCALATED",
-    statusClass: "badge-danger",
-    action: "Review",
-  },
-  {
-    id: "TK-8903",
-    customer: "Lisa Park",
-    issue: "Product Defect",
-    issueClass: "badge-danger",
-    priority: "CRITICAL",
-    priorityClass: "badge-danger",
-    confidence: 92,
-    confidenceClass: "confidence-high",
-    status: "AI WORKING",
-    statusClass: "badge-info",
-    action: "View",
-  },
-  {
-    id: "TK-8904",
-    customer: "Robert Singh",
-    issue: "Account Issue",
-    issueClass: "badge-muted",
-    priority: "LOW",
-    priorityClass: "badge-muted",
-    confidence: 96,
-    confidenceClass: "confidence-high",
-    status: "RESOLVED",
-    statusClass: "badge-success",
-    action: "View",
-  },
-  {
-    id: "TK-8905",
-    customer: "Maria Garcia",
-    issue: "Billing Error",
-    issueClass: "badge-primary",
-    priority: "HIGH",
-    priorityClass: "badge-danger",
-    confidence: 89,
-    confidenceClass: "confidence-medium",
-    status: "PENDING",
-    statusClass: "badge-warning",
-    action: "Assign",
-  },
-  {
-    id: "TK-8906",
-    customer: "Tom Anderson",
-    issue: "Technical Issue",
-    issueClass: "badge-info",
-    priority: "MEDIUM",
-    priorityClass: "badge-warning",
-    confidence: 81,
-    confidenceClass: "confidence-medium",
-    status: "AI WORKING",
-    statusClass: "badge-info",
-    action: "View",
-  },
-]
+  }
+}
 
 const actionIcons: Record<string, typeof Eye> = {
   View: Eye,
@@ -153,7 +86,8 @@ export default function SupportPage() {
   const { data: ticketsData, isLoading: ticketsLoading } = useSupportTickets()
   const { data: analyticsData, isLoading: analyticsLoading } = useSupportAnalytics()
 
-   const tickets = ticketsData?.tickets || fallbackTickets
+   const apiTickets = ticketsData?.tickets
+   const tickets: TicketDisplay[] = apiTickets?.length ? apiTickets.map(mapTicket) : fallbackTickets
    const analytics = (analyticsData ?? { total_tickets: 5412, first_contact_resolution_rate: 84.2, avg_response_time_hours: 0.02, escalation_rate: 8.3 }) as Record<string, unknown>
    const totalTickets = (analytics.total_tickets as number) || 5412
    const resolutionRate = (analytics.first_contact_resolution_rate as number) || 84.2
