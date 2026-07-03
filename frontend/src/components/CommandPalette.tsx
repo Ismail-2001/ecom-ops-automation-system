@@ -86,7 +86,7 @@ function getCommands(
       icon: <LayoutDashboard size={18} />,
       shortcut: "⌘1",
       category: "Navigation",
-      action: () => nav("/dashboard"),
+      action: () => nav("/"),
     },
     {
       id: "nav-agents",
@@ -173,28 +173,28 @@ function getCommands(
       icon: <Plus size={18} />,
       shortcut: "⌘⇧D",
       category: "Actions",
-      action: () => nav("/agents/new"),
+      action: () => nav("/agents"),
     },
     {
       id: "action-sync",
       label: "Sync Shopify",
       icon: <RefreshCw size={18} />,
       category: "Actions",
-      action: () => nav("/shopify/sync"),
+      action: () => nav("/shopify"),
     },
     {
       id: "action-audit",
       label: "Run Audit",
       icon: <Shield size={18} />,
       category: "Actions",
-      action: () => nav("/analytics/audit"),
+      action: () => nav("/analytics"),
     },
     {
       id: "action-export",
       label: "Export Report",
       icon: <FileText size={18} />,
       category: "Actions",
-      action: () => nav("/analytics/export"),
+      action: () => nav("/analytics"),
     },
     {
       id: "quick-api",
@@ -202,7 +202,8 @@ function getCommands(
       icon: <Key size={18} />,
       category: "Quick",
       action: () => {
-        navigator.clipboard.writeText("opsiq-api-key");
+        const key = document.cookie.match(/opsiq_api_key=([^;]*)/)?.[1] || "not-set";
+        navigator.clipboard.writeText(decodeURIComponent(key));
         setOpen(false);
       },
     },
@@ -211,7 +212,7 @@ function getCommands(
       label: "View Logs",
       icon: <ScrollText size={18} />,
       category: "Quick",
-      action: () => nav("/logs"),
+      action: () => nav("/security"),
     },
   ];
 }

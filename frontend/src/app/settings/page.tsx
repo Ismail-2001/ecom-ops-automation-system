@@ -19,29 +19,7 @@ import {
   EyeOff,
 } from "lucide-react"
 import Shell from "@/components/layout/Shell"
-
-function Toggle({
-  enabled,
-  onToggle,
-}: {
-  enabled: boolean
-  onToggle: () => void
-}) {
-  return (
-    <button
-      onClick={onToggle}
-      className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
-        enabled ? "bg-primary" : "bg-surface-3"
-      }`}
-    >
-      <div
-        className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform duration-200 ${
-          enabled ? "left-6" : "left-1"
-        }`}
-      />
-    </button>
-  )
-}
+import Toggle from "@/components/shared/Toggle"
 
 export default function SettingsPage() {
   const [saved, setSaved] = useState(false)
@@ -50,7 +28,7 @@ export default function SettingsPage() {
 
   const [apiConfig, setApiConfig] = useState({
     provider: "Google Gemini",
-    apiKey: "AIzaSyC...xK9mNpQrStUvWxYz",
+    apiKey: "",
     model: "gemini-2.0-flash",
   })
 

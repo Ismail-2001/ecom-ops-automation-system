@@ -1,20 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   healthApi,
-  approvalsApi,
-  agentsApi,
+  approvalApi,
+  agentApi,
   analyticsApi,
-  auditApi,
   settingsApi,
-  pipelineApi,
   securityApi,
   supportApi,
   cartRecoveryApi,
   shopifyApi,
-  type ApprovalsQuery,
+  orderApi,
+  productApi,
+  reviewApi,
 } from "./api"
-
-// ── Health ─────────────────────────────────────────────────
 
 export function useHealth() {
   return useQuery({
@@ -26,12 +24,10 @@ export function useHealth() {
   })
 }
 
-// ── Approvals ──────────────────────────────────────────────
-
-export function useApprovals(query?: ApprovalsQuery) {
+export function useApprovals(query?: { status?: string; agent?: string }) {
   return useQuery({
     queryKey: ["approvals", query],
-    queryFn: () => approvalsApi.list(query),
+    queryFn: () => approvalApi.list(query),
     refetchInterval: 30_000,
     staleTime: 10_000,
   })
@@ -40,8 +36,7 @@ export function useApprovals(query?: ApprovalsQuery) {
 export function useApproveAction() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, notes }: { id: string; notes?: string }) =>
-      approvalsApi.approve(id, notes),
+    mutationFn: ({ id }: { id: string }) => approvalApi.approve(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["approvals"] })
       qc.invalidateQueries({ queryKey: ["analytics"] })
@@ -52,68 +47,31 @@ export function useApproveAction() {
 export function useRejectAction() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
-      approvalsApi.reject(id, reason),
+    mutationFn: ({ id }: { id: string }) => approvalApi.reject(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["approvals"] })
       qc.invalidateQueries({ queryKey: ["analytics"] })
     },
   })
 }
-
-export function useBatchApprove() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({
-      ids,
-      action,
-      reason,
-    }: {
-      ids: string[]
-      action: "approve" | "reject"
-      reason?: string
-    }) => approvalsApi.batch(ids, action, reason),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["approvals"] })
-      qc.invalidateQueries({ queryKey: ["analytics"] })
-    },
-  })
-}
-
-// ── Agents ─────────────────────────────────────────────────
 
 export function useAgentStatus() {
   return useQuery({
     queryKey: ["agents"],
-    queryFn: agentsApi.status,
+    queryFn: agentApi.status,
     refetchInterval: 30_000,
     staleTime: 10_000,
   })
 }
 
-// ── Analytics ──────────────────────────────────────────────
-
 export function useAnalytics() {
   return useQuery({
     queryKey: ["analytics"],
-    queryFn: analyticsApi.get,
+    queryFn: () => analyticsApi.summary(),
     refetchInterval: 60_000,
     staleTime: 30_000,
   })
 }
-
-// ── Audit ──────────────────────────────────────────────────
-
-export function useAuditLog(params?: { page?: number; limit?: number; agent?: string }) {
-  return useQuery({
-    queryKey: ["audit", params],
-    queryFn: () => auditApi.list(params),
-    refetchInterval: 60_000,
-    staleTime: 30_000,
-  })
-}
-
-// ── Settings ───────────────────────────────────────────────
 
 export function useSettings() {
   return useQuery({
@@ -134,63 +92,14 @@ export function useUpdateSettings() {
   })
 }
 
-// ── Pipeline ───────────────────────────────────────────────
-
-export function useRunPipeline() {
-  return useMutation({
-    mutationFn: pipelineApi.run,
-  })
-}
-
-export function useTaskStatus(taskId: string | null) {
+export function useSecurityEvents(params?: { severity?: string }) {
   return useQuery({
-    queryKey: ["task", taskId],
-    queryFn: () => pipelineApi.taskStatus(taskId!),
-    enabled: !!taskId,
-    refetchInterval: (query) => {
-      const status = query.state.data?.status
-      if (status === "completed" || status === "failed") return false
-      return 2_000
-    },
-  })
-}
-
-// ── Security ────────────────────────────────────────────────
-
-export function useSecurityUsers(params?: { role?: string; is_active?: boolean }) {
-  return useQuery({
-    queryKey: ["security", "users", params],
-    queryFn: () => securityApi.listUsers(params),
-    staleTime: 30_000,
-  })
-}
-
-export function useSecurityApiKeys() {
-  return useQuery({
-    queryKey: ["security", "api-keys"],
-    queryFn: securityApi.listApiKeys,
-    staleTime: 30_000,
-  })
-}
-
-export function useSecurityAuditSummary(hours = 24) {
-  return useQuery({
-    queryKey: ["security", "audit-summary", hours],
-    queryFn: () => securityApi.getAuditSummary(hours),
-    staleTime: 30_000,
-  })
-}
-
-export function useSecurityAuditLogs(params?: { event_type?: string; limit?: number }) {
-  return useQuery({
-    queryKey: ["security", "audit-logs", params],
-    queryFn: () => securityApi.getAuditLogs(params),
+    queryKey: ["security", "events", params],
+    queryFn: () => securityApi.events(params),
     refetchInterval: 60_000,
     staleTime: 30_000,
   })
 }
-
-// ── Support ─────────────────────────────────────────────────
 
 export function useSupportTickets(params?: { status?: string; priority?: string; page?: number; limit?: number }) {
   return useQuery({
@@ -218,28 +127,13 @@ export function useSupportAnalytics(days = 7) {
   })
 }
 
-// ── Cart Recovery ───────────────────────────────────────────
-
 export function useCartRecoveryAnalytics(days = 7) {
   return useQuery({
     queryKey: ["cart-recovery", "analytics", days],
-    queryFn: () => cartRecoveryApi.getAnalytics(days),
+    queryFn: cartRecoveryApi.analytics,
     staleTime: 60_000,
   })
 }
-
-export function useCartRecover() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ cartId, strategy }: { cartId: string; strategy: string }) =>
-      cartRecoveryApi.recover(cartId, strategy),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cart-recovery"] })
-    },
-  })
-}
-
-// ── Shopify ─────────────────────────────────────────────────
 
 export function useShopifyStatus() {
   return useQuery({
@@ -252,9 +146,41 @@ export function useShopifyStatus() {
 export function useShopifySync() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (full?: boolean) => shopifyApi.sync(full),
+    mutationFn: shopifyApi.sync,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["shopify"] })
     },
+  })
+}
+
+export function useOrders(params?: { page?: number; limit?: number; status?: string }) {
+  return useQuery({
+    queryKey: ["orders", params],
+    queryFn: () => orderApi.list(params),
+    staleTime: 10_000,
+  })
+}
+
+export function useProducts(params?: { page?: number; limit?: number }) {
+  return useQuery({
+    queryKey: ["products", params],
+    queryFn: () => productApi.list(params),
+    staleTime: 10_000,
+  })
+}
+
+export function useReviews(params?: { sentiment?: string }) {
+  return useQuery({
+    queryKey: ["reviews", params],
+    queryFn: () => reviewApi.list(params),
+    staleTime: 10_000,
+  })
+}
+
+export function useCartItems(params?: { status?: string }) {
+  return useQuery({
+    queryKey: ["cart-items", params],
+    queryFn: () => cartRecoveryApi.list(params),
+    staleTime: 10_000,
   })
 }
