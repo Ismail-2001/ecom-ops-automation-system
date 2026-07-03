@@ -59,23 +59,23 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
   }, [pathname, onClose])
 
   return (
-    <aside className="fixed left-0 top-0 bottom-0 w-[240px] bg-void border-r border-border flex flex-col z-50">
+    <aside className="fixed left-0 top-0 bottom-0 w-[240px] bg-surface border-r border-border flex flex-col z-50" aria-label="Main navigation">
       <div className="p-5 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
-            <Zap className="w-4 h-4 text-primary" />
+          <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center shadow-sm" aria-hidden="true">
+            <Zap className="w-5 h-5 text-white" />
           </div>
           <div>
-            <div className="font-display font-bold text-sm text-text-primary leading-tight">OpsIQ</div>
+            <div className="font-display font-bold text-[15px] text-text-primary leading-tight">OpsIQ</div>
             <div className="text-[10px] font-mono uppercase tracking-widest text-text-muted">AI Automation</div>
           </div>
         </div>
-        <button onClick={onClose} className="lg:hidden w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2">
+        <button onClick={onClose} className="lg:hidden w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-3" aria-label="Close menu">
           <X className="w-4 h-4" />
         </button>
       </div>
 
-      <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto" aria-label="Navigation">
         {navSections.map((section, si) => (
           <div key={si}>
             {section.label && (
@@ -88,6 +88,7 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
                   key={item.href}
                   href={item.href}
                   className={active ? "sidebar-link-active" : "sidebar-link"}
+                  aria-current={active ? "page" : undefined}
                 >
                   <item.icon className="w-4 h-4 shrink-0" />
                   <span>{item.label}</span>
@@ -109,7 +110,7 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
         <div className="flex items-center gap-2 text-xs">
           <div className="dot-green" />
           <span className="text-text-secondary">System Healthy</span>
-          <span className="ml-auto font-mono text-success">94%</span>
+          <span className="ml-auto font-mono text-success font-medium">94%</span>
         </div>
         <div className="progress-bar mt-2">
           <div className="progress-fill bg-success" style={{ width: "94%" }} />
@@ -122,15 +123,13 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
 export default function Sidebar({ open, onClose }: SidebarProps) {
   return (
     <>
-      {/* Desktop sidebar */}
       <div className="hidden lg:block">
         <SidebarContent />
       </div>
 
-      {/* Mobile overlay */}
       {open && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-void/60 backdrop-blur-sm" onClick={onClose} />
+          <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={onClose} />
           <SidebarContent onClose={onClose} />
         </div>
       )}

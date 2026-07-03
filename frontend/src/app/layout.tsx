@@ -2,6 +2,8 @@ import type { Metadata } from "next"
 import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google"
 import "../styles/globals.css"
 import { Providers } from "./providers"
+import { CommandPaletteProvider } from "@/components/CommandPalette"
+import CommandPalette from "@/components/CommandPalette"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -63,7 +65,18 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} font-body antialiased`}
       >
-        <Providers>{children}</Providers>
+        <Providers>
+          <CommandPaletteProvider>
+            <a
+              href="#main-content"
+              className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-4 focus:left-4 focus:bg-primary focus:text-white focus:px-4 focus:py-2 focus:rounded-lg"
+            >
+              Skip to main content
+            </a>
+            <CommandPalette />
+            {children}
+          </CommandPaletteProvider>
+        </Providers>
       </body>
     </html>
   )

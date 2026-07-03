@@ -16,6 +16,7 @@ import {
   Truck,
   Star,
   TrendingUp,
+  TrendingDown,
   ChevronLeft,
   ChevronRight,
   Sparkles,
@@ -24,8 +25,6 @@ import {
   MoreVertical,
   Clock,
   Zap,
-  MessageSquare,
-  Search,
 } from "lucide-react"
 import Shell from "@/components/layout/Shell"
 import { useAgentStatus, useApprovals, useAnalytics, useHealth } from "@/lib/hooks"
@@ -109,13 +108,13 @@ const agentActivity: Record<string, string> = {
 }
 
 const agentColors: Record<string, string> = {
-  fraud_detection: "bg-danger/10 text-danger",
-  inventory_management: "bg-info/10 text-info",
-  price_optimization: "bg-warning/10 text-warning",
-  customer_support: "bg-primary/10 text-primary",
-  logistics: "bg-success/10 text-success",
-  review_moderation: "bg-info/10 text-info",
-  seo_optimization: "bg-primary/10 text-primary",
+  fraud_detection: "bg-danger-light text-danger",
+  inventory_management: "bg-info-light text-info",
+  price_optimization: "bg-warning-light text-warning",
+  customer_support: "bg-primary-light text-primary",
+  logistics: "bg-success-light text-success",
+  review_moderation: "bg-info-light text-info",
+  seo_optimization: "bg-primary-light text-primary",
 }
 
 export default function DashboardPage() {
@@ -142,161 +141,121 @@ export default function DashboardPage() {
   return (
     <Shell title="Command Center" subtitle="Real-time operations overview">
       <div className="flex flex-col h-full">
-        {/* Topbar */}
-        <div className="sticky top-0 z-40 flex items-center justify-between px-6 py-3 bg-void/80 backdrop-blur-xl border-b border-border">
-          <div className="flex items-center gap-4 flex-1">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
-              <input
-                type="text"
-                placeholder="Search operations, orders, or agents..."
-                className="w-full pl-10 pr-4 py-2.5 bg-surface border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary/50 transition-colors font-body"
-              />
+        {/* Metric Cards */}
+        <div className="grid grid-cols-4 gap-4 mb-6">
+          <div className="metric-card">
+            <div className="flex items-center justify-between mb-3">
+              <span className="metric-label">Total Revenue</span>
+              <div className="w-9 h-9 rounded-lg bg-success-light flex items-center justify-center">
+                <DollarSign className="w-4 h-4 text-success" />
+              </div>
+            </div>
+            <div className="metric-value">
+              ${revenue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <div className="metric-change text-success flex items-center gap-1 mt-1">
+              <TrendingUp className="w-3 h-3" />
+              +12.4%
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <button className="relative p-2 rounded-lg hover:bg-surface transition-colors">
-              <Bell className="w-5 h-5 text-text-secondary" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-danger rounded-full" />
-            </button>
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${isConnected ? "bg-success/10 border border-success/20" : "bg-warning/10 border border-warning/20"}`}>
-              <Wifi className={`w-3.5 h-3.5 ${isConnected ? "text-success" : "text-warning"}`} />
-              <span className={`text-xs font-medium ${isConnected ? "text-success" : "text-warning"}`}>{isConnected ? "Live" : "Reconnecting"}</span>
+
+          <div className="metric-card">
+            <div className="flex items-center justify-between mb-3">
+              <span className="metric-label">Decisions Made</span>
+              <div className="w-9 h-9 rounded-lg bg-primary-light flex items-center justify-center">
+                <Bot className="w-4 h-4 text-primary" />
+              </div>
             </div>
-            <div className="flex items-center gap-3 pl-4 border-l border-border">
-              <div className="text-right">
-                <p className="text-sm font-medium text-text-primary">Admin User</p>
-                <p className="text-[10px] font-mono text-text-muted uppercase">superuser_root</p>
+            <div className="metric-value">{totalDecisions.toLocaleString()}</div>
+            <div className="metric-change text-success flex items-center gap-1 mt-1">
+              <TrendingUp className="w-3 h-3" />
+              +8.2%
+            </div>
+          </div>
+
+          <div className="metric-card">
+            <div className="flex items-center justify-between mb-3">
+              <span className="metric-label">Pending Reviews</span>
+              <div className="w-9 h-9 rounded-lg bg-warning-light flex items-center justify-center">
+                <Clock className="w-4 h-4 text-warning" />
               </div>
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-white font-semibold text-sm">
-                AU
+            </div>
+            <div className="metric-value">{pendingCount}</div>
+            <div className="metric-change text-warning flex items-center gap-1 mt-1">
+              <AlertTriangle className="w-3 h-3" />
+              Critical
+            </div>
+          </div>
+
+          <div className="metric-card">
+            <div className="flex items-center justify-between mb-3">
+              <span className="metric-label">Flagged Orders</span>
+              <div className="w-9 h-9 rounded-lg bg-danger-light flex items-center justify-center">
+                <ShoppingCart className="w-4 h-4 text-danger" />
               </div>
+            </div>
+            <div className="metric-value">{flaggedCount}</div>
+            <div className="metric-change text-danger flex items-center gap-1 mt-1">
+              <TrendingDown className="w-3 h-3" />
+              -2.1%
             </div>
           </div>
         </div>
 
-        <div className="flex flex-1 overflow-hidden">
-          {/* Main Content */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            {/* KPI Cards */}
-            <div className="grid grid-cols-4 gap-4">
-              {/* Total Revenue */}
-              <div className="p-5 rounded-xl bg-surface border border-border">
-                <p className="label-caps mb-2">Total Revenue</p>
-                <div className="flex items-end gap-3">
-                  <span className="text-2xl font-display font-bold text-text-primary">
-                    ${revenue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                  <span className="flex items-center gap-1 text-xs font-medium text-success mb-1">
-                    <TrendingUp className="w-3 h-3" />
-                    +12.4%
-                  </span>
+        {/* Two-column layout */}
+        <div className="grid grid-cols-12 gap-6 mb-6">
+          {/* Left: Pending Approvals */}
+          <div className="col-span-8 card">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-primary-light flex items-center justify-center">
+                  <Activity className="w-4 h-4 text-primary" />
                 </div>
-                <div className="mt-3 h-1.5 bg-surface-3 rounded-full overflow-hidden">
-                  <div className="h-full w-[72%] bg-gradient-to-r from-primary to-primary/60 rounded-full" />
-                </div>
+                <h2 className="font-display font-semibold text-text-primary">Pending Approvals</h2>
               </div>
-
-              {/* Decisions Made */}
-              <div className="p-5 rounded-xl bg-surface border border-border">
-                <p className="label-caps mb-2">Decisions Made</p>
-                <div className="flex items-end gap-3">
-                  <span className="text-2xl font-display font-bold text-text-primary">{totalDecisions.toLocaleString()}</span>
-                  <span className="flex items-center gap-1 text-xs font-medium text-success mb-1">
-                    <TrendingUp className="w-3 h-3" />
-                    +8.2%
-                  </span>
-                </div>
-                <div className="mt-3 flex gap-1">
-                  {[40, 55, 35, 70, 60, 45, 80, 65, 50, 75, 55, 40].map((h, i) => (
-                    <div key={i} className="flex-1 bg-surface-3 rounded-sm" style={{ height: `${h * 0.4}px` }} />
-                  ))}
-                </div>
-              </div>
-
-              {/* Pending Reviews */}
-              <div className="p-5 rounded-xl bg-surface border border-border">
-                <p className="label-caps mb-2">Pending Reviews</p>
-                <div className="flex items-end gap-3">
-                  <span className="text-2xl font-display font-bold text-text-primary">{pendingCount}</span>
-                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-warning/15 text-xs font-medium text-warning mb-1">
-                    <Clock className="w-3 h-3" />
-                    Critical
-                  </span>
-                </div>
-                <div className="mt-3 flex items-center gap-2 text-xs text-text-muted">
-                  <AlertTriangle className="w-3.5 h-3.5 text-warning" />
-                  Awaiting human verification
-                </div>
-              </div>
-
-              {/* Flagged Orders */}
-              <div className="p-5 rounded-xl bg-surface border border-border">
-                <p className="label-caps mb-2">Flagged Orders</p>
-                <div className="flex items-end gap-3">
-                  <span className="text-2xl font-display font-bold text-text-primary">{flaggedCount}</span>
-                  <span className="flex items-center gap-1 text-xs font-medium text-danger mb-1">
-                    <AlertTriangle className="w-3 h-3" />
-                    -2.1%
-                  </span>
-                </div>
-                <div className="mt-3 h-1.5 bg-surface-3 rounded-full overflow-hidden">
-                  <div className="h-full w-[35%] bg-gradient-to-r from-danger to-danger/60 rounded-full" />
-                </div>
-              </div>
+              <button className="text-sm text-primary hover:text-primary-hover transition-colors font-medium">
+                View All Records
+              </button>
             </div>
 
-            {/* Pending Approvals Table */}
-            <div className="rounded-xl bg-surface border border-border overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-                <div className="flex items-center gap-3">
-                  <div className="p-1.5 rounded-md bg-primary/10">
-                    <Activity className="w-4 h-4 text-primary" />
-                  </div>
-                  <h2 className="font-display font-semibold text-text-primary">Pending Approvals</h2>
-                </div>
-                <button className="text-sm text-primary hover:text-primary-hover transition-colors">
-                  View All Records
-                </button>
-              </div>
-
-              <table className="w-full">
+            <div className="table-container">
+              <table className="table">
                 <thead>
-                  <tr className="border-b border-border">
-                    <th className="px-5 py-3 text-left text-label text-text-muted font-medium">ORDER ID</th>
-                    <th className="px-5 py-3 text-left text-label text-text-muted font-medium">RISK SCORE</th>
-                    <th className="px-5 py-3 text-left text-label text-text-muted font-medium">AI CONFIDENCE</th>
-                    <th className="px-5 py-3 text-right text-label text-text-muted font-medium">ACTIONS</th>
+                  <tr>
+                    <th>ORDER ID</th>
+                    <th>RISK SCORE</th>
+                    <th>AI CONFIDENCE</th>
+                    <th className="text-right">ACTIONS</th>
                   </tr>
                 </thead>
                 <tbody>
                   {visibleDecisions.map((d) => {
                     const riskScore = getRiskScore(d.risk_level)
                     return (
-                      <tr key={d.id} className="border-b border-border/50 hover:bg-surface-2/50 transition-colors">
-                        <td className="px-5 py-4 font-mono text-sm text-primary font-medium">{d.id}</td>
-                        <td className="px-5 py-4">
+                      <tr key={d.id}>
+                        <td className="font-mono text-sm text-primary font-medium">{d.id}</td>
+                        <td>
                           <div className="flex items-center gap-3">
-                            <div className="flex-1 h-2 bg-surface-3 rounded-full overflow-hidden max-w-[120px]">
+                            <div className="risk-bar flex-1 max-w-[120px]">
                               <div
-                                className={`h-full ${getRiskColor(riskScore)} rounded-full transition-all`}
+                                className={getRiskBarClass(riskScore)}
                                 style={{ width: `${riskScore}%` }}
                               />
                             </div>
                             <span className="font-mono text-sm text-text-primary font-medium">{riskScore}%</span>
                           </div>
                         </td>
-                        <td className="px-5 py-4">
+                        <td>
                           <span className={getConfidenceClass(d.confidence)}>
                             {(d.confidence * 100).toFixed(1)}%
                           </span>
                         </td>
-                        <td className="px-5 py-4">
+                        <td>
                           <div className="flex items-center justify-end gap-2">
-                            <button className="px-4 py-1.5 rounded-lg bg-success/10 border border-success/20 text-sm font-medium text-success hover:bg-success/20 transition-colors">
+                            <button className="btn-success text-xs px-3 py-1">
                               Approve
                             </button>
-                            <button className="px-4 py-1.5 rounded-lg bg-danger/10 border border-danger/20 text-sm font-medium text-danger hover:bg-danger/20 transition-colors">
+                            <button className="btn-danger text-xs px-3 py-1">
                               Reject
                             </button>
                           </div>
@@ -306,98 +265,33 @@ export default function DashboardPage() {
                   })}
                 </tbody>
               </table>
-
-              <div className="flex items-center justify-between px-5 py-3 border-t border-border">
-                <span className="text-sm text-text-muted">Showing {visibleDecisions.length} of {pendingCount} pending orders</span>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setPage(Math.max(0, page - 1))}
-                    disabled={page === 0}
-                    className="p-1.5 rounded-md hover:bg-surface-2 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronLeft className="w-4 h-4 text-text-secondary" />
-                  </button>
-                  <button
-                    onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
-                    disabled={page >= totalPages - 1}
-                    className="p-1.5 rounded-md hover:bg-surface-2 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronRight className="w-4 h-4 text-text-secondary" />
-                  </button>
-                </div>
-              </div>
             </div>
 
-            {/* Agent Fleet Status */}
-            <div className="rounded-xl bg-surface border border-border overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-                <div className="flex items-center gap-3">
-                  <div className="p-1.5 rounded-md bg-primary/10">
-                    <Bot className="w-4 h-4 text-primary" />
-                  </div>
-                  <h2 className="font-display font-semibold text-text-primary">Agent Fleet Status</h2>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <div className="dot-green" />
-                    <span className="text-sm text-text-secondary">{agentData.length} Online</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="dot-gray" />
-                    <span className="text-sm text-text-secondary">0 Offline</span>
-                  </div>
-                </div>
+            <div className="flex items-center justify-between pt-3 mt-3 border-t border-border">
+              <span className="text-sm text-text-muted">Showing {visibleDecisions.length} of {pendingCount} pending orders</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPage(Math.max(0, page - 1))}
+                  disabled={page === 0}
+                  className="p-1.5 rounded-md hover:bg-surface-3 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4 text-text-secondary" />
+                </button>
+                <button
+                  onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
+                  disabled={page >= totalPages - 1}
+                  className="p-1.5 rounded-md hover:bg-surface-3 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronRight className="w-4 h-4 text-text-secondary" />
+                </button>
               </div>
-
-              <div className="grid grid-cols-7 divide-x divide-border/50">
-                {agentData.map((agent) => {
-                  const Icon = agentIcons[agent.name] || Zap
-                  return (
-                    <div key={agent.name} className="p-4 hover:bg-surface-2/30 transition-colors">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className={`p-2 rounded-lg ${agentColors[agent.name] || "bg-primary/10 text-primary"}`}>
-                          <Icon className="w-4 h-4" />
-                        </div>
-                        <div className="dot-green" />
-                      </div>
-                      <h3 className="text-sm font-medium text-text-primary mb-3">{agent.display_name}</h3>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-text-muted">Uptime</span>
-                          <span className="font-mono text-data-sm text-text-secondary">{agentUptime[agent.name] || "—"}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-text-muted">Activity</span>
-                          <span className="font-mono text-data-sm text-primary">{agentActivity[agent.name] || "—"}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-center gap-2 py-4 text-[11px] font-mono text-text-muted">
-              <span>© 2024 OPS-IQ SYSTEM v2.5.0-ALPHA</span>
-              <span className="mx-1">|</span>
-              <span className="hover:text-text-secondary cursor-pointer transition-colors">PROTOCOL</span>
-              <span className="mx-1">|</span>
-              <span className="hover:text-text-secondary cursor-pointer transition-colors">SECURITY</span>
-              <span className="mx-1">|</span>
-              <span className="hover:text-text-secondary cursor-pointer transition-colors">LOGS</span>
-              <span className="mx-2">|</span>
-              <span className="flex items-center gap-1.5">
-                <span className="dot-green" />
-                ALL SYSTEMS OPERATIONAL
-              </span>
             </div>
           </div>
 
-          {/* Right Sidebar */}
-          <div className="w-[320px] border-l border-border bg-surface/50 overflow-y-auto p-4 space-y-4">
+          {/* Right: Sidebar cards */}
+          <div className="col-span-4 space-y-4">
             {/* System Health */}
-            <div className="rounded-xl bg-surface-2 border border-border p-4">
+            <div className="card">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <Activity className="w-4 h-4 text-success" />
@@ -407,26 +301,26 @@ export default function DashboardPage() {
               </div>
 
               <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 rounded-lg bg-surface-3/50">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-surface-3">
                   <span className="text-sm text-text-secondary">WebSocket Status</span>
                   <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-success animate-pulse-agent" : "bg-danger"}`} />
+                    <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-success animate-pulse" : "bg-danger"}`} />
                     <span className={`text-xs font-medium ${isConnected ? "text-success" : "text-danger"}`}>
                       {isConnected ? "CONNECTED" : "DISCONNECTED"}
                     </span>
                   </div>
                 </div>
-                <div className="flex items-center justify-between p-3 rounded-lg bg-surface-3/50">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-surface-3">
                   <span className="text-sm text-text-secondary">API Latency</span>
                   <div className="flex items-center gap-1">
                     <span className="font-mono text-lg font-bold text-text-primary">12</span>
                     <span className="text-xs text-text-muted">ms</span>
                   </div>
                 </div>
-                <div className="p-3 rounded-lg bg-surface-3/50">
+                <div className="p-3 rounded-lg bg-surface-3">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs text-text-muted">Uptime</span>
-                    <span className="font-mono text-data-sm text-success">99.8%</span>
+                    <span className="font-mono text-xs font-medium text-success">99.8%</span>
                   </div>
                   <div className="progress-bar">
                     <div className="progress-fill bg-success" style={{ width: "99.8%" }} />
@@ -436,7 +330,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Active Clusters */}
-            <div className="rounded-xl bg-surface-2 border border-border p-4">
+            <div className="card">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-semibold text-text-primary">Active Clusters</h3>
                 <button className="p-1 rounded hover:bg-surface-3 transition-colors">
@@ -445,14 +339,14 @@ export default function DashboardPage() {
               </div>
 
               <div className="space-y-3">
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-surface-3/50">
-                  <div className="p-2 rounded-lg bg-primary/10">
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-surface-3">
+                  <div className="p-2 rounded-lg bg-primary-light">
                     <Server className="w-4 h-4 text-primary" />
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium text-text-primary">Inference Engine</span>
-                      <span className="font-mono text-data-sm text-text-secondary">0.02ms</span>
+                      <span className="font-mono text-xs text-text-secondary">0.02ms</span>
                     </div>
                     <div className="flex items-center justify-between mt-0.5">
                       <span className="text-xs text-text-muted">v2.4.1-stable</span>
@@ -461,14 +355,14 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-surface-3/50">
-                  <div className="p-2 rounded-lg bg-info/10">
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-surface-3">
+                  <div className="p-2 rounded-lg bg-info-light">
                     <Database className="w-4 h-4 text-info" />
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium text-text-primary">Vector DB</span>
-                      <span className="font-mono text-data-sm text-text-secondary">4.2gb</span>
+                      <span className="font-mono text-xs text-text-secondary">4.2gb</span>
                     </div>
                     <div className="flex items-center justify-between mt-0.5">
                       <span className="text-xs text-text-muted">shard_us_east_1</span>
@@ -480,16 +374,75 @@ export default function DashboardPage() {
             </div>
 
             {/* AI Insight */}
-            <div className="rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 p-4">
+            <div className="rounded-card border border-primary/20 bg-gradient-to-br from-primary-light to-white p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Sparkles className="w-4 h-4 text-primary" />
                 <h3 className="text-sm font-semibold text-primary">AI INSIGHT</h3>
               </div>
-              <p className="text-sm text-text-secondary leading-relaxed italic">
+              <p className="text-sm text-text-secondary leading-relaxed">
                 &quot;Fraud patterns detected in Zone-7. Recommended: Temporary escalation of AI confidence threshold to 95%.&quot;
               </p>
             </div>
           </div>
+        </div>
+
+        {/* Agent Fleet Status */}
+        <div className="card mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-primary-light flex items-center justify-center">
+                <Bot className="w-4 h-4 text-primary" />
+              </div>
+              <h2 className="font-display font-semibold text-text-primary">Agent Fleet Status</h2>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <div className="dot-green" />
+                <span className="text-sm text-text-secondary">{agentData.length} Online</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="dot-gray" />
+                <span className="text-sm text-text-secondary">0 Offline</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-7 divide-x divide-border">
+            {agentData.map((agent) => {
+              const Icon = agentIcons[agent.name] || Zap
+              return (
+                <div key={agent.name} className="p-4 hover:bg-surface-2 transition-colors">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className={`p-2 rounded-lg ${agentColors[agent.name] || "bg-primary-light text-primary"}`}>
+                      <Icon className="w-4 h-4" />
+                    </div>
+                    <div className="dot-green" />
+                  </div>
+                  <h3 className="text-sm font-medium text-text-primary mb-3">{agent.display_name}</h3>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-text-muted">Uptime</span>
+                      <span className="font-mono text-xs text-text-secondary">{agentUptime[agent.name] || "—"}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-text-muted">Activity</span>
+                      <span className="font-mono text-xs text-primary">{agentActivity[agent.name] || "—"}</span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-center gap-2 py-4 text-[11px] font-mono text-text-muted">
+          <span>© 2024 OpsIQ v2.5.0</span>
+          <span className="mx-1">|</span>
+          <span className="flex items-center gap-1.5">
+            <span className="dot-green" />
+            All Systems Operational
+          </span>
         </div>
       </div>
     </Shell>

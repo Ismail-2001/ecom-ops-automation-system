@@ -1,5 +1,4 @@
 "use client"
-"use client"
 import Sidebar, { useSidebar } from "./Sidebar"
 import Topbar from "./Topbar"
 
@@ -21,7 +20,9 @@ export default function Shell({ children, title, subtitle, actions }: {
           actions={actions}
           onMenuToggle={sidebar.toggle}
         />
-        <main className="p-4 sm:p-6">{children}</main>
+        <main id="main-content" className="p-4 sm:p-6" role="main">
+          {children}
+        </main>
       </div>
     </div>
   )
