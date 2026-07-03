@@ -118,19 +118,21 @@ const agentColors: Record<string, string> = {
 }
 
 export default function DashboardPage() {
-  const health = useHealth()
-  const agents = useAgentStatus()
-  const approvals = useApprovals({ status: "pending" })
-  const analytics = useAnalytics()
+  const { data: healthData } = useHealth()
+  const { data: agentsData } = useAgentStatus()
+  const { data: approvalsData } = useApprovals({ status: "pending" })
+  const { data: analyticsData } = useAnalytics()
   const { isConnected } = useWs()
   const [page, setPage] = useState(0)
+  const [fallbackAgentsData] = useState(fallbackAgents)
+  const [fallbackDecisionsData] = useState(fallbackDecisions)
 
-  const agentData = agents.data?.length ? agents.data : fallbackAgents
-  const pendingDecisions = approvals.data?.length ? approvals.data : fallbackDecisions
-  const isBackendUp = health.data?.status === "ok"
+  const agentData = agentsData?.length ? agentsData : fallbackAgentsData
+  const pendingDecisions = approvalsData?.length ? approvalsData : fallbackDecisionsData
+  const isBackendUp = healthData?.status === "ok"
 
-  const revenue = analytics.data?.summary?.total_financial_impact || 124892.40
-  const totalDecisions = analytics.data?.summary?.total_decisions || 14208
+  const revenue = analyticsData?.summary?.total_financial_impact || 124892.40
+  const totalDecisions = analyticsData?.summary?.total_decisions || 14208
   const pendingCount = pendingDecisions.length || 42
   const flaggedCount = pendingDecisions.filter((d) => d.risk_level === "high" || d.risk_level === "critical").length || 18
 
@@ -437,7 +439,7 @@ export default function DashboardPage() {
 
         {/* Footer */}
         <div className="flex items-center justify-center gap-2 py-4 text-[11px] font-mono text-text-muted">
-          <span>© 2024 OpsIQ v2.5.0</span>
+          <span>© 2024 OpsIQ {healthData?.version || "v2.5.0"}</span>
           <span className="mx-1">|</span>
           <span className="flex items-center gap-1.5">
             <span className="dot-green" />

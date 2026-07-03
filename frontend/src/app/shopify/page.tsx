@@ -12,8 +12,9 @@ import {
   ArrowRight,
 } from "lucide-react"
 import Shell from "@/components/layout/Shell"
+import { useShopifyStatus, useShopifySync } from "@/lib/hooks"
 
-const syncStats = [
+const fallbackSyncStats = [
   {
     label: "Products Synced",
     value: "1,847",
@@ -104,6 +105,43 @@ function StatusBadge({ status }: { status: "success" | "pending" | "error" }) {
 }
 
 export default function ShopifyPage() {
+  const { data: shopifyStatus, isLoading } = useShopifyStatus()
+   const { mutate: syncNow, isPending: isSyncing } = useShopifySync()
+
+  const status = (shopifyStatus ?? { connected: true, store_url: "mystore.myshopify.com", last_sync: "2 minutes ago", products_count: 1847, orders_today: 142 }) as Record<string, unknown>
+  const isConnected = status.connected !== false
+  const storeUrl = (status.store_url as string) || "mystore.myshopify.com"
+  const lastSync = (status.last_sync as string) || "2 minutes ago"
+  const productsCount = (status.products_count as number) || 1847
+  const ordersToday = (status.orders_today as number) || 142
+
+  const syncStats = [
+    {
+      label: "Products Synced",
+      value: productsCount.toLocaleString(),
+      icon: Package,
+      iconBg: "bg-success/10",
+      iconColor: "text-success",
+      accentColor: "text-success",
+    },
+    {
+      label: "Orders Synced",
+      value: "2,847",
+      icon: ShoppingCart,
+      iconBg: "bg-info/10",
+      iconColor: "text-info",
+      accentColor: "text-info",
+    },
+    {
+      label: "Customers Synced",
+      value: "12,458",
+      icon: Users,
+      iconBg: "bg-warning/10",
+      iconColor: "text-warning",
+      accentColor: "text-warning",
+    },
+  ]
+
   return (
     <Shell
       title="Shopify Integration"
@@ -129,10 +167,10 @@ export default function ShopifyPage() {
                 </h3>
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-body-md text-text-secondary font-mono">
-                    mystore.myshopify.com
+                    {storeUrl}
                   </span>
                   <a
-                    href="https://mystore.myshopify.com/admin"
+                    href={`https://${storeUrl}/admin`}
                     target="_blank"
                     rel="noreferrer"
                     className="text-primary hover:text-primary-hover transition-colors"
@@ -142,8 +180,12 @@ export default function ShopifyPage() {
                 </div>
               </div>
             </div>
-            <button className="btn-primary">
-              <RefreshCw className="w-4 h-4" /> Sync Now
+            <button 
+              className="btn-primary" 
+               onClick={() => syncNow(undefined)}
+              disabled={isSyncing}
+            >
+              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} /> {isSyncing ? 'Syncing...' : 'Sync Now'}
             </button>
           </div>
 
@@ -152,21 +194,21 @@ export default function ShopifyPage() {
               <div className="label-caps mb-1.5">Last Sync</div>
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-text-muted" />
-                <span className="text-data-md text-text-primary">2 minutes ago</span>
+                <span className="text-data-md text-text-primary">{lastSync}</span>
               </div>
             </div>
             <div>
               <div className="label-caps mb-1.5">Products Synced</div>
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4 text-success" />
-                <span className="font-display text-data-lg text-success">1,847</span>
+                <span className="font-display text-data-lg text-success">{productsCount.toLocaleString()}</span>
               </div>
             </div>
             <div>
               <div className="label-caps mb-1.5">Orders Today</div>
               <div className="flex items-center gap-2">
                 <ShoppingCart className="w-4 h-4 text-info" />
-                <span className="font-display text-data-lg text-info">142</span>
+                <span className="font-display text-data-lg text-info">{ordersToday.toLocaleString()}</span>
               </div>
             </div>
           </div>
