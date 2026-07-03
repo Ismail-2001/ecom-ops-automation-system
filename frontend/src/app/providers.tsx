@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { createContext, useCallback, useContext, useMemo, useState } from "react"
+import { Toaster } from "sonner"
 import { useWebSocket, type WSEvent } from "@/lib/useWebSocket"
 
 interface WsContextValue {
@@ -64,7 +65,21 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <WsContext.Provider value={wsValue}>{children}</WsContext.Provider>
+      <WsContext.Provider value={wsValue}>
+        {children}
+        <Toaster
+          position="bottom-right"
+          toastOptions={{
+            style: {
+              background: '#111827',
+              border: '1px solid rgba(99, 102, 241, 0.10)',
+              color: '#F1F5F9',
+              fontSize: '14px',
+            },
+          }}
+          theme="dark"
+        />
+      </WsContext.Provider>
     </QueryClientProvider>
   )
 }

@@ -1,9 +1,10 @@
 "use client"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useState, useEffect } from "react"
 import {
   LayoutDashboard, Bot, ShoppingCart, Headphones, Package,
-  Star, BarChart3, Store, Shield, Settings, Zap, Plus
+  Star, BarChart3, Store, Shield, Settings, Zap, Plus, X
 } from "lucide-react"
 
 const navSections = [
@@ -45,18 +46,33 @@ const navSections = [
   },
 ]
 
-export default function Sidebar() {
+interface SidebarProps {
+  open: boolean
+  onClose: () => void
+}
+
+function SidebarContent({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname()
+
+  useEffect(() => {
+    onClose?.()
+  }, [pathname, onClose])
+
   return (
     <aside className="fixed left-0 top-0 bottom-0 w-[240px] bg-void border-r border-border flex flex-col z-50">
-      <div className="p-5 flex items-center gap-3">
-        <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
-          <Zap className="w-4 h-4 text-primary" />
+      <div className="p-5 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
+            <Zap className="w-4 h-4 text-primary" />
+          </div>
+          <div>
+            <div className="font-display font-bold text-sm text-text-primary leading-tight">OpsIQ</div>
+            <div className="text-[10px] font-mono uppercase tracking-widest text-text-muted">AI Automation</div>
+          </div>
         </div>
-        <div>
-          <div className="font-display font-bold text-sm text-text-primary leading-tight">OpsIQ</div>
-          <div className="text-[10px] font-mono uppercase tracking-widest text-text-muted">AI Automation</div>
-        </div>
+        <button onClick={onClose} className="lg:hidden w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2">
+          <X className="w-4 h-4" />
+        </button>
       </div>
 
       <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto">
@@ -101,4 +117,28 @@ export default function Sidebar() {
       </div>
     </aside>
   )
+}
+
+export default function Sidebar({ open, onClose }: SidebarProps) {
+  return (
+    <>
+      {/* Desktop sidebar */}
+      <div className="hidden lg:block">
+        <SidebarContent />
+      </div>
+
+      {/* Mobile overlay */}
+      {open && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div className="absolute inset-0 bg-void/60 backdrop-blur-sm" onClick={onClose} />
+          <SidebarContent onClose={onClose} />
+        </div>
+      )}
+    </>
+  )
+}
+
+export function useSidebar() {
+  const [open, setOpen] = useState(false)
+  return { open, setOpen, toggle: () => setOpen((o) => !o), close: () => setOpen(false) }
 }
