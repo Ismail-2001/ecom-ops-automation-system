@@ -1,4 +1,6 @@
-import Sidebar from "./Sidebar"
+"use client"
+"use client"
+import Sidebar, { useSidebar } from "./Sidebar"
 import Topbar from "./Topbar"
 
 export default function Shell({ children, title, subtitle, actions }: {
@@ -7,12 +9,19 @@ export default function Shell({ children, title, subtitle, actions }: {
   subtitle?: string
   actions?: React.ReactNode
 }) {
+  const sidebar = useSidebar()
+
   return (
     <div className="min-h-screen bg-void">
-      <Sidebar />
-      <div className="ml-[240px]">
-        <Topbar title={title} subtitle={subtitle} actions={actions} />
-        <main className="p-6">{children}</main>
+      <Sidebar open={sidebar.open} onClose={sidebar.close} />
+      <div className="lg:ml-[240px]">
+        <Topbar
+          title={title}
+          subtitle={subtitle}
+          actions={actions}
+          onMenuToggle={sidebar.toggle}
+        />
+        <main className="p-4 sm:p-6">{children}</main>
       </div>
     </div>
   )

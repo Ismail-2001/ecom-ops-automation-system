@@ -14,6 +14,17 @@ interface AuthState {
   clearError: () => void
 }
 
+function setCookie(name: string, value: string, days = 7) {
+  if (typeof document === 'undefined') return
+  const expires = new Date(Date.now() + days * 864e5).toUTCString()
+  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`
+}
+
+function deleteCookie(name: string) {
+  if (typeof document === 'undefined') return
+  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
@@ -29,6 +40,8 @@ export const useAuthStore = create<AuthState>()(
           const res = await authApi.login(apiKey)
           if (res.status === "ok") {
             localStorage.setItem("opsiq_api_key", apiKey)
+            setCookie("opsiq_api_key", apiKey)
+            setCookie("opsiq_auth", "true")
             set({
               apiKey,
               operator: res.operator,
@@ -53,6 +66,8 @@ export const useAuthStore = create<AuthState>()(
 
       logout: () => {
         localStorage.removeItem("opsiq_api_key")
+        deleteCookie("opsiq_api_key")
+        deleteCookie("opsiq_auth")
         set({
           apiKey: null,
           operator: null,
