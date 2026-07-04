@@ -53,3 +53,15 @@ METRIC_HITL_QUEUE_DEPTH = Gauge(
 METRIC_FINANCIAL_IMPACT = Counter(
     "financial_impact_total_dollars", "Total financial impact in dollars", ["agent", "action_type"]
 )
+METRIC_LLM_TOKENS_INPUT = Counter(
+    "llm_tokens_input_total", "Total LLM input tokens consumed", ["agent", "model"]
+)
+METRIC_LLM_TOKENS_OUTPUT = Counter(
+    "llm_tokens_output_total", "Total LLM output tokens consumed", ["agent", "model"]
+)
+METRIC_LLM_COST_DOLLARS = Counter(
+    "llm_cost_dollars_total", "Total LLM API cost in USD", ["agent", "model"]
+)
+METRIC_LLM_DAILY_COST = Gauge(
+    "llm_daily_cost_dollars", "Current day LLM spend in USD"
+)

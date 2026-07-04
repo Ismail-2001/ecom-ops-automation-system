@@ -286,6 +286,7 @@ services:
     environment:
       DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ecommerce_ops}?sslmode=disable"
     networks:
+      - backend
       - monitoring
     depends_on:
       postgres:
@@ -304,6 +305,7 @@ services:
     environment:
       REDIS_ADDR: redis://redis:6379
     networks:
+      - backend
       - monitoring
     depends_on:
       redis:

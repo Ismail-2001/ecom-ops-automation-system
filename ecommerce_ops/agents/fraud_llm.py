@@ -10,6 +10,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from ecommerce_ops.agents._base import BaseAgent
+from ecommerce_ops.agents.cost_tracker import track_llm_cost
 from ecommerce_ops.agents.message_bus import AgentMessage, MessageTopics, message_bus
 from ecommerce_ops.safety.guardrails import guardrail_manager
 
@@ -97,6 +98,7 @@ class FraudDetectionAgentLLM(BaseAgent):
             ]
 
             response = await self.llm.ainvoke(messages)
+            track_llm_cost(response, agent="fraud_detection")
             analysis = self._parse_response(response.content)
 
             # Guardrail: validate output
