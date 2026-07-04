@@ -314,14 +314,44 @@ async def health(operator: str = Depends(verify_auth_optional)):
 
 
 @app.websocket("/ws/queue")
-async def websocket_endpoint(websocket: WebSocket):
-    await ws_manager.connect(websocket)
+async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
+    """Authenticated WebSocket endpoint for real-time events.
+
+    Auth: Pass API key as query param ?token=<api-key>
+    Browser WS API cannot send custom headers, so query param is the standard approach.
+    """
+    from ecommerce_ops.api.ws import (
+        CLOSE_AUTH_FAILED,
+        CLOSE_RATE_LIMITED,
+    )
+
+    conn = await ws_manager.connect(websocket, token=token)
+    if conn is None:
+        # Connection was rejected (auth failed, rate limited, or at capacity)
+        return
+
     try:
         while True:
-            await websocket.receive_text()
-            await websocket.send_json({"type": "pong"})
+            data = await websocket.receive_text()
+            # Rate limit check
+            if not conn.check_rate_limit():
+                await websocket.send_json({"type": "error", "payload": {"code": "rate_limited"}})
+                await websocket.close(code=CLOSE_RATE_LIMITED, reason="Rate limit exceeded")
+                break
+            # Respond to ping
+            try:
+                import json
+                msg = json.loads(data)
+                if msg.get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+            except (json.JSONDecodeError, ValueError):
+                await websocket.send_json({"type": "pong"})
     except WebSocketDisconnect:
-        await ws_manager.disconnect(websocket)
+        pass
+    except Exception as e:
+        logger.warning("WS error for %s: %s", conn.operator, e)
+    finally:
+        await ws_manager.disconnect(conn)
 
 
 @app.get("/api/approvals")
@@ -860,6 +890,14 @@ async def readiness():
 async def liveness():
     """Kubernetes-style liveness probe."""
     return JSONResponse(status_code=200, content={"status": "alive"})
+
+
+@app.get("/api/ws/stats")
+async def ws_stats(
+    operator: str = Depends(verify_auth),
+):
+    """WebSocket connection statistics (requires auth)."""
+    return ws_manager.get_stats()
 
 
 @app.post("/api/run")
