@@ -203,7 +203,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Trivy vulnerability scan (CRITICAL)
-        uses: aquasecurity/trivy-action@0.19.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: opsiq-api:${{ github.sha }}
           format: table
@@ -212,7 +212,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Trivy vulnerability scan (HIGH — advisory)
-        uses: aquasecurity/trivy-action@0.19.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: opsiq-api:${{ github.sha }}
           format: sarif

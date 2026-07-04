@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run Trivy on filesystem
-        uses: aquasecurity/trivy-action@0.19.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -46,7 +46,7 @@ jobs:
           tags: opsiq-api:scan
 
       - name: Trivy image scan (CRITICAL — fail)
-        uses: aquasecurity/trivy-action@0.19.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: opsiq-api:scan
           format: table
@@ -55,7 +55,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Trivy image scan (full SARIF)
-        uses: aquasecurity/trivy-action@0.19.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: opsiq-api:scan
           format: sarif
