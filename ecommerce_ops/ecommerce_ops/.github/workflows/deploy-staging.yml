@@ -1,0 +1,64 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  STAGING_HOST: ${{ secrets.STAGING_HOST }}
+  STAGING_USER: ${{ secrets.STAGING_USER }}
+  IMAGE_TAG: ghcr.io/${{ github.repository }}:main
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    environment:
+      name: staging
+      url: https://staging.opsiq.io
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for CI to pass
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-regexp: '^(Lint|Tests|Build)'
+          wait-interval: 30
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            cd /opt/ecom-ops
+            docker compose pull api
+            docker compose up -d --no-deps api
+            docker compose exec -T api python -c "from ecommerce_ops.models.db import init_db; import asyncio; asyncio.run(init_db())"
+            echo "Deployment complete at $(date)"
+
+      - name: Health check
+        run: |
+          sleep 30
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://staging.opsiq.io/health || true)
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Staging health check passed"
+              exit 0
+            fi
+            echo "Attempt $i: Got $STATUS, retrying in 10s..."
+            sleep 10
+          done
+          echo "❌ Staging health check failed"
+          exit 1
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Staging deployment failed for ${{ github.sha }}"
