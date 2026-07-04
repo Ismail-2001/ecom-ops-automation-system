@@ -1,6 +1,7 @@
 import hashlib
 from typing import Dict, Any, List
 from ecommerce_ops.agents._base import BaseAgent
+from ecommerce_ops.agents.cost_tracker import track_llm_cost
 from ecommerce_ops.config import settings
 from ecommerce_ops.infra.retry import async_retry_decorator
 from ecommerce_ops.infra.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
@@ -126,10 +127,12 @@ class ReviewsAgent(BaseAgent):
         )
 
         structured_llm = self.llm.with_structured_output(ReviewAnalysisOutput)
-        return await structured_llm.ainvoke([
+        result = await structured_llm.ainvoke([
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ])
+        track_llm_cost(result, agent="reviews")
+        return result
 
     def _fallback_analysis(self, rating: int) -> Dict[str, Any]:
         if rating >= 4:

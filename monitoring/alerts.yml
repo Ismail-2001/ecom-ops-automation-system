@@ -125,3 +125,33 @@ groups:
         annotations:
           summary: "WAL accumulation detected"
           description: "Replication lag or WAL archiving stalled ({{ $value }} bytes)."
+
+  - name: llm-cost-budget
+    interval: 60s
+    rules:
+      - alert: LLMDailyBudgetExceeded
+        expr: llm_daily_cost_dollars > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM daily spend exceeded $10"
+          description: "Current day LLM cost is ${{ $value | printf \"%.2f\" }}."
+
+      - alert: LLMBurstCost
+        expr: rate(llm_cost_dollars_total[5m]) * 3600 > 5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "LLM hourly burn rate exceeds $5/hr"
+          description: "At current rate, LLM cost will reach ${{ $value | printf \"%.0f\" }}/hr."
+
+      - alert: LLMLatencyHigh
+        expr: histogram_quantile(0.95, rate(llm_call_duration_seconds_bucket[5m])) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM p95 latency above 30s"
+          description: "LLM calls are taking {{ $value | printf \"%.1f\" }}s at p95."

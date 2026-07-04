@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from ecommerce_ops.agents._base import BaseAgent
+from ecommerce_ops.agents.cost_tracker import track_llm_cost
 from ecommerce_ops.agents.message_bus import AgentMessage, MessageTopics, message_bus
 from ecommerce_ops.safety.guardrails import guardrail_manager
 
@@ -67,7 +68,7 @@ class InventoryManagementAgentLLM(BaseAgent):
     """LLM-powered inventory management agent."""
 
     def __init__(self):
-        super().__init__(agent_id="inventory_management")
+        super().__init__(agent_name="inventory_management")
         self.message_bus = message_bus
         self.message_bus.subscribe_agent("inventory_management", self._handle_message)
 
@@ -100,6 +101,7 @@ class InventoryManagementAgentLLM(BaseAgent):
             ]
 
             response = await self.llm.ainvoke(messages)
+            track_llm_cost(response, agent="inventory_management")
             analysis = self._parse_response(response.content, product_data)
 
             # Validate output
