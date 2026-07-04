@@ -47,6 +47,7 @@ from ecommerce_ops.api.security import router as security_router
 from ecommerce_ops.api.demo import router as demo_router
 from ecommerce_ops.security.auth import AuthenticationMiddleware
 from ecommerce_ops.security.role_manager import role_manager
+from ecommerce_ops.observability.tracing_otel import init_tracing, instrument_app
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ecommerce_ops.api")
@@ -144,6 +145,10 @@ OpsIQ is an autonomous multi-agent system that manages ecommerce operations incl
 )
 
 setup_middleware(app)
+
+# Instrument FastAPI with OpenTelemetry (before auth middleware)
+otel_provider = init_tracing()
+instrument_app(app)
 
 # Authentication middleware (after all other middleware)
 app.add_middleware(AuthenticationMiddleware)

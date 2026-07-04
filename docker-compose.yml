@@ -315,6 +315,49 @@ services:
           memory: 128M
           cpus: "0.25"
 
+  # ── Grafana Tempo (Distributed Tracing) ──────────────────
+  tempo:
+    image: grafana/tempo:2.6.1
+    container_name: opsiq-tempo
+    command:
+      - "-config.file=/etc/tempo/tempo.yaml"
+    volumes:
+      - ./monitoring/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    networks:
+      - monitoring
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+        reservations:
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── OTel Collector (optional, for advanced routing) ─────
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.108.0
+    container_name: opsiq-otel-collector
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./monitoring/otel/otelcol.yaml:/etc/otelcol/config.yaml:ro
+    networks:
+      - monitoring
+    depends_on:
+      - tempo
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.25"
+
 # ── Networks ────────────────────────────────────────────────
 networks:
   backend:
@@ -349,3 +392,5 @@ volumes:
     name: opsiq-alertmanager-data
   nginx_logs:
     name: opsiq-nginx-logs
+  tempo_data:
+    name: opsiq-tempo-data
