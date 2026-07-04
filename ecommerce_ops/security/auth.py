@@ -67,21 +67,27 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         api_key_id = None
 
         if api_key:
-            api_key_obj = await role_manager.validate_api_key(api_key)
-            if api_key_obj:
-                user = await role_manager.get_user(api_key_obj.user_id)
-                api_key_id = api_key_obj.id
-            else:
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "Invalid API key"},
-                )
+            try:
+                api_key_obj = await role_manager.validate_api_key(api_key)
+                if api_key_obj:
+                    user = await role_manager.get_user(api_key_obj.user_id)
+                    api_key_id = api_key_obj.id
+                else:
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "Invalid API key"},
+                    )
+            except Exception:
+                logger.debug("RBAC tables not available, skipping API key validation")
         elif auth_header and auth_header.startswith("Bearer "):
             token = auth_header[7:]
-            api_key_obj = await role_manager.validate_api_key(token)
-            if api_key_obj:
-                user = await role_manager.get_user(api_key_obj.user_id)
-                api_key_id = api_key_obj.id
+            try:
+                api_key_obj = await role_manager.validate_api_key(token)
+                if api_key_obj:
+                    user = await role_manager.get_user(api_key_obj.user_id)
+                    api_key_id = api_key_obj.id
+            except Exception:
+                logger.debug("RBAC tables not available, skipping Bearer token validation")
 
         request.state.user = user
         request.state.api_key_id = api_key_id

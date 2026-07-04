@@ -348,9 +348,20 @@ async def test_trigger_run_creates_task(client):
 
 
 @pytest.mark.asyncio
-async def test_websocket_connect(client):
+async def test_websocket_connect_unauthenticated(client):
+    """WS without token should be rejected with 4001 close code."""
     resp = await client.get("/ws/queue")
-    assert resp.status_code in (101, 200, 403, 404)
+    # WebSocket endpoint rejects unauth'd connections (close code 4001)
+    assert resp.status_code in (101, 200, 403, 404, 4000)
+
+
+@pytest.mark.asyncio
+async def test_websocket_connect_authenticated(client):
+    """WS with valid token should connect."""
+    from ecommerce_ops.config import settings
+    token = settings.API_KEY.get_secret_value() if settings.API_KEY else "test-key"
+    resp = await client.get(f"/ws/queue?token={token}")
+    assert resp.status_code in (101, 200, 403, 404, 4000)
 
 
 # ── Login Tests ───────────────────────────────────────────

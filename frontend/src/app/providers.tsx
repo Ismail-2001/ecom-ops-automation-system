@@ -10,7 +10,9 @@ interface WsContextValue {
   isConnecting: boolean
   reconnectAttempt: number
   lastEvent: WSEvent | null
+  authFailed: boolean
   reconnect: () => void
+  resetAuth: () => void
 }
 
 const WsContext = createContext<WsContextValue>({
@@ -18,7 +20,9 @@ const WsContext = createContext<WsContextValue>({
   isConnecting: false,
   reconnectAttempt: 0,
   lastEvent: null,
+  authFailed: false,
   reconnect: () => {},
+  resetAuth: () => {},
 })
 
 export function useWs() {
@@ -58,9 +62,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
       isConnecting: ws.isConnecting,
       reconnectAttempt: ws.reconnectAttempt,
       lastEvent: ws.lastEvent,
+      authFailed: ws.authFailed,
       reconnect: ws.reconnect,
+      resetAuth: ws.resetAuth,
     }),
-    [ws.isConnected, ws.isConnecting, ws.reconnectAttempt, ws.lastEvent, ws.reconnect],
+    [ws.isConnected, ws.isConnecting, ws.reconnectAttempt, ws.lastEvent, ws.authFailed, ws.reconnect, ws.resetAuth],
   )
 
   return (
