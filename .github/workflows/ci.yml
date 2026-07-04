@@ -301,6 +301,10 @@ jobs:
         working-directory: frontend
         run: npx tsc --noEmit
 
+      - name: Unit tests
+        working-directory: frontend
+        run: npx vitest run --reporter=verbose
+
       - name: Build
         working-directory: frontend
         run: npm run build
