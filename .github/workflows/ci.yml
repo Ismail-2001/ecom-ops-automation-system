@@ -33,6 +33,54 @@ jobs:
       - name: Ruff format check
         run: ruff format --check ecommerce_ops/
 
+  # ── Migration Drift Check ──────────────────────────────────
+  migration-check:
+    name: Migration Drift Check
+    runs-on: ubuntu-latest
+    needs: lint
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ecommerce_ops_migrate
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/ecommerce_ops_migrate
+      ENV: testing
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run migrations
+        run: alembic upgrade head
+
+      - name: Check for drift
+        run: |
+          alembic revision --autogenerate -m "ci_drift_check" --sql > /tmp/drift.sql 2>&1 || true
+          if grep -q "No changes detected" /tmp/drift.sql 2>/dev/null || [ ! -s /tmp/drift.sql ]; then
+            echo "✓ No migration drift detected"
+          else
+            echo "✗ Migration drift detected! Models diverge from migrations."
+            echo "Generated SQL diff:"
+            cat /tmp/drift.sql
+            exit 1
+          fi
+
   # ── Unit Tests ────────────────────────────────────────────
   test-unit:
     name: Unit Tests
