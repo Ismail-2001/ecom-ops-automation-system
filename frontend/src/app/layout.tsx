@@ -4,6 +4,7 @@ import "../styles/globals.css"
 import { Providers } from "./providers"
 import { CommandPaletteProvider } from "@/components/CommandPalette"
 import CommandPalette from "@/components/CommandPalette"
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -74,7 +75,9 @@ export default function RootLayout({
               Skip to main content
             </a>
             <CommandPalette />
-            {children}
+            <ErrorBoundary>
+              {children}
+            </ErrorBoundary>
           </CommandPaletteProvider>
         </Providers>
       </body>
