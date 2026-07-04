@@ -1,6 +1,7 @@
 # ── OpsIQ — Production Dockerfile ──────────────────────────
 # Multi-stage build: builder → runtime
 # Optimized for layer caching, security, and minimal image size
+# Build with: DOCKER_BUILDKIT=1 docker build .
 
 # ── Builder Stage ──────────────────────────────────────────
 FROM python:3.12-slim AS builder
@@ -20,8 +21,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy dependency files FIRST for layer caching
 # Only re-installs deps when requirements.txt or pyproject.toml changes
 COPY pyproject.toml requirements.txt ./
-RUN pip install --no-cache-dir --user hatchling && \
-    python -m pip install --no-cache-dir --user -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --user hatchling && \
+    python -m pip install --user -r requirements.txt
 
 # ── Runtime Stage ──────────────────────────────────────────
 FROM python:3.12-slim
@@ -70,7 +72,7 @@ COPY --from=builder /root/.local /root/.local
 ENV PATH="/root/.local/bin:${PATH}"
 
 # Install Playwright Chromium (deps already installed above)
-RUN playwright install chromium
+RUN --mount=type=cache,target=/app/.playwright playwright install chromium
 
 # Create non-root user for security
 RUN groupadd --system app && \
