@@ -1,7 +1,7 @@
 # ── OpsIQ Makefile ──────────────────────────────────────────
 # Common development and production commands
 
-.PHONY: help dev prod test lint clean build deploy
+.PHONY: help dev prod staging test lint clean build deploy dr dr-check dr-verify dr-restore dr-report
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -106,3 +106,36 @@ shell-db: ## Shell into PostgreSQL
 seed-demo: ## Seed database with demo data
 	curl -s -X POST http://localhost:8000/api/demo/seed \
 		-H "Authorization: Bearer opsiq-dev-key-2024" | python -m json.tool
+
+# ── Staging ────────────────────────────────────────────────
+
+staging: ## Start staging stack (parallel to prod)
+	docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d
+	@echo "Staging API: http://localhost:8100"
+	@echo "Staging Dashboard: http://localhost:3300"
+	@echo "Staging Grafana: http://localhost:3004"
+
+staging-down: ## Stop staging stack
+	docker compose -f docker-compose.yml -f docker-compose.staging.yml down
+
+staging-logs: ## Follow staging logs
+	docker compose -f docker-compose.yml -f docker-compose.staging.yml logs -f api
+
+# ── Disaster Recovery ───────────────────────────────────────
+
+dr: dr-check ## Run DR health check (alias)
+
+dr-check: ## Run DR health check
+	bash scripts/disaster-recovery.sh check
+
+dr-verify: ## Verify latest backup can be restored
+	bash scripts/verify-backup.sh
+
+dr-restore: ## Restore database from backup (interactive)
+	bash scripts/restore-db.sh
+
+dr-report: ## Generate DR status report
+	bash scripts/disaster-recovery.sh report
+
+dr-backup: ## Create backup + verify it
+	bash scripts/backup-db.sh && bash scripts/verify-backup.sh

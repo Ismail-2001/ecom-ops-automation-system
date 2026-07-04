@@ -1,0 +1,215 @@
+# ── OpsIQ — CD Staging Auto-Deploy ──────────────────────────
+# Deploys to staging on push to main, runs DR checks, then optional prod deploy
+name: CD Staging Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: 'Skip tests'
+        required: false
+        default: 'false'
+        type: boolean
+      deploy_prod:
+        description: 'Also deploy to production'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ── Build & Test ─────────────────────────────────────────
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run linting
+        run: ruff check ecommerce_ops/ --output-format=github
+
+      - name: Run type checking
+        run: mypy ecommerce_ops/ --ignore-missing-imports
+
+      - name: Run unit tests
+        run: pytest tests/ -x -q --tb=short --cov=ecommerce_ops --cov-report=xml
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          file: coverage.xml
+
+  # ── Build Docker Image ───────────────────────────────────
+  build-image:
+    runs-on: ubuntu-latest
+    needs: build-test
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=
+            type=ref,event=branch
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Deploy to Staging ────────────────────────────────────
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: build-image
+    environment: staging
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.STAGING_SSH_KEY }}" > ~/.ssh/staging_key
+          chmod 600 ~/.ssh/staging_key
+          ssh-keyscan ${{ secrets.STAGING_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to staging
+        run: |
+          ssh -i ~/.ssh/staging_key deploy@${{ secrets.STAGING_HOST }} << 'EOF'
+            cd /opt/opsiq
+            git pull origin main
+
+            # Update image
+            docker compose -f docker-compose.yml -f docker-compose.staging.yml pull api
+            docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d api
+
+            # Wait for health
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:8100/health > /dev/null 2>&1; then
+                echo "Staging API healthy"
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "Staging API failed to become healthy"
+            exit 1
+          EOF
+
+      - name: Run smoke tests
+        run: |
+          ssh -i ~/.ssh/staging_key deploy@${{ secrets.STAGING_HOST }} << 'EOF'
+            # Health check
+            curl -sf http://localhost:8100/health || exit 1
+
+            # API versioning
+            curl -sf -w "%{http_code}" -o /dev/null http://localhost:8100/api/v1/agents \
+              -H "X-API-Key: opsiq-dev-key-2024" | grep -q 200
+
+            # Database connectivity
+            docker exec opsiq-postgres-staging pg_isready -U postgres
+
+            echo "All smoke tests passed"
+          EOF
+
+      - name: Run backup verification
+        run: |
+          ssh -i ~/.ssh/staging_key deploy@${{ secrets.STAGING_HOST }} << 'EOF'
+            cd /opt/opsiq
+            bash scripts/backup-db.sh
+            bash scripts/verify-backup.sh
+          EOF
+
+      - name: Run DR check
+        run: |
+          ssh -i ~/.ssh/staging_key deploy@${{ secrets.STAGING_HOST }} << 'EOF'
+            cd /opt/opsiq
+            bash scripts/disaster-recovery.sh check
+          EOF
+
+  # ── Deploy to Production (manual trigger) ────────────────
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: github.event.inputs.deploy_prod == 'true'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/prod_key
+          chmod 600 ~/.ssh/prod_key
+          ssh-keyscan ${{ secrets.PROD_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Pre-deploy backup
+        run: |
+          ssh -i ~/.ssh/prod_key deploy@${{ secrets.PROD_HOST }} << 'EOF'
+            cd /opt/opsiq
+            bash scripts/backup-db.sh
+          EOF
+
+      - name: Deploy to production
+        run: |
+          ssh -i ~/.ssh/prod_key deploy@${{ secrets.PROD_HOST }} << 'EOF'
+            cd /opt/opsiq
+            git pull origin main
+            bash scripts/deploy.sh up
+          EOF
+
+      - name: Post-deploy verification
+        run: |
+          ssh -i ~/.ssh/prod_key deploy@${{ secrets.PROD_HOST }} << 'EOF'
+            cd /opt/opsiq
+            bash scripts/disaster-recovery.sh check
+            bash scripts/verify-backup.sh
+          EOF
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          ssh -i ~/.ssh/prod_key deploy@${{ secrets.PROD_HOST }} << 'EOF'
+            cd /opt/opsiq
+            echo "Rolling back to safety backup..."
+            SAFETY=$(ls -t backups/safety_*.sql.gz 2>/dev/null | head -1)
+            if [[ -n "$SAFETY" ]]; then
+              bash scripts/restore-db.sh "$SAFETY" --force
+            else
+              echo "No safety backup found — manual intervention required"
+              exit 1
+            fi
+          EOF
