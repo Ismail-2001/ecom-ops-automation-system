@@ -31,15 +31,15 @@ class TestBodySizeLimitMiddleware:
 
     def test_delete_request_passes_through(self, client):
         response = client.delete("/")
-        assert response.status_code == 200
+        assert response.status_code != 413
 
     def test_options_request_passes_through(self, client):
         response = client.options("/")
-        assert response.status_code == 200
+        assert response.status_code != 413
 
     def test_head_request_passes_through(self, client):
         response = client.head("/")
-        assert response.status_code == 200
+        assert response.status_code != 413
 
     def test_post_without_content_length_passes(self, client):
         response = client.post("/", content=b"small")

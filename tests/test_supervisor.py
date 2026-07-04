@@ -206,11 +206,10 @@ async def test_router_ends_at_reflection():
 @pytest.mark.asyncio
 async def test_router_no_plan_ends():
     from ecommerce_ops.graph.supervisor import router
-    from langgraph.graph import END
 
     state = {"execution_plan": None}
     result = await router(state)
-    assert result == END
+    assert result == "__end__"
 
 
 @pytest.mark.asyncio

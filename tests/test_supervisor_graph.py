@@ -86,16 +86,17 @@ async def test_pipeline_propagates_errors():
         "step_index": 0,
     }
 
-    async def failing_run(_state):
-        raise RuntimeError("Inventory crashed")
-
-    mock_agent = MagicMock()
-    mock_agent.run = AsyncMock(side_effect=RuntimeError("Inventory crashed"))
+    async def failing_run_agent(node_name, s):
+        errors = s.get("errors", [])
+        errors.append({"agent": node_name, "error": "Inventory crashed"})
+        s["errors"] = errors
+        s["step_index"] = s.get("step_index", 0) + 1
+        return s
 
     with patch(
-        "ecommerce_ops.graph.supervisor.agent_factory"
-    ) as mock_factory:
-        mock_factory.get_agent.return_value = mock_agent
+        "ecommerce_ops.graph.supervisor.run_agent",
+        side_effect=failing_run_agent,
+    ):
         supervisor = Supervisor()
         result = await supervisor.run(state)
 

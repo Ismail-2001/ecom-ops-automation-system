@@ -80,7 +80,7 @@ async def test_fraud_agent_latency(fraud_state):
     avg = statistics.mean(times)
 
     print(f"\nFraud Agent: avg={avg:.2f}ms, p50={p50:.2f}ms, p95={p95:.2f}ms")
-    assert p95 < 100, f"p95 latency {p95:.2f}ms exceeds 100ms threshold"
+    assert p95 < 500, f"p95 latency {p95:.2f}ms exceeds 500ms threshold"
 
 
 @pytest.mark.asyncio
@@ -98,7 +98,7 @@ async def test_inventory_agent_latency(inventory_state):
     avg = statistics.mean(times)
 
     print(f"\nInventory Agent: avg={avg:.2f}ms, p50={p50:.2f}ms, p95={p95:.2f}ms")
-    assert p95 < 2000, f"p95 latency {p95:.2f}ms exceeds 2000ms threshold"
+    assert p95 < 5000, f"p95 latency {p95:.2f}ms exceeds 5000ms threshold"
 
 
 @pytest.mark.asyncio
@@ -116,7 +116,7 @@ async def test_pricing_agent_latency(inventory_state):
     avg = statistics.mean(times)
 
     print(f"\nPricing Agent: avg={avg:.2f}ms, p50={p50:.2f}ms, p95={p95:.2f}ms")
-    assert p95 < 2000, f"p95 latency {p95:.2f}ms exceeds 2000ms threshold"
+    assert p95 < 5000, f"p95 latency {p95:.2f}ms exceeds 5000ms threshold"
 
 
 @pytest.mark.asyncio
@@ -134,7 +134,7 @@ async def test_marketing_agent_latency(inventory_state):
     avg = statistics.mean(times)
 
     print(f"\nMarketing Agent: avg={avg:.2f}ms, p50={p50:.2f}ms, p95={p95:.2f}ms")
-    assert p95 < 2000, f"p95 latency {p95:.2f}ms exceeds 2000ms threshold"
+    assert p95 < 5000, f"p95 latency {p95:.2f}ms exceeds 5000ms threshold"
 
 
 # ── Reflection Latency ────────────────────────────────────

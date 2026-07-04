@@ -4,14 +4,13 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from ecommerce_ops.connectors.competitor_scraper import _extract_prices
+from ecommerce_ops.connectors.competitor_scraper import _extract_prices, scrape_competitor_price
 from ecommerce_ops.tools.registry import Tool, ToolRegistry
-from ecommerce_ops.tools.scraper_tool import ScraperTool  # noqa: F401 — registers tool
 
 
 @pytest.fixture(autouse=True)
 def _ensure_scraper_registered():
-    """Re-register ScraperTool before each test in case another test cleared the registry."""
+    from ecommerce_ops.tools.scraper_tool import ScraperTool
     ToolRegistry.register(ScraperTool())
 
 
@@ -58,7 +57,6 @@ def test_extract_prices_empty_string():
 async def test_scrape_competitor_price_timeout():
     with patch("ecommerce_ops.connectors.competitor_scraper._fetch_price", new_callable=AsyncMock) as mock:
         mock.side_effect = asyncio.TimeoutError()
-        from ecommerce_ops.connectors.competitor_scraper import scrape_competitor_price
         result = await scrape_competitor_price("SKU-1")
         assert result is None
 
@@ -67,7 +65,6 @@ async def test_scrape_competitor_price_timeout():
 async def test_scrape_competitor_price_success():
     with patch("ecommerce_ops.connectors.competitor_scraper._fetch_price", new_callable=AsyncMock) as mock:
         mock.return_value = 29.99
-        from ecommerce_ops.connectors.competitor_scraper import scrape_competitor_price
         result = await scrape_competitor_price("SKU-1")
         assert result == 29.99
 
@@ -76,7 +73,6 @@ async def test_scrape_competitor_price_success():
 async def test_scrape_competitor_price_no_results():
     with patch("ecommerce_ops.connectors.competitor_scraper._fetch_price", new_callable=AsyncMock) as mock:
         mock.return_value = None
-        from ecommerce_ops.connectors.competitor_scraper import scrape_competitor_price
         result = await scrape_competitor_price("SKU-1")
         assert result is None
 
@@ -93,15 +89,13 @@ class DummyTool(Tool):
 
 
 def test_tool_registry_register():
-    registry = ToolRegistry.__new__(ToolRegistry)
-    registry._tools = {}
     tool = DummyTool()
     ToolRegistry.register(tool)
     assert ToolRegistry.get("dummy_tool") is not None
 
 
 def test_tool_registry_get_unknown():
-    result = ToolRegistry.get("nonexistent_tool")
+    result = ToolRegistry.get("nonexistent_tool_xyz")
     assert result is None
 
 
@@ -120,4 +114,4 @@ async def test_tool_registry_run_tool():
 @pytest.mark.asyncio
 async def test_tool_registry_run_unknown_tool():
     with pytest.raises(ValueError, match="Unknown tool"):
-        await ToolRegistry.run_tool("nonexistent_tool")
+        await ToolRegistry.run_tool("nonexistent_tool_xyz")
