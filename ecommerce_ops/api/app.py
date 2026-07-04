@@ -48,6 +48,7 @@ from ecommerce_ops.api.demo import router as demo_router
 from ecommerce_ops.security.auth import AuthenticationMiddleware
 from ecommerce_ops.security.role_manager import role_manager
 from ecommerce_ops.observability.tracing_otel import init_tracing, instrument_app
+from ecommerce_ops.api.versioning import APIVersionMiddleware, create_v1_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ecommerce_ops.api")
@@ -173,6 +174,14 @@ app.include_router(security_router)
 
 # Include Demo routes
 app.include_router(demo_router)
+
+# ── API Versioning: /api/v1/ routes + deprecation headers ──
+v1_router = create_v1_router(
+    shopify_router, cart_recovery_router, customer_support_router,
+    observability_router, memory_router, security_router, demo_router,
+)
+app.include_router(v1_router)
+app.add_middleware(APIVersionMiddleware)
 
 
 class LoginBody(BaseModel):

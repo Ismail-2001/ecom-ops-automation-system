@@ -1,4 +1,6 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+const API_VERSION = process.env.NEXT_PUBLIC_API_VERSION || "v1"
+const API_PREFIX = `/api/${API_VERSION}`
 
 class ApiError extends Error {
   status: number
@@ -45,7 +47,7 @@ async function request<T>(
 export const authApi = {
   login: (apiKey: string) =>
     request<{ status: string; operator?: string; permissions?: string[] }>(
-      "/api/auth/login",
+      `${API_PREFIX}/auth/login`,
       {
         method: "POST",
         body: JSON.stringify({ api_key: apiKey }),
@@ -54,34 +56,34 @@ export const authApi = {
 }
 
 export const healthApi = {
-  check: () => request<{ status: string; version?: string; uptime?: number }>("/api/health"),
+  check: () => request<{ status: string; version?: string; uptime?: number }>(`${API_PREFIX}/health`),
 }
 
 export const agentApi = {
-  list: () => request<{ agents: AgentStatus[]; total: number }>("/api/agents"),
-  status: () => request<AgentStatus[]>("/api/agents/status"),
+  list: () => request<{ agents: AgentStatus[]; total: number }>(`${API_PREFIX}/agents`),
+  status: () => request<AgentStatus[]>(`${API_PREFIX}/agents/status`),
   deploy: (agentType: string) =>
-    request<{ status: string; agent_type: string }>("/api/agents/deploy", {
+    request<{ status: string; agent_type: string }>(`${API_PREFIX}/agents/deploy`, {
       method: "POST",
       body: JSON.stringify({ agent_type: agentType }),
     }),
   logs: (params?: { agent?: string; limit?: number }) => {
     const qs = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ""
-    return request<InferenceLog[]>(`/api/agents/logs${qs}`)
+    return request<InferenceLog[]>(`${API_PREFIX}/agents/logs${qs}`)
   },
 }
 
 export const approvalApi = {
   list: (params?: { status?: string; agent?: string }) => {
     const qs = params ? `?${new URLSearchParams(params as Record<string, string>).toString()}` : ""
-    return request<ApprovalAction[]>(`/api/approvals${qs}`)
+    return request<ApprovalAction[]>(`${API_PREFIX}/approvals${qs}`)
   },
   approve: (id: string) =>
-    request<{ status: string }>("/api/approvals/" + id + "/approve", { method: "POST" }),
+    request<{ status: string }>(`${API_PREFIX}/approvals/${id}/approve`, { method: "POST" }),
   reject: (id: string) =>
-    request<{ status: string }>("/api/approvals/" + id + "/reject", { method: "POST" }),
+    request<{ status: string }>(`${API_PREFIX}/approvals/${id}/reject`, { method: "POST" }),
   batch: (ids: string[], action: "approve" | "reject") =>
-    request<{ processed: number }>("/api/approvals/batch", {
+    request<{ processed: number }>(`${API_PREFIX}/approvals/batch`, {
       method: "POST",
       body: JSON.stringify({ action_ids: ids, action }),
     }),
@@ -89,7 +91,7 @@ export const approvalApi = {
 
 export const analyticsApi = {
   summary: (days?: number) =>
-    request<AnalyticsSummary>("/api/analytics/summary" + (days ? `?days=${days}` : "")),
+    request<AnalyticsSummary>(`${API_PREFIX}/analytics/summary` + (days ? `?days=${days}` : "")),
 }
 
 export const orderApi = {
@@ -99,7 +101,7 @@ export const orderApi = {
     if (params?.limit) sp.set("limit", String(params.limit))
     if (params?.status) sp.set("status", params.status)
     const qs = sp.toString()
-    return request<{ orders: Order[]; total: number; page: number; limit: number }>(`/api/orders${qs ? `?${qs}` : ""}`)
+    return request<{ orders: Order[]; total: number; page: number; limit: number }>(`${API_PREFIX}/orders${qs ? `?${qs}` : ""}`)
   },
 }
 
@@ -109,22 +111,22 @@ export const productApi = {
     if (params?.page) sp.set("page", String(params.page))
     if (params?.limit) sp.set("limit", String(params.limit))
     const qs = sp.toString()
-    return request<{ products: Product[]; total: number }>(`/api/products${qs ? `?${qs}` : ""}`)
+    return request<{ products: Product[]; total: number }>(`${API_PREFIX}/products${qs ? `?${qs}` : ""}`)
   },
 }
 
 export const cartRecoveryApi = {
   list: (params?: { status?: string }) => {
     const qs = params?.status ? `?status=${params.status}` : ""
-    return request<CartItem[]>(`/api/cart-recovery${qs}`)
+    return request<CartItem[]>(`${API_PREFIX}/cart-recovery${qs}`)
   },
-  analytics: () => request<CartRecoveryAnalytics>("/api/cart-recovery/analytics"),
+  analytics: () => request<CartRecoveryAnalytics>(`${API_PREFIX}/cart-recovery/analytics`),
 }
 
 export const reviewApi = {
   list: (params?: { sentiment?: string }) => {
     const qs = params?.sentiment ? `?sentiment=${params.sentiment}` : ""
-    return request<Review[]>(`/api/reviews${qs}`)
+    return request<Review[]>(`${API_PREFIX}/reviews${qs}`)
   },
 }
 
@@ -136,29 +138,29 @@ export const supportApi = {
     if (params?.page) sp.set("page", String(params.page))
     if (params?.limit) sp.set("limit", String(params.limit))
     const qs = sp.toString()
-    return request<{ tickets: SupportTicket[]; total: number; page: number; limit: number }>(`/api/support/tickets${qs ? `?${qs}` : ""}`)
+    return request<{ tickets: SupportTicket[]; total: number; page: number; limit: number }>(`${API_PREFIX}/support/tickets${qs ? `?${qs}` : ""}`)
   },
-  getTicket: (id: string) => request<SupportTicket>(`/api/support/tickets/${id}`),
-  getAnalytics: (days = 7) => request<SupportAnalytics>(`/api/support/analytics?days=${days}`),
+  getTicket: (id: string) => request<SupportTicket>(`${API_PREFIX}/support/tickets/${id}`),
+  getAnalytics: (days = 7) => request<SupportAnalytics>(`${API_PREFIX}/support/analytics?days=${days}`),
 }
 
 export const securityApi = {
   events: (params?: { severity?: string }) => {
     const qs = params?.severity ? `?severity=${params.severity}` : ""
-    return request<SecurityEvent[]>(`/api/security/events${qs}`)
+    return request<SecurityEvent[]>(`${API_PREFIX}/security/events${qs}`)
   },
-  health: () => request<Record<string, string>>("/api/security/health"),
+  health: () => request<Record<string, string>>(`${API_PREFIX}/security/health`),
 }
 
 export const settingsApi = {
-  get: () => request<StoreSettings>("/api/settings"),
+  get: () => request<StoreSettings>(`${API_PREFIX}/settings`),
   update: (data: Partial<StoreSettings>) =>
-    request<StoreSettings>("/api/settings", { method: "PATCH", body: JSON.stringify(data) }),
+    request<StoreSettings>(`${API_PREFIX}/settings`, { method: "PATCH", body: JSON.stringify(data) }),
 }
 
 export const shopifyApi = {
-  status: () => request<ShopifyStatus>("/api/shopify/status"),
-  sync: () => request<{ status: string }>("/api/shopify/sync", { method: "POST" }),
+  status: () => request<ShopifyStatus>(`${API_PREFIX}/shopify/status`),
+  sync: () => request<{ status: string }>(`${API_PREFIX}/shopify/sync`, { method: "POST" }),
 }
 
 export interface AgentStatus {
