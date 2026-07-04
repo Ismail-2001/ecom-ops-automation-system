@@ -236,3 +236,11 @@ async def run_demo_scenario(
         raise HTTPException(status_code=404, detail="Scenario not found")
 
     return scenarios[scenario_id]
+
+
+@router.post("/demo/seed")
+async def seed_demo_data(user: dict = Depends(require_auth)):
+    """Seed the database with expanded demo data for a rich dashboard."""
+    from ecommerce_ops.demo.seed_data import seed_expanded_demo
+    result = await seed_expanded_demo()
+    return result
