@@ -48,17 +48,10 @@ def _create_all_tables():
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
-    asyncio.get_event_loop().run_until_complete(_setup())
-    yield
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create a single event loop for the entire session."""
-    import asyncio
     loop = asyncio.new_event_loop()
-    yield loop
+    loop.run_until_complete(_setup())
     loop.close()
+    yield
 
 
 @pytest_asyncio.fixture

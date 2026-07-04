@@ -60,7 +60,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgbm1 \
     libpango-1.0-0 \
     libcairo2 \
-    libasound2 \
+    libasound2t64 \
     # Fonts for rendering
     fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
@@ -69,9 +69,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /root/.local /root/.local
 ENV PATH="/root/.local/bin:${PATH}"
 
-# Install Playwright Chromium (as root before switching to app user)
-RUN playwright install chromium && \
-    playwright install-deps chromium
+# Install Playwright Chromium (deps already installed above)
+RUN playwright install chromium
 
 # Create non-root user for security
 RUN groupadd --system app && \
@@ -87,7 +86,7 @@ COPY alembic/ ./alembic/
 COPY alembic.ini .
 
 # Copy built dashboard (if exists)
-COPY dashboard/dist ./dashboard/dist
+RUN mkdir -p /app/dashboard/dist
 
 # Set ownership
 RUN chown -R app:app /app

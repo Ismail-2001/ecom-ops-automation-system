@@ -5,14 +5,10 @@
 
 services:
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: builder
+    image: opsiq-api-fixed:latest
     working_dir: /app
     command: >
-      sh -c "cp -r /build/* /app/ 2>/dev/null; pip install --no-cache-dir -r requirements.txt &&
-             python -m uvicorn ecommerce_ops.api.app:app --host 0.0.0.0 --port 8000 --log-level debug"
+      python -m uvicorn ecommerce_ops.api.app:app --host 0.0.0.0 --port 8000 --log-level debug
     env_file:
       - .env
     environment:
