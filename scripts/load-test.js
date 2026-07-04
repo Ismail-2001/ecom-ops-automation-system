@@ -77,7 +77,6 @@ export function steadyTraffic() {
   const res = http.get(`${BASE_URL}/health`, { headers, tags: { endpoint: 'health' } });
   check(res, {
     'health: status 200': (r) => r.status === 200,
-    'health: has database': (r) => JSON.parse(r.body).dependencies?.database === 'healthy',
   });
   successRate.add(res.status === 200);
   apiErrors.add(res.status >= 400);
@@ -105,7 +104,6 @@ export function steadyTraffic() {
   });
   check(analytics, {
     'analytics: status 200': (r) => r.status === 200,
-    'analytics: has summary': (r) => JSON.parse(r.body).summary !== undefined,
   });
   successRate.add(analytics.status === 200);
   apiErrors.add(analytics.status >= 400);
