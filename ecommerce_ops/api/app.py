@@ -210,10 +210,11 @@ async def get_current_operator(identity: str = Depends(verify_auth)) -> str:
 
 @app.post("/api/auth/login")
 async def login(body: LoginBody):
+    import hmac
     api_key_setting = app_settings.API_KEY
     valid_key = api_key_setting.get_secret_value() if api_key_setting else ""
 
-    if not valid_key or body.api_key != valid_key:
+    if not valid_key or not body.api_key or not hmac.compare_digest(body.api_key, valid_key):
         raise HTTPException(status_code=401, detail="Invalid API key")
 
     return {
@@ -234,7 +235,7 @@ async def health(operator: str = Depends(verify_auth_optional)):
             await session.execute(select(func.now()))
         deps["database"] = "healthy"
     except Exception as e:
-        deps["database"] = f"unhealthy: {e}"
+        deps["database"] = "unhealthy"
         all_ok = False
 
     # Redis check
@@ -724,42 +725,51 @@ async def get_analytics(db: AsyncSession = Depends(get_db_session)):
         risk_dist[a.risk_level] = risk_dist.get(a.risk_level, 0) + 1
 
     now = datetime.utcnow()
+    day_start_7d = datetime(now.year, now.month, now.day) - timedelta(days=6)
+
+    agent_ids = ["FraudAgent", "InventoryAgent", "PricingAgent", "ReviewsAgent", "MarketingAgent"]
+
+    # Batch query: counts per agent per day (single query instead of 35)
+    batch_result = await db.execute(
+        select(
+            AuditEntry.agent,
+            func.date(AuditEntry.timestamp).label("day"),
+            func.count(AuditEntry.id).label("cnt"),
+        )
+        .where(
+            AuditEntry.timestamp >= day_start_7d,
+            AuditEntry.agent.in_(agent_ids),
+        )
+        .group_by(AuditEntry.agent, func.date(AuditEntry.timestamp))
+    )
+    batch_rows = batch_result.all()
+
+    # Build lookup: {(agent, day_str): count}
+    batch_lookup: dict[tuple, int] = {}
+    for row in batch_rows:
+        day_str = str(row.day)
+        batch_lookup[(row.agent, day_str)] = row.cnt
+
+    # Build timeline
     timeline = []
     for i in range(6, -1, -1):
         day = now - timedelta(days=i)
-        day_start = datetime(day.year, day.month, day.day)
-        day_end = day_start + timedelta(days=1)
+        day_str = day.strftime("%Y-%m-%d")
+        day_label = day.strftime("%b %d")
         counts = {}
-        for agent_id in ["FraudAgent", "InventoryAgent", "PricingAgent", "ReviewsAgent", "MarketingAgent"]:
-            cnt = (
-                await db.execute(
-                    select(func.count(AuditEntry.id)).where(
-                        AuditEntry.agent == agent_id,
-                        AuditEntry.timestamp >= day_start,
-                        AuditEntry.timestamp < day_end,
-                    )
-                )
-            ).scalar() or 0
-            counts[agent_id] = cnt
-        timeline.append({"date": day.strftime("%b %d"), **counts})
+        for agent_id in agent_ids:
+            counts[agent_id] = batch_lookup.get((agent_id, day_str), 0)
+        timeline.append({"date": day_label, **counts})
 
+    # Build volume_by_agent
     volume_by_agent = []
+    short_names = {"FraudAgent": "Fraud", "InventoryAgent": "Inventory", "PricingAgent": "Pricing", "ReviewsAgent": "Reviews", "MarketingAgent": "Marketing"}
     for i in range(6, -1, -1):
         day = now - timedelta(days=i)
-        day_start = datetime(day.year, day.month, day.day)
-        day_end = day_start + timedelta(days=1)
+        day_str = day.strftime("%Y-%m-%d")
         vol = {"day": day.strftime("%a")}
-        for agent_id, short in [("FraudAgent", "Fraud"), ("InventoryAgent", "Inventory"), ("PricingAgent", "Pricing"), ("ReviewsAgent", "Reviews"), ("MarketingAgent", "Marketing")]:
-            cnt = (
-                await db.execute(
-                    select(func.count(AuditEntry.id)).where(
-                        AuditEntry.agent == agent_id,
-                        AuditEntry.timestamp >= day_start,
-                        AuditEntry.timestamp < day_end,
-                    )
-                )
-            ).scalar() or 0
-            vol[short] = cnt
+        for agent_id, short in short_names.items():
+            vol[short] = batch_lookup.get((agent_id, day_str), 0)
         volume_by_agent.append(vol)
 
     avg_conf = 0.0
@@ -767,11 +777,6 @@ async def get_analytics(db: AsyncSession = Depends(get_db_session)):
         avg_conf = sum(a.avg_confidence for a in agents) / len(agents)
 
     decision_time_dist = {"under_1m": 0, "1m_5m": 0, "5m_30m": 0, "over_30m": 0}
-    resolved = await db.execute(
-        select(AuditEntry).where(AuditEntry.decision.in_(["approved", "rejected", "shadow"]))
-    )
-    for entry in resolved.scalars().all():
-        pass
 
     return {
         "summary": {
@@ -863,7 +868,14 @@ async def trigger_run(
 ):
     run_id = str(uuid.uuid4())
     res = await db.execute(select(StoreSettings).where(StoreSettings.id == 1))
-    db_settings = res.scalar_one()
+    db_settings = res.scalar_one_or_none()
+    if not db_settings:
+        db_settings = StoreSettings(
+            id=1, shadow_mode=True, fraud_threshold=70,
+            po_limit=1000.0, pricing_limit=5.0, reviews_rating_threshold=4,
+        )
+        db.add(db_settings)
+        await db.commit()
 
     await ws_manager.broadcast(
         {"type": "pipeline_started", "payload": {"run_id": run_id}}

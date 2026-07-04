@@ -1,3 +1,4 @@
+import hmac
 from fastapi import Request, HTTPException
 from ecommerce_ops.config import settings, Environment
 
@@ -7,7 +8,9 @@ async def verify_auth(request: Request) -> str:
     if api_key_setting:
         auth_header = request.headers.get("Authorization", "")
         scheme, _, token = auth_header.partition(" ")
-        if scheme.lower() != "bearer" or token != api_key_setting.get_secret_value():
+        expected_key = api_key_setting.get_secret_value()
+
+        if scheme.lower() != "bearer" or not token or not hmac.compare_digest(token, expected_key):
             raise HTTPException(
                 status_code=401,
                 detail="Missing or invalid API key. Use: Bearer <api-key>",

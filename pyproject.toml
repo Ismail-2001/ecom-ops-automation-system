@@ -98,5 +98,8 @@ filterwarnings = [
     "ignore::pytest.PytestUnraisableExceptionWarning",
 ]
 
+[tool.pytest-asyncio]
+mode = "auto"
+
 [tool.vercel]
 entrypoint = "ecommerce_ops.api.app:app"

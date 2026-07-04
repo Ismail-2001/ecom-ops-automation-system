@@ -6,7 +6,7 @@ In-memory async task queue with size limits and task expiry.
 import asyncio
 import uuid
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Callable, Any, Optional
 
@@ -33,7 +33,7 @@ class Task:
         self.status = TaskStatus.PENDING
         self.result: Any = None
         self.error: Optional[str] = None
-        self.created_at = datetime.utcnow()
+        self.created_at = datetime.now(timezone.utc)
         self.started_at: Optional[datetime] = None
         self.completed_at: Optional[datetime] = None
 
@@ -84,8 +84,18 @@ class TaskQueue:
         return self._tasks.get(task_id)
 
     def _evict_expired(self):
-        cutoff = datetime.utcnow() - timedelta(hours=TASK_EXPIRY_HOURS)
-        expired = [tid for tid, t in self._tasks.items() if t.created_at < cutoff]
+        from datetime import timezone
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(hours=TASK_EXPIRY_HOURS)
+        expired = []
+        for tid, t in self._tasks.items():
+            ca = t.created_at
+            if isinstance(ca, (int, float)):
+                ca = datetime.fromtimestamp(ca, tz=timezone.utc)
+            elif ca.tzinfo is None:
+                ca = ca.replace(tzinfo=timezone.utc)
+            if ca < cutoff:
+                expired.append(tid)
         for tid in expired:
             del self._tasks[tid]
         if expired:
