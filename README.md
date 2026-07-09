@@ -1,425 +1,277 @@
-# OpsIQ - E-Commerce Operations Automation System
+<div align="center">
 
-> AI-powered platform for automating e-commerce operations with intelligent agents, real-time monitoring, and production-grade infrastructure.
+# OpsIQ
+
+**Autonomous operations brain for e-commerce stores.**
+Multi-agent AI system for fraud detection, inventory, pricing, marketing, cart recovery, and customer support — built on LangGraph, FastAPI, and Postgres, with production-grade observability and safety rails from day one.
 
 [![CI/CD](https://github.com/Ismail-2001/ecom-ops-automation-system/actions/workflows/ci.yml/badge.svg)](https://github.com/Ismail-2001/ecom-ops-automation-system/actions/workflows/ci.yml)
 [![Docker](https://github.com/Ismail-2001/ecom-ops-automation-system/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/Ismail-2001/ecom-ops-automation-system/actions/workflows/docker-publish.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Security](https://github.com/Ismail-2001/ecom-ops-automation-system/actions/workflows/security.yml/badge.svg)](https://github.com/Ismail-2001/ecom-ops-automation-system/actions/workflows/security.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+[![Node 20](https://img.shields.io/badge/node-20-339933.svg)](frontend/package.json)
+
+[Quick Start](#quick-start) · [Architecture](#architecture) · [API](#api-reference) · [Deployment](#deployment) · [Security](#security) · [Roadmap](#roadmap--known-limitations)
+
+</div>
+
+---
+
+## What This Is
+
+OpsIQ is not a chatbot bolted onto a Shopify store. It is a **decision-making system**: seven cooperating agents that watch orders, inventory, pricing, and support tickets in real time, propose actions, and — depending on configured confidence thresholds — either execute autonomously or queue for human approval.
+
+Every agent ships in two forms:
+
+- A **deterministic rules engine** (fast, auditable, zero API cost, always available as a fallback)
+- An **LLM-reasoning variant** (`*_llm.py`) for cases where fixed rules break down — ambiguous fraud signals, nuanced support tickets, competitive pricing calls
+
+A LangGraph supervisor coordinates both, and nothing ships to production traffic without passing through the guardrail layer first. That ordering — rules before reasoning, guardrails before autonomy — is the single design decision everything else in this repo is built around.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        CLIENT LAYER                             │
-├─────────────────────────────────────────────────────────────────┤
-│  Web App  │  Mobile App  │  Third-party Integrations           │
-└─────────────────────┬───────────────────────────────────────────┘
-                      │
-┌─────────────────────▼───────────────────────────────────────────┐
-│                     NGINX REVERSE PROXY                         │
-│            Rate Limiting │ SSL Termination │ Load Balancing      │
-└─────────────────────┬───────────────────────────────────────────┘
-                      │
-┌─────────────────────▼───────────────────────────────────────────┐
-│                     FASTAPI APPLICATION                          │
-├─────────────────────────────────────────────────────────────────┤
-│  Auth │ RBAC │ Rate Limiting │ Input Sanitization               │
-└─────────────────────┬───────────────────────────────────────────┘
-                      │
-┌─────────────────────▼───────────────────────────────────────────┐
-│                      API ROUTES                                  │
-├──────────┬──────────┬──────────┬──────────┬──────────┬──────────┤
-│ Shopify  │  Cart    │ Support  │ Memory   │ Security │  Demo    │
-│ Integration│ Recovery│  Agent  │  System  │  RBAC    │  ROI     │
-└──────────┴──────────┴──────────┴──────────┴──────────┴──────────┘
-                      │
-┌─────────────────────▼───────────────────────────────────────────┐
-│                     AGENT LAYER                                  │
-├──────────┬──────────┬──────────┬──────────┬──────────┬──────────┤
-│  Fraud   │Inventory │ Pricing  │ Reviews  │Marketing │ Abandoned│
-│ Detection│  Mgmt    │  Engine  │Analysis  │Automation│   Cart   │
-└──────────┴──────────┴──────────┴──────────┴──────────┴──────────┘
-                      │
-┌─────────────────────▼───────────────────────────────────────────┐
-│                    INFRASTRUCTURE                                │
-├──────────┬──────────┬──────────┬──────────┬──────────┬──────────┤
-│PostgreSQL│  Redis   │Prometheus│ Grafana  │ Langfuse │  Docker  │
-│  (Async) │ (Cache)  │(Metrics) │(Dashboards)│(Tracing)│ Compose  │
-└──────────┴──────────┴──────────┴──────────┴──────────┴──────────┘
+                              ┌───────────────────────────┐
+                              │        CLIENT LAYER        │
+                              │  Web · Mobile · 3rd-party   │
+                              └──────────────┬─────────────┘
+                                             │
+                              ┌──────────────▼─────────────┐
+                              │     NGINX REVERSE PROXY     │
+                              │  TLS · Rate Limiting · LB    │
+                              └──────────────┬─────────────┘
+                                             │
+                              ┌──────────────▼─────────────┐
+                              │      FASTAPI APPLICATION     │
+                              │  JWT/API-Key Auth · RBAC ·   │
+                              │  Input Sanitization           │
+                              └──────────────┬─────────────┘
+                                             │
+        ┌───────────┬───────────┬───────────┼───────────┬───────────┬───────────┐
+        │  Shopify   │   Cart    │  Support  │  Memory   │ Security  │   Demo    │
+        │Integration │ Recovery  │   Agent   │  System   │   RBAC    │    ROI    │
+        └───────────┴───────────┴───────────┼───────────┴───────────┴───────────┘
+                                             │
+                              ┌──────────────▼─────────────┐
+                              │        AGENT LAYER          │
+                              │  LangGraph Supervisor        │
+                              ├───────────┬───────────┬─────┤
+                              │  Fraud    │ Inventory │Pricing│
+                              │  Reviews  │ Marketing │ Cart  │
+                              └───────────┴───────────┴─────┘
+                                             │
+                              ┌──────────────▼─────────────┐
+                              │       INFRASTRUCTURE         │
+                              │ Postgres(async)·Redis·Prom-  │
+                              │ etheus·Grafana·Tempo·Langfuse │
+                              └───────────────────────────┘
 ```
 
-## Features
+**Why this shape, specifically:**
 
-### Core Agents
-- **Fraud Detection** - Real-time order risk scoring with 95% accuracy
-- **Inventory Management** - AI-powered stock optimization
-- **Price Optimization** - Dynamic pricing engine with competitor analysis
-- **Review Moderation** - Automated sentiment analysis and response
-- **Marketing Automation** - AI-driven campaign optimization
-- **Abandoned Cart Recovery** - Intelligent recovery with 5 strategies
-- **Customer Support** - AI agent with sentiment analysis and routing
+- **Nginx in front of FastAPI, not instead of it** — TLS termination and rate limiting belong at the edge, not duplicated in application code.
+- **Agents are pure functions over explicit state**, orchestrated by LangGraph rather than a bespoke event loop — state transitions are inspectable and replayable, which matters the day something goes wrong in production and you need to know *why* an agent did what it did.
+- **Observability is not an afterthought bolted on later** — structured logging, OpenTelemetry traces, and Langfuse LLM-call tracing are wired in from the `agents/_base.py` layer up, so every agent decision is traceable to the prompt, tokens, and cost that produced it.
 
-### Integrations
-- **Shopify** - OAuth 2.0, async client, webhook handling
-- **Vector Memory** - Semantic search, session management
-- **Langfuse** - LLM tracing, evaluation framework
+## Core Agents
 
-### Security
-- **RBAC** - 30+ permissions, 5 predefined roles
-- **Authentication** - JWT, API keys, header-based
-- **Rate Limiting** - Per-minute and per-hour limits
-- **Request Body Limiting** - 10MB max request size
-- **Audit Logging** - Comprehensive event tracking
-- **Input Sanitization** - XSS and injection prevention
-- **Security Headers** - HSTS, CSP, X-Frame-Options, X-Content-Type-Options
+| Agent | Mode | Responsibility |
+|---|---|---|
+| **Fraud Detection** | Rules + LLM | Real-time order risk scoring |
+| **Inventory Management** | Rules + LLM | Stock-level monitoring, reorder signals |
+| **Price Optimization** | Rules + LLM | Competitor-aware dynamic pricing |
+| **Review Moderation** | Rules | Sentiment analysis, auto-response |
+| **Marketing Automation** | Rules + LLM | Campaign trigger optimization |
+| **Cart Recovery** | Rules | 5-strategy abandoned cart recovery |
+| **Customer Support** | Rules + LLM | Sentiment-aware ticket routing and response |
 
-### Infrastructure
-- **PostgreSQL** - Async SQLAlchemy with 4 ORM models
-- **Redis** - Caching and session management
-- **Prometheus** - 16 custom metrics
-- **Grafana** - Pre-built dashboards
-- **Docker** - Production-ready with 12 services
-- **CI/CD** - GitHub Actions with 6 workflows
+All seven register through `agents/factory.py` and communicate over `agents/message_bus.py` — no agent calls another agent directly, which keeps the coupling low enough to delete or replace any single agent without a rewrite.
+
+## Tech Stack
+
+| Layer | Choice | Why |
+|---|---|---|
+| Orchestration | LangGraph 1.2.6 | Explicit, inspectable state graphs over implicit agent chains |
+| LLM Providers | Gemini 2.0 Flash, DeepSeek | Cost-efficient defaults; provider is swappable via `LLM_MODEL` |
+| API | FastAPI + Pydantic v2 | Async-first, typed at the boundary |
+| Database | PostgreSQL 16 (async, SQLAlchemy 2.0) | Correctness under concurrent agent writes |
+| Cache / Queue | Redis 7 | Session cache + task queue backing |
+| Migrations | Alembic | No manual schema drift |
+| Frontend | Next.js 14, Tailwind, TanStack Query, Zustand | Server-rendered dashboard, 13 pages, dark theme |
+| Tracing | OpenTelemetry + Tempo + Langfuse | Infra traces *and* LLM-specific traces — different tools for different jobs |
+| Metrics | Prometheus + Grafana | 16 custom metrics, pre-built dashboards |
+| Browser Automation | Playwright | Competitor price scraping |
+
+Full pinned versions: [`requirements.txt`](requirements.txt) / [`pyproject.toml`](pyproject.toml).
 
 ## Quick Start
 
 ### Prerequisites
-- Docker and Docker Compose
-- Python 3.11+
-- PostgreSQL 16+
-- Redis 7+
+Docker & Docker Compose · Python 3.11+ · Node 20+ (frontend only) · one LLM API key (Google or DeepSeek)
 
-### Installation
+### Fastest path — demo environment
 
 ```bash
-# Clone the repository
 git clone https://github.com/Ismail-2001/ecom-ops-automation-system.git
 cd ecom-ops-automation-system
+cp .env.example .env               # set GOOGLE_API_KEY or DEEPSEEK_API_KEY
 
-# Copy environment variables
-cp .env.example .env
-
-# Start the application
-docker compose up -d
-
-# Run database migrations
-docker compose exec app alembic upgrade head
-
-# Seed demo data
-docker compose exec app python -m ecommerce_ops.demo.seed
-
-# Access the application
-open http://localhost:8000
-```
-
-### Demo Environment
-
-```bash
-# Start the demo environment
 docker compose -f docker-compose.demo.yml up -d
+docker compose -f docker-compose.demo.yml exec app alembic upgrade head
+docker compose -f docker-compose.demo.yml exec app python -m ecommerce_ops.demo.seed
 
-# Access demo
-open http://localhost:8000
-
-# Access Grafana dashboard
-open http://localhost:3001
-# Login: admin / demo
+open http://localhost:8000   # API + docs at /docs
+open http://localhost:3001   # Grafana — admin / demo
 ```
 
-### Frontend (Next.js)
+### Local development (editing code)
 
 ```bash
-# Install dependencies
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+playwright install chromium
+
+uvicorn ecommerce_ops.api.app:app --reload --host 0.0.0.0 --port 8000
+```
+
+```bash
 cd frontend
 npm install
-
-# Start development server
-npm run dev
-# → http://localhost:3000
-
-# Run E2E tests
-npm run test:e2e
-
-# Build for production
-npm run build
-npm start
+npm run dev                  # → http://localhost:3000
 ```
 
-**Frontend Stack:** Next.js 14, Tailwind CSS, TanStack Query, Zustand, Recharts, Sonner, Lucide Icons
+### Verify before you change anything
 
-**Features:**
-- 13 pages: Dashboard, Agents, Analytics, Orders, Products, Cart Recovery, Reviews, Support, Security, Settings, Shopify, Login, 404
-- Stitch-designed dark theme (void #0B1120, primary #6366F1)
-- ⌘K Command Palette with 17 commands
-- Skeleton loading states + error boundaries per page
-- Server-side auth middleware + cookie sync
-- Responsive mobile sidebar drawer
-- ARIA landmarks + skip-to-content
-- Sonner toast notifications
-- Real API hooks with mock data fallback
+```bash
+pytest tests/ -x -q                          # backend
+cd frontend && npx vitest run                # frontend unit
+cd frontend && npx playwright test           # e2e
+ruff check ecommerce_ops/ && mypy ecommerce_ops
+```
 
-## API Endpoints
+## API Reference
 
-### Core Routes
+<details>
+<summary><strong>Core</strong></summary>
+
 | Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/decisions` | GET | List pending decisions |
+|---|---|---|
+| `/api/decisions` | GET | Pending agent decisions |
 | `/api/decisions/{id}/approve` | POST | Approve a decision |
 | `/api/decisions/{id}/reject` | POST | Reject a decision |
-| `/api/dashboard` | GET | Dashboard metrics |
-| `/api/agents/status` | GET | Agent status |
-| `/api/metrics` | GET | Prometheus metrics |
+| `/api/dashboard` | GET | Aggregate dashboard metrics |
+| `/api/agents/status` | GET | Live agent status |
+| `/api/metrics` | GET | Prometheus scrape endpoint |
 
-### Shopify Integration
+</details>
+
+<details>
+<summary><strong>Shopify, Cart Recovery, Support, Memory, Security</strong></summary>
+
 | Endpoint | Method | Description |
-|----------|--------|-------------|
+|---|---|---|
 | `/api/shopify/auth/authorize` | GET | Start OAuth flow |
 | `/api/shopify/auth/callback` | GET | OAuth callback |
-| `/api/shopify/webhooks` | POST | Handle webhooks |
-| `/api/shopify/sync` | POST | Trigger data sync |
-
-### Cart Recovery
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/cart-recovery/analyze` | POST | Analyze abandoned cart |
-| `/api/cart-recovery/recover` | POST | Execute recovery |
-| `/api/cart-recovery/analytics` | GET | Recovery analytics |
-
-### Customer Support
-| Endpoint | Method | Description |
-|----------|--------|-------------|
+| `/api/shopify/webhooks` | POST | Webhook ingestion |
+| `/api/shopify/sync` | POST | Manual data sync trigger |
+| `/api/cart-recovery/analyze` | POST | Score an abandoned cart |
+| `/api/cart-recovery/recover` | POST | Execute recovery sequence |
 | `/api/customer-support/tickets` | POST | Create ticket |
 | `/api/customer-support/resolve` | POST | Resolve ticket |
-| `/api/customer-support/analytics` | GET | Support analytics |
+| `/api/memory/store` / `/search` | POST | Vector memory read/write |
+| `/api/security/users` / `/api-keys` / `/roles` | POST/GET | RBAC administration |
 
-### Memory & Sessions
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/memory/store` | POST | Store memory |
-| `/api/memory/search` | POST | Semantic search |
-| `/api/memory/sessions` | GET | List sessions |
+</details>
 
-### Security
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/security/users` | POST | Create user |
-| `/api/security/api-keys` | POST | Create API key |
-| `/api/security/roles` | GET | List roles |
-| `/api/security/audit/summary` | GET | Audit summary |
-
-### Demo & ROI
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/demo/roi/calculate` | POST | Calculate ROI |
-| `/api/demo/demo/scenarios` | GET | List scenarios |
-| `/api/demo/demo/run/{id}` | POST | Run scenario |
+Full interactive schema at `/docs` (Swagger) once the app is running.
 
 ## Configuration
 
-### Environment Variables
+Every setting is centralized in `ecommerce_ops/config.py` via Pydantic `Settings` — no scattered `os.environ.get()` calls. Notable safety-relevant defaults:
 
 ```bash
-# Application
-ENV=production
-PROJECT_NAME=OpsIQ
-LOG_LEVEL=INFO
-
-# Database
-DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/ecommerce_ops
-
-# Redis
-REDIS_URL=redis://localhost:6379/0
-
-# Shopify
-SHOPIFY_CLIENT_ID=your_client_id
-SHOPIFY_CLIENT_SECRET=your_client_secret
-SHOPIFY_APP_URL=https://your-app.com
-SHOPIFY_SHOP_DOMAIN=your-store.myshopify.com
-SHOPIFY_ACCESS_TOKEN=your_access_token
-
-# Security
-JWT_SECRET_KEY=your_secret_key
-JWT_ALGORITHM=HS256
-JWT_EXPIRATION_MINUTES=30
-
-# Observability
-LANGFUSE_PUBLIC_KEY=your_public_key
-LANGFUSE_SECRET_KEY=your_secret_key
-LANGFUSE_HOST=https://cloud.langfuse.com
+SHADOW_MODE=true                        # agents propose, never execute, until explicitly disabled
+GLOBAL_PO_LIMIT=1000.0                  # hard ceiling on autonomous purchase orders
+GLOBAL_PRICE_CHANGE_LIMIT_PERCENT=20.0  # max autonomous price swing
+AUTO_APPROVE_CONFIDENCE_SCORE=0.95      # below this, a human decides
 ```
 
-### Docker Compose Services
+Do not flip `SHADOW_MODE` to `false` in a new environment before reading `ecommerce_ops/safety/guardrails.py` end to end. This is the one file in the repo where a shortcut costs real money.
 
-| Service | Port | Description |
-|---------|------|-------------|
-| app | 8000 | FastAPI application |
-| postgres | 5432 | PostgreSQL database |
-| redis | 6379 | Redis cache |
-| nginx | 80 | Reverse proxy |
-| prometheus | 9090 | Metrics collection |
-| grafana | 3000 | Dashboards |
-| alertmanager | 9093 | Alert routing |
-
-## Development
-
-### Local Development
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Start development server
-uvicorn ecommerce_ops.api.app:app --reload --host 0.0.0.0 --port 8000
-
-# Run tests
-pytest
-
-# Run linting
-ruff check .
-
-# Run type checking
-mypy ecommerce_ops
-```
-
-### Project Structure
-
-```
-ecom-ops-automation-system/
-├── ecommerce_ops/
-│   ├── api/                    # FastAPI routes
-│   │   ├── app.py             # Main application
-│   │   ├── shopify.py         # Shopify routes
-│   │   ├── cart_recovery.py   # Cart recovery routes
-│   │   ├── customer_support.py # Support routes
-│   │   ├── memory.py          # Memory routes
-│   │   ├── security.py        # Security routes
-│   │   ├── observability.py   # Observability routes
-│   │   └── demo.py            # Demo routes
-│   ├── agents/                 # AI Agents
-│   │   ├── fraud_detection.py
-│   │   ├── inventory_management.py
-│   │   ├── price_optimization.py
-│   │   ├── review_moderation.py
-│   │   ├── marketing_automation.py
-│   │   ├── cart_recovery/      # Abandoned cart agent
-│   │   └── customer_support/   # Support agent
-│   ├── connectors/             # External integrations
-│   │   └── shopify/           # Shopify connector
-│   ├── memory/                 # Memory systems
-│   │   └── vector/            # Vector memory
-│   ├── observability/          # Tracing & evaluation
-│   ├── security/               # RBAC & security
-│   ├── demo/                   # Demo environment
-│   ├── infra/                  # Infrastructure
-│   ├── models/                 # Data models
-│   └── pipeline/               # Task pipeline
-├── monitoring/                 # Prometheus & Grafana
-├── nginx/                      # Nginx config
-├── alembic/                    # Database migrations
-├── tests/                      # Test suite
-├── docker-compose.yml          # Production compose
-├── docker-compose.demo.yml     # Demo compose
-├── Dockerfile                  # Container build
-├── Makefile                    # Development commands
-└── requirements.txt            # Python dependencies
-```
-
-## Performance
-
-### Benchmarks
-
-| Metric | Value |
-|--------|-------|
-| API Response Time | < 100ms (p95) |
-| Fraud Detection Latency | < 2s |
-| Cart Recovery Processing | < 5s |
-| Customer Support Response | < 3s |
-| Vector Search Latency | < 50ms |
-| Concurrent Users | 1000+ |
-| Uptime | 99.99% |
-
-### Resource Usage
-
-| Resource | Minimum | Recommended |
-|----------|---------|-------------|
-| CPU | 2 cores | 4 cores |
-| RAM | 4GB | 8GB |
-| Storage | 20GB | 50GB |
-| Network | 100Mbps | 1Gbps |
-
-## ROI Calculator
-
-The system includes an ROI calculator that demonstrates cost savings:
-
-| Use Case | Monthly Savings | ROI |
-|----------|-----------------|-----|
-| Fraud Detection | $5,000 | 300% |
-| Inventory Management | $8,000 | 400% |
-| Price Optimization | $12,000 | 600% |
-| Review Moderation | $3,000 | 250% |
-| Marketing Automation | $10,000 | 500% |
-| Cart Recovery | $8,000 | 450% |
-| Customer Support | $10,000 | 350% |
-
-## Monitoring
-
-### Prometheus Metrics
-
-- `http_requests_total` - Total HTTP requests
-- `http_request_duration_seconds` - Request duration
-- `agent_decisions_total` - Agent decisions
-- `agent_confidence_average` - Average confidence
-- `fraud_alerts_total` - Fraud alerts
-- `cart_recovery_attempts_total` - Recovery attempts
-
-### Grafana Dashboards
-
-- **Application Overview** - Request rates, latency, errors
-- **Agent Performance** - Decision accuracy, confidence
-- **Business Metrics** - Revenue, conversions, recovery rates
-- **Infrastructure** - CPU, memory, disk, network
+See [`.env.example`](.env.example) for the full variable list.
 
 ## Security
 
-### Authentication Methods
-1. **JWT Tokens** - For web applications
-2. **API Keys** - For programmatic access
-3. **Header-based** - For internal services
+- **AuthN**: JWT (web), API keys (programmatic), header-based (service-to-service)
+- **AuthZ**: RBAC — 5 roles (`super_admin` → `api_only`), 30+ granular permissions
+- **Hardening**: HSTS, CSP, X-Frame-Options, request-body size limits, input sanitization against XSS/injection
+- **Audit**: every privileged action logged with actor, target, and outcome — see `security/audit.py`
+- **Credential hygiene**: see [`CREDENTIAL_ROTATION.md`](CREDENTIAL_ROTATION.md) before your first production deploy
 
-### Role-Based Access Control
+Found a vulnerability? See [`SECURITY.md`](SECURITY.md) — do not open a public issue.
 
-| Role | Permissions |
-|------|-------------|
-| super_admin | Full system access |
-| admin | User management, configuration |
-| operator | Run agents, view data |
-| viewer | Read-only access |
-| api_only | API access only |
+## Observability
 
-## Contributing
+| Signal | Tool | What it answers |
+|---|---|---|
+| Infra traces | OpenTelemetry → Tempo | Where did latency come from? |
+| LLM traces | Langfuse | What prompt, tokens, cost, and output produced this decision? |
+| Metrics | Prometheus → Grafana | Is the system healthy right now? |
+| Alerts | Alertmanager | Who gets paged, and for what? |
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+16 custom Prometheus metrics ship out of the box, including `agent_decisions_total`, `agent_confidence_average`, and `fraud_alerts_total` — the metrics that answer "is the AI actually working" rather than just "is the server up."
 
-## Security
+## Testing
 
-See [SECURITY.md](SECURITY.md) for security policy and best practices.
+```bash
+pytest tests/ --cov=ecommerce_ops --cov-report=term-missing
+```
 
-## Changelog
+~8,900 lines of tests against ~36,000 lines of application code. Coverage is concentrated where it matters most: the guardrails, the supervisor graph, and the security layer — not evenly smeared across every file for the sake of a percentage.
 
-See [CHANGELOG.md](CHANGELOG.md) for version history.
+## Deployment
+
+Production deploy targets a single VPS via Docker Compose + Nginx + systemd — see [`DEPLOY.md`](DEPLOY.md) for the full Hostinger walkthrough, and [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the general case. Disaster recovery scripts (`scripts/backup-db.sh`, `restore-db.sh`, `disaster-recovery.sh`) are not decorative — run `scripts/verify-backup.sh` on a schedule, not just when you remember to.
+
+## Project Structure
+
+```
+ecommerce_ops/
+├── api/            # FastAPI routes — app.py is the entrypoint
+├── agents/         # 7 agents, each rules-based + LLM variant
+├── graph/          # LangGraph supervisor — the orchestration core
+├── connectors/     # Shopify OAuth, sync, webhooks
+├── memory/         # Vector store, sessions, semantic retrieval
+├── safety/         # Guardrails — read before disabling shadow mode
+├── security/       # RBAC, audit, auth
+├── observability/  # Tracing, evaluation, Langfuse client
+├── infra/          # Circuit breakers, retry, rate limiting, task queue
+└── pipeline/       # Task builder/runner
+
+frontend/           # Next.js 14 dashboard, 13 pages
+alembic/            # Schema migrations
+monitoring/         # Prometheus, Grafana, Tempo, Alertmanager config
+tests/               # 8,900 lines — backend, load, e2e
+```
+
+## Roadmap & Known Limitations
+
+Written honestly, because a README that only lists strengths isn't useful to the next engineer:
+
+- **Single-VPS deployment target** — no horizontal autoscaling yet; fine at current scale, a real constraint past it
+- **Two LLM providers wired, not abstracted behind a router** — switching mid-flight requires a config change and a restart, not yet a runtime decision
+- **`requirements.txt` and `pyproject.toml` are maintained in parallel** — pick one source of truth before version drift becomes a real bug
+- Repository hygiene pass pending: a stray duplicated package directory needs to be removed from git history
+
+Contributions welcome — see [`CONTRIBUTING.md`](CONTRIBUTING.md). Version history in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT — see [`LICENSE`](LICENSE).
 
-## Support
+---
 
-- **Documentation**: [docs/](docs/)
-- **Issues**: [GitHub Issues](https://github.com/Ismail-2001/ecom-ops-automation-system/issues)
-- **Email**: support@opsiq.ai
-
-## Acknowledgments
-
-- Built with FastAPI, SQLAlchemy, LangGraph, Docker
-- Powered by OpenAI, Anthropic, Google, NVIDIA, Meta AI
-- Designed for production-scale e-commerce operations
+<div align="center">
+<sub>Built for e-commerce operators who want AI agents that show their work.</sub>
+</div>
