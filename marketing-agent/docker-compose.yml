@@ -1,0 +1,15 @@
+services:
+  marketing-agent:
+    build: .
+    ports:
+      - "8005:8005"
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - AGENT_API_KEY=${AGENT_API_KEY:-demo-key-2024}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
