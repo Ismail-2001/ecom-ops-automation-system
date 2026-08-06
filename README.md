@@ -116,15 +116,29 @@ This matters more than any feature list. A system that automates the wrong decis
 
 ## Live Demo
 
-<div align="center">
+### Command Center Dashboard
 
-| | |
-|:---:|:---:|
-| **Command Center Dashboard** | **7 AI Agents — All Online** |
-| *Metric cards, pending approvals, system health* | *Real-time uptime, activity, and performance* |
-| ![Dashboard](docs/images/dashboard.png) | ![Agent Fleet](docs/images/agents.png) |
+![Dashboard — Metric cards, pending approvals, system health](docs/images/dashboard.png)
 
-</div>
+*Real-time operations overview with revenue tracking, decision queue, and system health.*
+
+### 7 Autonomous AI Agents
+
+![Agent Fleet — Fraud, Inventory, Pricing, Reviews, Marketing, Cart Recovery, Support](docs/images/agents.png)
+
+*Each agent operates independently with accuracy tracking, decision counts, and live sparklines.*
+
+### Inference Logs & Real-Time Decisions
+
+![Inference Logs — Fraud blocked, Inventory restock, Price adjustment](docs/images/inference-logs.png)
+
+*Every agent action logged with timestamps, results, and latency metrics.*
+
+### Performance Analytics
+
+![Analytics — ROI, Revenue Saved, Decision Distribution, Risk Analysis](docs/images/analytics.png)
+
+*428% ROI, $1.24M revenue saved, 82% autonomous decisions, real-time risk distribution across regions.*
 
 ---
 
