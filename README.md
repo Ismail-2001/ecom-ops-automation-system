@@ -120,16 +120,11 @@ This matters more than any feature list. A system that automates the wrong decis
 
 | | |
 |:---:|:---:|
-| **Dashboard** | **Approval Queue** |
-| *Command Center with real-time agent status* | *One-click approve/reject with risk badges* |
-| ![Dashboard](https://via.placeholder.com/600x400/1a1a2e/4F46E5?text=Dashboard+Screenshot) | ![Approvals](https://via.placeholder.com/600x400/1a1a2e/059669?text=Approval+Queue) |
-| **Analytics** | **Agent Fleet** |
-| *Financial impact, approval rates, 7-day trends* | *Real-time agent health and performance* |
-| ![Analytics](https://via.placeholder.com/600x400/1a1a2e/D97706?text=Analytics+Dashboard) | ![Agents](https://via.placeholder.com/600x400/1a1a2e/DC2626?text=Agent+Fleet+Status) |
+| **Command Center Dashboard** | **7 AI Agents — All Online** |
+| *Metric cards, pending approvals, system health* | *Real-time uptime, activity, and performance* |
+| ![Dashboard](docs/images/dashboard.png) | ![Agent Fleet](docs/images/agents.png) |
 
 </div>
-
-> **Note:** Replace placeholder images with actual screenshots. Record a 60-second Loom video showing the dashboard, an agent making a decision, and the approval flow.
 
 ---
 
