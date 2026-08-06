@@ -92,13 +92,15 @@ check_api() {
 
     # Check API responds to authenticated request
     local auth_response
-    auth_response=$(curl -sf -w "%{http_code}" -o /dev/null \
+    auth_response=$(curl -sf -w "\n%{http_code}" -o /tmp/api_body \
         http://localhost:8000/api/v1/agents \
-        -H "X-API-Key: opsiq-dev-key-2024" 2>/dev/null || echo "000")
+        -H "X-API-Key: opsiq-dev-key-2024" 2>/dev/null | tail -1 || echo "000")
     if [[ "$auth_response" == "200" ]]; then
         ok "  API auth: working"
+    elif [[ "$auth_response" == "000" ]]; then
+        warn "  API auth: connection failed"
     else
-        warn "  API auth: returned $auth_response"
+        warn "  API auth: returned HTTP $auth_response"
     fi
 }
 
@@ -133,13 +135,18 @@ check_monitoring() {
 check_disk() {
     log "Checking disk usage..."
     local usage
-    usage=$(df -h / | awk 'NR==2 {print $5}' | tr -d '%')
-    if [[ "$usage" -lt 80 ]]; then
-        ok "  Disk usage: ${usage}%"
-    elif [[ "$usage" -lt 90 ]]; then
-        warn "  Disk usage: ${usage}% (high)"
+    usage=$(df -h / 2>/dev/null | awk 'NR==2 {print $5}' | tr -d '%' || echo "0")
+    # Handle non-numeric output (Windows Git Bash)
+    if [[ "$usage" =~ ^[0-9]+$ ]]; then
+        if [[ "$usage" -lt 80 ]]; then
+            ok "  Disk usage: ${usage}%"
+        elif [[ "$usage" -lt 90 ]]; then
+            warn "  Disk usage: ${usage}% (high)"
+        else
+            fail "  Disk usage: ${usage}% (critical)"
+        fi
     else
-        fail "  Disk usage: ${usage}% (critical)"
+        warn "  Disk usage: unable to determine on this platform"
     fi
 }
 
