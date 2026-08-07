@@ -1,10 +1,18 @@
 import type { Metadata } from "next"
 import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google"
+import dynamic from "next/dynamic"
 import "../styles/globals.css"
 import { Providers } from "./providers"
 import { CommandPaletteProvider } from "@/components/CommandPalette"
-import CommandPalette from "@/components/CommandPalette"
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary"
+
+const CommandPalette = dynamic(
+  () => import("@/components/CommandPalette").then((m) => m.default),
+  {
+    ssr: false,
+    loading: () => null,
+  }
+)
 
 const inter = Inter({
   subsets: ["latin"],
