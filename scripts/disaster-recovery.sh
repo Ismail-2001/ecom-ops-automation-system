@@ -94,7 +94,7 @@ check_api() {
     local auth_response
     auth_response=$(curl -sf -w "\n%{http_code}" -o /tmp/api_body \
         http://localhost:8000/api/v1/agents \
-        -H "X-API-Key: opsiq-dev-key-2024" 2>/dev/null | tail -1 || echo "000")
+        -H "X-API-Key: ${API_KEY:?Set API_KEY environment variable}" 2>/dev/null | tail -1 || echo "000")
     if [[ "$auth_response" == "200" ]]; then
         ok "  API auth: working"
     elif [[ "$auth_response" == "000" ]]; then
