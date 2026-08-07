@@ -65,3 +65,9 @@ METRIC_LLM_COST_DOLLARS = Counter(
 METRIC_LLM_DAILY_COST = Gauge(
     "llm_daily_cost_dollars", "Current day LLM spend in USD"
 )
+METRIC_LLM_CACHE_HITS = Counter(
+    "llm_cache_hits_total", "Total LLM cache hits"
+)
+METRIC_LLM_CACHE_MISSES = Counter(
+    "llm_cache_misses_total", "Total LLM cache misses"
+)
