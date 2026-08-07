@@ -78,7 +78,11 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                         content={"detail": "Invalid API key"},
                     )
             except Exception:
-                logger.debug("RBAC tables not available, skipping API key validation")
+                logger.error("Auth failed: API key validation error", exc_info=True)
+                return JSONResponse(
+                    status_code=503,
+                    content={"detail": "Authentication service unavailable"},
+                )
         elif auth_header and auth_header.startswith("Bearer "):
             token = auth_header[7:]
             try:
@@ -86,8 +90,17 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 if api_key_obj:
                     user = await role_manager.get_user(api_key_obj.user_id)
                     api_key_id = api_key_obj.id
+                else:
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "Invalid bearer token"},
+                    )
             except Exception:
-                logger.debug("RBAC tables not available, skipping Bearer token validation")
+                logger.error("Auth failed: Bearer token validation error", exc_info=True)
+                return JSONResponse(
+                    status_code=503,
+                    content={"detail": "Authentication service unavailable"},
+                )
 
         request.state.user = user
         request.state.api_key_id = api_key_id
