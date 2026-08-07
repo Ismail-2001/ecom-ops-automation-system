@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from ecommerce_ops.agents._base import BaseAgent
 from ecommerce_ops.agents.cost_tracker import track_llm_cost
 from ecommerce_ops.agents.message_bus import AgentMessage, MessageTopics, message_bus
+from ecommerce_ops.memory.llm_cache import llm_response_cache
 from ecommerce_ops.safety.guardrails import guardrail_manager
 
 logger = logging.getLogger("ecommerce_ops.agents.inventory_llm")
@@ -94,6 +95,12 @@ class InventoryManagementAgentLLM(BaseAgent):
         if not input_check.passed:
             return self._safe_fallback(product_data)
 
+        # LLM response cache
+        cached = await llm_response_cache.get(context, namespace="inventory_management")
+        if cached is not None:
+            logger.info("Inventory LLM cache hit")
+            return cached
+
         try:
             messages = [
                 SystemMessage(content=INVENTORY_SYSTEM_PROMPT),
@@ -112,6 +119,8 @@ class InventoryManagementAgentLLM(BaseAgent):
             )
             if not output_check.passed:
                 return self._rule_based_fallback(product_data)
+
+            await llm_response_cache.set(context, analysis, namespace="inventory_management")
 
             return analysis
 

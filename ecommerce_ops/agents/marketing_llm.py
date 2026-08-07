@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from ecommerce_ops.agents._base import BaseAgent
 from ecommerce_ops.agents.cost_tracker import track_llm_cost
 from ecommerce_ops.agents.message_bus import AgentMessage, MessageTopics, message_bus
+from ecommerce_ops.memory.llm_cache import llm_response_cache
 from ecommerce_ops.safety.guardrails import guardrail_manager
 
 logger = logging.getLogger("ecommerce_ops.agents.marketing_llm")
@@ -101,6 +102,12 @@ class MarketingAutomationAgentLLM(BaseAgent):
         if not input_check.passed:
             return self._safe_fallback(context_data)
 
+        # LLM response cache
+        cached = await llm_response_cache.get(context, namespace="marketing_automation")
+        if cached is not None:
+            logger.info("Marketing LLM cache hit")
+            return cached
+
         try:
             messages = [
                 SystemMessage(content=MARKETING_SYSTEM_PROMPT),
@@ -118,6 +125,8 @@ class MarketingAutomationAgentLLM(BaseAgent):
             )
             if not output_check.passed:
                 return self._rule_based_fallback(context_data)
+
+            await llm_response_cache.set(context, campaign, namespace="marketing_automation")
 
             # Broadcast campaign created
             await self.message_bus.broadcast(
