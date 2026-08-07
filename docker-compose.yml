@@ -180,7 +180,6 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./nginx/certs:/etc/nginx/certs:ro
       - nginx_logs:/var/log/nginx
-      - dashboard_dist:/usr/share/nginx/html:ro
     depends_on:
       - api
       - dashboard
@@ -384,8 +383,6 @@ volumes:
     name: opsiq-playwright-cache
   dashboard_node_modules:
     name: opsiq-dashboard-node-modules
-  dashboard_dist:
-    name: opsiq-dashboard-dist
   prometheus_data:
     name: opsiq-prometheus-data
   grafana_data:
