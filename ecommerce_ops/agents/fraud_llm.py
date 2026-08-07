@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from ecommerce_ops.agents._base import BaseAgent
 from ecommerce_ops.agents.cost_tracker import track_llm_cost
 from ecommerce_ops.agents.message_bus import AgentMessage, MessageTopics, message_bus
+from ecommerce_ops.memory.llm_cache import llm_response_cache
 from ecommerce_ops.safety.guardrails import guardrail_manager
 
 logger = logging.getLogger("ecommerce_ops.agents.fraud_llm")
@@ -90,6 +91,12 @@ class FraudDetectionAgentLLM(BaseAgent):
             logger.warning(f"Input guardrail failed: {input_check.violations}")
             return self._safe_fallback(order_data)
 
+        # LLM response cache
+        cached = await llm_response_cache.get(context, namespace="fraud_detection")
+        if cached is not None:
+            logger.info("Fraud LLM cache hit")
+            return cached
+
         # LLM analysis
         try:
             messages = [
@@ -110,6 +117,9 @@ class FraudDetectionAgentLLM(BaseAgent):
             if not output_check.passed:
                 logger.warning(f"Output guardrail failed: {output_check.violations}")
                 return self._safe_fallback(order_data)
+
+            # Cache the successful analysis
+            await llm_response_cache.set(context, analysis, namespace="fraud_detection")
 
             # Store decision in memory
             await self._store_decision(analysis)
