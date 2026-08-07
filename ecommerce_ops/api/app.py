@@ -11,7 +11,7 @@ from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconn
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
-from sqlalchemy import select, func, desc, update, text
+from sqlalchemy import select, func, desc, update, text, cast, or_, String
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -460,20 +460,22 @@ async def get_approvals(
         query = query.where(ApprovalAction.agent == agent)
     if risk and risk != "all":
         query = query.where(ApprovalAction.risk_level == risk)
+    if search:
+        # DB-side search instead of loading all rows into memory (O(n) Python scan)
+        search_like = f"%{search.lower()}%"
+        query = query.where(
+            or_(
+                func.lower(ApprovalAction.id).like(search_like),
+                func.lower(cast(ApprovalAction.payload, String)).like(search_like),
+                func.lower(cast(ApprovalAction.evidence, String)).like(search_like),
+            )
+        )
     query = query.order_by(
         desc(ApprovalAction.created_at) if sort == "newest" else ApprovalAction.created_at
     )
 
     result = await db.execute(query)
     actions = result.scalars().all()
-
-    if search:
-        search_lower = search.lower()
-        actions = [
-            a
-            for a in actions
-            if search_lower in a.id.lower() or search_lower in str(a.payload).lower()
-        ]
 
     return actions
 
@@ -958,33 +960,73 @@ async def export_audit_logs(
     format: str = "csv",
     db: AsyncSession = Depends(get_db_session),
 ):
-    entries = (await db.execute(
-        select(AuditEntry).order_by(desc(AuditEntry.timestamp)).limit(10000)
-    )).scalars().all()
+    from fastapi.responses import StreamingResponse
+    import csv as _csv
+    import io as _io
+    import json as _json
+
+    query = select(AuditEntry).order_by(desc(AuditEntry.timestamp)).limit(10000)
+
+    def _serialize(e) -> dict:
+        return {
+            "action_id": e.action_id,
+            "timestamp": e.timestamp.isoformat() if e.timestamp else None,
+            "agent": e.agent,
+            "action_type": e.action_type,
+            "decision": e.decision,
+            "operator": e.operator,
+            "confidence": e.confidence_score,
+            "financial_impact": e.financial_impact,
+            "details": e.details,
+        }
+
+    async def _iter_csv():
+        buffer = _io.StringIO()
+        writer = _csv.writer(buffer)
+        writer.writerow(["ID", "Timestamp", "Agent", "Action Type", "Decision", "Operator", "Confidence", "Financial Impact", "Details"])
+        row = buffer.getvalue()
+        buffer.seek(0)
+        buffer.truncate(0)
+        yield row
+
+        result = await db.stream(query)
+        async for partition in result.partitions(500):
+            for e in partition:
+                writer.writerow([
+                    e.action_id, e.timestamp.isoformat() if e.timestamp else "", e.agent,
+                    e.action_type, e.decision, e.operator, e.confidence_score,
+                    e.financial_impact, str(e.details),
+                ])
+            yield buffer.getvalue()
+            buffer.seek(0)
+            buffer.truncate(0)
+        await result.close()
+
+    async def _iter_json():
+        yield '{"entries":['
+        result = await db.stream(query)
+        first = True
+        async for partition in result.partitions(500):
+            for e in partition:
+                if not first:
+                    yield ","
+                first = False
+                yield _json.dumps(_serialize(e))
+        yield "]}"
+        await result.close()
 
     if format == "csv":
-        import csv
-        import io
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow(["ID", "Timestamp", "Agent", "Action Type", "Decision", "Operator", "Confidence", "Financial Impact", "Details"])
-        for e in entries:
-            writer.writerow([
-                e.action_id, e.timestamp.isoformat(), e.agent, e.action_type,
-                e.decision, e.operator, e.confidence_score, e.financial_impact, str(e.details),
-            ])
-        return Response(
-            content=output.getvalue(),
+        return StreamingResponse(
+            _iter_csv(),
             media_type="text/csv",
             headers={"Content-Disposition": "attachment; filename=audit_log.csv"},
         )
 
-    return {"entries": [{
-        "action_id": e.action_id, "timestamp": e.timestamp.isoformat(),
-        "agent": e.agent, "action_type": e.action_type, "decision": e.decision,
-        "operator": e.operator, "confidence": e.confidence_score,
-        "financial_impact": e.financial_impact, "details": e.details,
-    } for e in entries]}
+    return StreamingResponse(
+        _iter_json(),
+        media_type="application/json",
+        headers={"Content-Disposition": "attachment; filename=audit_log.json"},
+    )
 
 
 @app.get("/ready")
