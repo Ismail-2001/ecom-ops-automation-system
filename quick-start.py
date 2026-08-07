@@ -103,7 +103,7 @@ def main():
     # Check if agents exist
     if not Path("cs-agent").exists():
         print("⚠️  Agents not extracted yet. Running extraction...")
-        os.system("py -3 scripts/extract-agents.py")
+        subprocess.run([sys.executable, "scripts/extract-agents.py"], check=True)
     
     print("\n📋 AGENTS TO SETUP:")
     for i, (agent_id, name, desc) in enumerate(AGENTS, 1):
