@@ -1,14 +1,16 @@
 """
 WebSocket Connection Manager with Authentication
-Production-grade WS manager with token auth, per-IP limits, and rate limiting.
+Production-grade WS manager with token auth, per-IP limits, rate limiting,
+and Redis PubSub for cross-worker broadcast.
 """
 
 import asyncio
+import json
 import hmac
 import logging
 import time
 from collections import defaultdict
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from fastapi import WebSocket, WebSocketDisconnect
 
@@ -59,13 +61,77 @@ class AuthenticatedConnection:
         return time.monotonic() - self.connected_at
 
 
+PUBSUB_CHANNEL = "opsiq:ws:broadcast"
+
+
 class ConnectionManager:
-    """WebSocket connection manager with authentication and rate limiting."""
+    """WebSocket connection manager with authentication, rate limiting, and Redis PubSub."""
 
     def __init__(self):
         self._connections: List[AuthenticatedConnection] = []
         self._lock = asyncio.Lock()
         self._ip_counts: Dict[str, int] = defaultdict(int)
+        self._redis = None
+        self._pubsub_task: Optional[asyncio.Task] = None
+        self._pubsub = None
+
+    async def init_redis(self, redis_client):
+        """Initialize Redis PubSub for cross-worker broadcasts."""
+        self._redis = redis_client
+        if self._redis is None:
+            return
+        try:
+            self._pubsub = self._redis.pubsub()
+            await self._pubsub.subscribe(PUBSUB_CHANNEL)
+            self._pubsub_task = asyncio.create_task(self._pubsub_listener())
+            logger.info("WS Redis PubSub initialized (channel=%s)", PUBSUB_CHANNEL)
+        except Exception as e:
+            logger.warning("WS Redis PubSub init failed (broadcasts will be local-only): %s", e)
+            self._redis = None
+
+    async def _pubsub_listener(self):
+        """Listen for cross-worker broadcast messages from Redis."""
+        try:
+            async for message in self._pubsub.listen():
+                if message["type"] != "message":
+                    continue
+                try:
+                    data = json.loads(message["data"])
+                    conns_snapshot = []
+                    async with self._lock:
+                        conns_snapshot = list(self._connections)
+                    dead = []
+                    for conn in conns_snapshot:
+                        try:
+                            await conn.websocket.send_json(data)
+                        except Exception:
+                            dead.append(conn)
+                    if dead:
+                        async with self._lock:
+                            for conn in dead:
+                                if conn in self._connections:
+                                    self._connections.remove(conn)
+                                    self._ip_counts[conn.client_ip] = max(
+                                        0, self._ip_counts[conn.client_ip] - 1
+                                    )
+                except Exception as e:
+                    logger.debug("WS pubsub message parse error: %s", e)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.warning("WS pubsub listener stopped: %s", e)
+
+    async def close_redis(self):
+        """Clean up Redis PubSub subscription."""
+        if self._pubsub_task:
+            self._pubsub_task.cancel()
+            try:
+                await self._pubsub_task
+            except asyncio.CancelledError:
+                pass
+        if self._pubsub:
+            await self._pubsub.unsubscribe(PUBSUB_CHANNEL)
+            await self._pubsub.close()
 
     def _get_client_ip(self, websocket: WebSocket) -> str:
         """Extract client IP from WebSocket connection."""
@@ -164,7 +230,14 @@ class ConnectionManager:
                 )
 
     async def broadcast(self, message: dict):
-        """Send a message to all authenticated connections."""
+        """Send a message to all authenticated connections across all workers."""
+        if self._redis is not None:
+            try:
+                await self._redis.publish(PUBSUB_CHANNEL, json.dumps(message))
+                return
+            except Exception as e:
+                logger.debug("Redis publish failed, falling back to local broadcast: %s", e)
+
         dead: List[AuthenticatedConnection] = []
         async with self._lock:
             conns_snapshot = list(self._connections)
