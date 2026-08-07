@@ -2,7 +2,7 @@
 # ── OpsIQ Production Deploy ────────────────────────────────
 # One-command production deployment
 # Usage: ./scripts/deploy.sh [action]
-#   action: up (default), down, restart, logs, status, backup
+#   action: up (default), rolling, down, restart, logs, status, backup, rollback
 
 set -euo pipefail
 
@@ -12,6 +12,8 @@ COMPOSE_FILE="docker-compose.yml"
 BACKUP_FILE="docker-compose.backup.yml"
 ACTION="${1:-up}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+HEALTH_URL="${HEALTH_URL:-http://localhost:8000/health}"
+HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-120}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -31,18 +33,15 @@ preflight() {
     command -v docker >/dev/null 2>&1 || fail "Docker not installed"
     docker info >/dev/null 2>&1 || fail "Docker daemon not running"
 
-    # Check for required files
     for f in "$PROJECT_DIR/docker-compose.yml" "$PROJECT_DIR/.env.docker"; do
         [[ -f "$f" ]] || fail "Missing required file: $f"
     done
 
-    # Check for TLS certs (warn if missing)
     if [[ ! -f "$PROJECT_DIR/nginx/certs/server.crt" ]]; then
         warn "TLS certs not found — HTTPS will be disabled"
         warn "Run: bash scripts/generate-tls-certs.sh"
     fi
 
-    # Ensure backup compose exists
     if [[ ! -f "$PROJECT_DIR/$BACKUP_FILE" ]]; then
         warn "Backup compose not found — skipping backup services"
         BACKUP_FILE=""
@@ -51,11 +50,31 @@ preflight() {
     ok "Pre-flight checks passed"
 }
 
-# ── Deploy ──────────────────────────────────────────────────
+# ── Wait for Healthy ───────────────────────────────────────
+wait_for_healthy() {
+    local max_wait="${1:-$HEALTH_TIMEOUT}"
+    local elapsed=0
+    while [[ $elapsed -lt $max_wait ]]; do
+        if curl -sf "$HEALTH_URL" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 5
+        elapsed=$((elapsed + 5))
+        log "  Waiting... (${elapsed}s/${max_wait}s)"
+    done
+    return 1
+}
+
+# ── Get current image tag ──────────────────────────────────
+get_current_image() {
+    docker inspect opsiq-api --format '{{.Config.Image}}' 2>/dev/null || echo ""
+}
+
+# ── Full Deploy (with downtime) ────────────────────────────
 deploy_up() {
     preflight
 
-    log "Starting OpsIQ production stack..."
+    log "Starting OpsIQ production stack (full deploy)..."
 
     COMPOSE_CMD="docker compose -f $COMPOSE_FILE"
     [[ -n "${BACKUP_FILE:-}" && -f "$PROJECT_DIR/$BACKUP_FILE" ]] && \
@@ -63,43 +82,82 @@ deploy_up() {
 
     cd "$PROJECT_DIR"
 
-    # Pull latest images
     log "Pulling latest images..."
     $COMPOSE_CMD pull --quiet 2>/dev/null || true
 
-    # Build API image
     log "Building API image..."
     $COMPOSE_CMD build api --quiet
 
-    # Stop existing services gracefully
     log "Stopping existing services..."
     $COMPOSE_CMD down --timeout 30 2>/dev/null || true
 
-    # Start services
     log "Starting services..."
     $COMPOSE_CMD up -d --remove-orphans --force-recreate
 
-    # Wait for health
     log "Waiting for services to become healthy..."
-    local max_wait=120
-    local elapsed=0
-    while [[ $elapsed -lt $max_wait ]]; do
-        if curl -sf http://localhost:8000/health >/dev/null 2>&1; then
-            ok "API is healthy!"
-            break
-        fi
-        sleep 5
-        elapsed=$((elapsed + 5))
-        log "  Waiting... (${elapsed}s/${max_wait}s)"
-    done
-
-    if [[ $elapsed -ge $max_wait ]]; then
-        warn "API health check timed out after ${max_wait}s"
+    if wait_for_healthy; then
+        ok "API is healthy!"
+    else
+        warn "API health check timed out after ${HEALTH_TIMEOUT}s"
         warn "Check logs: docker compose logs api"
     fi
 
-    # Show status
     deploy_status
+}
+
+# ── Rolling Deploy (zero-downtime) ─────────────────────────
+deploy_rolling() {
+    preflight
+    cd "$PROJECT_DIR"
+
+    local old_image
+    old_image=$(get_current_image)
+    log "Current image: ${old_image:-none}"
+
+    log "Building new API image..."
+    docker compose -f "$COMPOSE_FILE" build api --quiet
+
+    local new_image
+    new_image=$(docker compose -f "$COMPOSE_FILE" images api --format json 2>/dev/null \
+        | head -1 | python3 -c "import sys,json; print(json.load(sys.stdin).get('Repository','') + ':' + json.load(sys.stdin).get('Tag',''))" 2>/dev/null || echo "")
+
+    log "New image: ${new_image:-built}"
+
+    log "Rolling API service (graceful restart)..."
+    docker compose -f "$COMPOSE_FILE" up -d --no-deps --build api
+
+    log "Waiting for new API to become healthy..."
+    if wait_for_healthy; then
+        ok "Rolling deploy succeeded — API is healthy"
+    else
+        warn "New API failed health check — initiating rollback"
+        deploy_rollback_internal
+        return 1
+    fi
+
+    deploy_status
+}
+
+# ── Rollback ───────────────────────────────────────────────
+deploy_rollback_internal() {
+    cd "$PROJECT_DIR"
+
+    if [[ -n "${old_image:-}" ]]; then
+        log "Rolling back to previous image..."
+        IMAGE_TAG="${old_image}" docker compose -f "$COMPOSE_FILE" up -d --no-deps api
+        if wait_for_healthy 60; then
+            ok "Rollback succeeded"
+        else
+            fail "Rollback also failed — manual intervention required"
+        fi
+    else
+        warn "No previous image recorded — cannot auto-rollback"
+    fi
+}
+
+deploy_rollback() {
+    preflight
+    deploy_rollback_internal
 }
 
 # ── Status ──────────────────────────────────────────────────
@@ -110,7 +168,7 @@ deploy_status() {
 
     echo ""
     log "Health check:"
-    if curl -sf http://localhost:8000/health >/dev/null 2>&1; then
+    if curl -sf "$HEALTH_URL" >/dev/null 2>&1; then
         ok "API: healthy"
     else
         warn "API: unhealthy or unreachable"
@@ -157,7 +215,9 @@ deploy_backup() {
 
 # ── Main ────────────────────────────────────────────────────
 case "$ACTION" in
-    up|deploy)  deploy_up ;;
+    up|deploy)    deploy_up ;;
+    rolling)      deploy_rolling ;;
+    rollback)     deploy_rollback ;;
     down|stop)
         cd "$PROJECT_DIR"
         docker compose -f "$COMPOSE_FILE" down --timeout 30
@@ -168,11 +228,11 @@ case "$ACTION" in
         docker compose -f "$COMPOSE_FILE" restart
         ok "Stack restarted"
         ;;
-    status)     deploy_status ;;
-    logs)       deploy_logs "$@" ;;
-    backup)     deploy_backup ;;
+    status)       deploy_status ;;
+    logs)         deploy_logs "$@" ;;
+    backup)       deploy_backup ;;
     *)
-        echo "Usage: $0 {up|down|restart|status|logs|backup}"
+        echo "Usage: $0 {up|rolling|rollback|down|restart|status|logs|backup}"
         exit 1
         ;;
 esac
