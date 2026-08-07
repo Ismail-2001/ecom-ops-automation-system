@@ -9,6 +9,7 @@ from redis.exceptions import ConnectionError, TimeoutError
 from ecommerce_ops.config import settings
 from ecommerce_ops.infra.retry import async_retry_decorator
 from ecommerce_ops.infra.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
+from ecommerce_ops.api.metrics import METRIC_CACHE_HIT_RATIO
 
 logger = logging.getLogger("ecommerce_ops.memory")
 
@@ -40,10 +41,6 @@ class RedisCache:
         name="Redis", failure_threshold=3, recovery_timeout=15.0
     )
 
-    def __init__(self):
-        self.redis_url = settings.REDIS_URL
-        self._redis: Optional[redis.Redis] = None
-
     async def get_client(self) -> Optional[redis.Redis]:
         if self._redis is None:
             try:
@@ -62,9 +59,29 @@ class RedisCache:
                 self._redis = None
         return self._redis
 
+    def __init__(self):
+        self.redis_url = settings.REDIS_URL
+        self._redis: Optional[redis.Redis] = None
+        self._hits = 0
+        self._misses = 0
+        self._last_hit_ratio = 0.0
+
+    def _update_hit_ratio(self, hit: bool) -> None:
+        if hit:
+            self._hits += 1
+        else:
+            self._misses += 1
+        total = self._hits + self._misses
+        if total >= 10:
+            ratio = self._hits / total
+            self._last_hit_ratio = round(ratio, 4)
+            METRIC_CACHE_HIT_RATIO.set(self._last_hit_ratio)
+
     async def get(self, key: str) -> Optional[Any]:
         try:
-            return await self._circuit_breaker.call(self._get_with_retry, key)
+            value = await self._circuit_breaker.call(self._get_with_retry, key)
+            self._update_hit_ratio(value is not None)
+            return value
         except CircuitBreakerOpenError:
             logger.warning("Redis circuit open, skipping GET %s", key)
             return None
