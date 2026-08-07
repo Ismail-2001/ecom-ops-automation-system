@@ -303,7 +303,7 @@ jobs:
 
       - name: Unit tests
         working-directory: frontend
-        run: npx vitest run --reporter=verbose
+        run: npx vitest run --reporter=verbose --coverage
 
       - name: Build
         working-directory: frontend
