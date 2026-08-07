@@ -3,12 +3,9 @@ Security Headers and Rate Limiting
 Middleware for security hardening.
 """
 
-import hmac
 import logging
 import time
-from collections import defaultdict
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import List
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -70,122 +67,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response.headers["Access-Control-Allow-Credentials"] = "true"
 
         return response
-
-
-class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Middleware for rate limiting."""
-
-    def __init__(
-        self,
-        app,
-        requests_per_minute: int = 60,
-        requests_per_hour: int = 1000,
-        burst_size: int = 10,
-    ):
-        super().__init__(app)
-        self.requests_per_minute = requests_per_minute
-        self.requests_per_hour = requests_per_hour
-        self.burst_size = burst_size
-
-        self._minute_counts: Dict[str, list] = defaultdict(list)
-        self._hour_counts: Dict[str, list] = defaultdict(list)
-        self._blocked: Dict[str, datetime] = {}
-
-    async def dispatch(
-        self,
-        request: Request,
-        call_next: RequestResponseEndpoint,
-    ) -> Response:
-        client_id = self._get_client_id(request)
-
-        if self._is_blocked(client_id):
-            remaining = self._get_block_remaining(client_id)
-            return JSONResponse(
-                status_code=429,
-                content={
-                    "detail": "Rate limit exceeded. Please try again later.",
-                    "retry_after": remaining,
-                },
-                headers={"Retry-After": str(remaining)},
-            )
-
-        if not self._check_rate_limit(client_id):
-            self._block_client(client_id)
-            return JSONResponse(
-                status_code=429,
-                content={
-                    "detail": "Rate limit exceeded",
-                    "limit": self.requests_per_minute,
-                    "window": "1 minute",
-                },
-                headers={"Retry-After": "60"},
-            )
-
-        response = await call_next(request)
-
-        remaining = self._get_remaining(client_id)
-        response.headers["X-RateLimit-Limit"] = str(self.requests_per_minute)
-        response.headers["X-RateLimit-Remaining"] = str(remaining)
-        response.headers["X-RateLimit-Reset"] = self._get_reset_time(client_id)
-
-        return response
-
-    def _get_client_id(self, request: Request) -> str:
-        api_key = request.headers.get("X-API-Key")
-        if api_key:
-            return f"api:{api_key[:16]}"
-        return request.client.host if request.client else "unknown"
-
-    def _check_rate_limit(self, client_id: str) -> bool:
-        now = time.time()
-
-        self._minute_counts[client_id] = [
-            t for t in self._minute_counts[client_id]
-            if now - t < 60
-        ]
-        self._hour_counts[client_id] = [
-            t for t in self._hour_counts[client_id]
-            if now - t < 3600
-        ]
-
-        if len(self._minute_counts[client_id]) >= self.requests_per_minute:
-            return False
-
-        if len(self._hour_counts[client_id]) >= self.requests_per_hour:
-            return False
-
-        self._minute_counts[client_id].append(now)
-        self._hour_counts[client_id].append(now)
-
-        return True
-
-    def _get_remaining(self, client_id: str) -> int:
-        return max(0, self.requests_per_minute - len(self._minute_counts[client_id]))
-
-    def _get_reset_time(self, client_id: str) -> str:
-        if self._minute_counts[client_id]:
-            oldest = min(self._minute_counts[client_id])
-            reset_at = int(oldest + 60)
-            return str(reset_at)
-        return str(int(time.time() + 60))
-
-    def _is_blocked(self, client_id: str) -> bool:
-        if client_id in self._blocked:
-            if datetime.now(timezone.utc) < self._blocked[client_id]:
-                return True
-            else:
-                del self._blocked[client_id]
-        return False
-
-    def _block_client(self, client_id: str):
-        self._blocked[client_id] = datetime.now(timezone.utc) + timedelta(minutes=5)
-        logger.warning("Rate limit exceeded for client: %s", client_id)
-
-    def _get_block_remaining(self, client_id: str) -> int:
-        if client_id in self._blocked:
-            remaining = (self._blocked[client_id] - datetime.now(timezone.utc)).total_seconds()
-            return max(0, int(remaining))
-        return 0
 
 
 class InputSanitizationMiddleware(BaseHTTPMiddleware):
