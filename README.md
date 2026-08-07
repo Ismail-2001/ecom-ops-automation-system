@@ -11,6 +11,7 @@
 [![LangGraph](https://img.shields.io/badge/LangGraph-0.2-1437EB.svg)](https://langchain-ai.github.io/langgraph)
 [![Docker](https://img.shields.io/badge/Docker-24-2496ED.svg)](https://docker.com)
 [![CI/CD](https://img.shields.io/badge/GitHub%20Actions-CI%2FCD-2088FF.svg)](.github/workflows)
+[![Security](https://img.shields.io/badge/Security-Audit%20Passed-22c55e.svg)](AUDIT_REPORT.md)
 
 **7 AI Agents. 1 Dashboard. Human-in-the-loop by default.**
 
@@ -78,13 +79,14 @@ This matters more than any feature list. A system that automates the wrong decis
 - **7 Specialized Agents** — Each agent is domain-expert in its area (fraud, inventory, pricing, reviews, marketing, cart recovery, support) with dedicated logic, guardrails, and decision formats
 - **LangGraph Supervisor Orchestration** — Agents run in a defined pipeline with a planner that dynamically selects which agents execute based on available data, plus a reflection agent that self-corrects decisions post-execution
 - **LLM-First with Rule-Based Fallback** — Each agent tries Google Gemini 2.0 Flash (or DeepSeek) for rich analysis, then silently falls back to deterministic rules on any LLM failure — zero downtime, zero data loss
+- **Semantic LLM Cache** — Cosine-similarity cache (threshold 0.92) with bounded 200-entry index eliminates redundant LLM calls for similar queries, with graceful degradation on import failure
 - **Inter-Agent Communication** — Built-in message bus with 18 predefined topics (fraud.alert, inventory.low, cart.abandoned, etc.) enables agents to coordinate without tight coupling
 - **Cost Tracking** — Per-agent LLM token usage and cost monitoring with Prometheus metrics and configurable daily budgets
 
 ### Human-in-the-Loop
 
 - **Shadow Mode by Default** — Every decision requires human approval until the agent earns autonomy through a streak-based graduation system (50+ consecutive high-confidence approvals)
-- **Approval Queue** — Filterable, searchable queue with risk-level badges, confidence scores, and one-click approve/reject/batch operations
+- **Approval Queue** — SQL-side search (PostgreSQL `LIKE` on id/payload/evidence), filterable queue with risk-level badges, confidence scores, and one-click approve/reject/batch operations
 - **Hard Safety Limits** — Configurable PO limits ($1,000 default), price-change caps (20%), and confidence thresholds that the AI cannot override
 - **Reflection Agent** — Post-pipeline self-review that validates all decisions, corrects confidence scores, and enforces HITL consistency
 
@@ -94,11 +96,11 @@ This matters more than any feature list. A system that automates the wrong decis
 - **SHA-256 API Key Management** — `eops_` prefixed keys with 90-day expiry, usage tracking, and secure hashing
 - **Comprehensive Audit Logging** — Every action, decision, and security event logged to PostgreSQL with risk-level assessment and sensitive-field redaction
 - **Rate Limiting** — Redis sliding window (60 req/min) with in-memory fallback, per-IP tracking, and automatic blocking
-- **Security Hardening** — HSTS, CSP, X-Frame-Options: DENY, input sanitization (25+ injection patterns), SQL/XSS blocking
+- **Security Hardening** — HSTS, CSP, X-Frame-Options: DENY, input sanitization (25+ injection patterns), SQL/XSS blocking, no hardcoded secrets
 
 ### Observability
 
-- **18 Prometheus Metrics** — Request rates, agent decisions, LLM costs, queue depths, financial impact, cache ratios
+- **21 Prometheus Metrics** — Request rates, agent decisions, LLM costs, queue depths, financial impact, cache ratios, LLM cache hits/misses, DB connection pool
 - **14 Alert Rules** — API errors, latency spikes, agent failures, Redis/PostgreSQL down, LLM budget exceeded, missing backups
 - **OpenTelemetry Tracing** — Distributed traces via OTLP to Grafana Tempo with 10% sampling
 - **Langfuse Integration** — LLM-specific observability: traces, evaluations, cost breakdowns per model
@@ -107,9 +109,12 @@ This matters more than any feature list. A system that automates the wrong decis
 ### Infrastructure
 
 - **13-Service Docker Stack** — PostgreSQL, Redis, API, Dashboard, Nginx, Prometheus, Grafana, Tempo, OTEL Collector, Alertmanager, exporters
-- **Multi-Stage Docker Build** — Python 3.12-slim with Playwright Chromium, non-root user, uvloop+httptools, 2 workers
-- **CI/CD Pipeline** — 7 GitHub Actions workflows: lint, test, security scan, Docker build, Trivy scan, staging deploy, production deploy with auto-rollback
+- **Multi-Stage Docker Build** — Python 3.12-slim with Playwright (Chromium + Firefox + WebKit), non-root user, uvloop+httptools, 2 workers
+- **Rolling Deploy** — Zero-downtime deployment with auto-rollback on health check failure (`./scripts/deploy.sh rolling`)
+- **Offsite Backup** — Automated PostgreSQL dumps with S3/GCS upload (STANDARD_IA), 7-day retention
+- **CI/CD Pipeline** — 7 GitHub Actions workflows: lint+mypy, test, security scan, Docker build, Trivy scan, staging deploy, production deploy with auto-rollback
 - **Database Migrations** — Alembic with drift detection in CI
+- **Disaster Recovery** — Defined RTO/RPO targets, recovery procedures, escalation contacts (`docs/DR_POLICY.md`)
 - **Kubernetes-Ready** — `/health`, `/ready`, `/live` endpoints for orchestration
 
 ---
@@ -297,8 +302,8 @@ graph TD
 </tr>
 <tr>
 <td><strong>Scraping</strong></td>
-<td>Playwright (Chromium)</td>
-<td>Competitor price monitoring via Google Shopping</td>
+<td>Playwright (Chromium, Firefox, WebKit)</td>
+<td>Cross-browser competitor price monitoring via Google Shopping</td>
 </tr>
 <tr>
 <td><strong>Observability</strong></td>
@@ -368,12 +373,12 @@ ecom-ops-automation-system/
 │   └── cli.py                  # Typer CLI (ops-agent run/pause)
 ├── frontend/                   # Next.js 14 dashboard
 │   └── src/app/                # 15+ page routes
-├── tests/                      # 30+ test files + fixtures + load tests
+├── tests/                      # 7 focused test modules + fixtures + load tests
 ├── monitoring/                 # Prometheus, Grafana, Tempo, Alertmanager
 ├── nginx/                      # Reverse proxy + TLS
-├── scripts/                    # 19 operational scripts
+├── scripts/                    # 19 operational scripts (deploy, backup, rollback, DR)
 ├── alembic/                    # Database migrations
-├── docs/                       # API.md, DEPLOYMENT.md, PERFORMANCE.md
+├── docs/                       # API.md, DEPLOYMENT.md, PERFORMANCE.md, DR_POLICY.md
 ├── docker-compose.yml          # Production stack (13 services)
 ├── docker-compose.agents.yml   # Standalone agents orchestration
 ├── Dockerfile                  # Multi-stage Python build
@@ -601,15 +606,18 @@ For a store doing **$200K/year** in revenue:
 ### Agent Safety
 
 - **Prompt Injection Guard**: 25+ regex patterns detecting role override, system prompt injection, SQL injection
+- **Shell Injection Prevention**: Whitelist-based tool executor — blocks `subprocess`, `os.system`, `eval`, `exec`
 - **Hallucination Detector**: Validates unsupported claims, fabricated numbers, confidence levels
 - **Output Validator**: Ensures confidence scores, decision validity, required fields, JSON structure
 - **Hard Limits**: PO caps ($1,000), price-change limits (20%), confidence thresholds (0.95)
+- **No Hardcoded Secrets**: All API keys loaded from environment variables (Phase 1 audit fix)
 
 ### CI Security
 
-- **Trivy**: Container image scanning (CRITICAL severity = build failure)
-- **Bandit**: Python SAST scanning
+- **Trivy**: Container image scanning (CRITICAL severity = build failure, HIGH advisory)
+- **Bandit**: Python SAST scanning (B101, B311, B324 skipped per config)
 - **pip-audit**: Dependency vulnerability auditing
+- **mypy**: Static type checking (strict mode, added to main CI pipeline)
 - **Weekly Scheduled Scans**: Automated security pipeline every Monday
 
 ---
@@ -618,12 +626,15 @@ For a store doing **$200K/year** in revenue:
 
 - **Async Architecture**: FastAPI + asyncpg + asyncio throughout — no blocking calls in the request path
 - **Connection Pooling**: PostgreSQL (20 connections + 10 overflow), Redis (20 max connections)
-- **Caching**: Redis response cache with configurable TTL, LLM response caching (24h for reviews)
+- **Semantic LLM Cache**: Cosine-similarity cache (threshold 0.92) with bounded 200-entry index — eliminates redundant LLM calls for similar queries
 - **Circuit Breakers**: Per-service circuit breakers (5 failures → 60s open) prevent cascade failures
 - **Task Queue**: In-memory queue (2 workers, max 100 depth) for background pipeline execution
 - **Browser Pool**: Shared Playwright browser instances for competitor scraping (avoids process-per-request)
+- **SQL-Side Search**: Approval search, audit export, and filtering pushed to PostgreSQL (no O(n) Python scans)
+- **Streaming Export**: Audit log export uses `StreamingResponse` + `db.stream().partitions(500)` for constant-memory CSV/JSON
 - **Static Page Generation**: Next.js SSG for dashboard pages — instant load, zero server rendering
 - **WebSocket**: Real-time event stream for dashboard updates (authenticated, rate-limited, 500 global connections)
+- **Lazy Loading**: Command palette and heavy components loaded via `next/dynamic` — reduced initial bundle
 
 ---
 
@@ -648,24 +659,24 @@ pytest tests/ -m "e2e"               # End-to-end tests
 
 | Category | Files | Coverage |
 |:---------|:------|:---------|
-| Unit Tests | 20+ files | Agent logic, safety rules, guardrails, middleware |
+| Unit Tests | 7 focused modules (split from monolith) | Agent logic, safety rules, guardrails, config, memory, tools, infrastructure |
 | Integration Tests | 5+ files | API endpoints, database, Redis, Shopify |
-| E2E Tests | 1 file | Full pipeline execution with real services |
+| E2E Tests | 3 files | Full pipeline, navigation, API health, accessibility |
 | Security Tests | 3 files | Auth, RBAC, rate limiting, input sanitization |
 | Performance Tests | 1 file | Agent latency benchmarks |
 | Load Tests | 1 file | Locust-based load testing |
-| Frontend Tests | 97 tests | Vitest unit tests + Playwright e2e |
+| Frontend Tests | 81 Vitest + 18 Playwright | Unit tests + cross-browser e2e (Chromium, Firefox, WebKit) |
 
 ### CI Pipeline
 
 Every push runs:
-1. **Lint** — Ruff check + format verification
+1. **Lint & Type Check** — Ruff check + format verification + mypy type checking
 2. **Migration Drift** — Alembic vs models divergence check
-3. **Unit Tests** — pytest with PostgreSQL + Redis services
+3. **Unit Tests** — pytest with PostgreSQL + Redis services (261+ tests, 65% coverage threshold)
 4. **E2E Tests** — Full pipeline integration
-5. **Security Scan** — pip-audit + Bandit
-6. **Docker Build** — Multi-platform build + Trivy scan
-7. **Frontend CI** — TypeScript check + Vitest + Next.js build
+5. **Security Scan** — pip-audit + Bandit SAST
+6. **Docker Build** — Multi-stage build + Trivy CRITICAL severity scan
+7. **Frontend CI** — TypeScript check + Vitest (81 tests) + Next.js build + coverage thresholds (60/45/50/65)
 8. **Performance Benchmarks** — Agent latency tests
 
 ---
@@ -677,6 +688,12 @@ The production stack runs **13 services**:
 ```bash
 # Start the full stack
 docker compose up -d
+
+# Rolling deploy (zero-downtime, auto-rollback on failure)
+./scripts/deploy.sh rolling
+
+# Manual rollback to previous version
+./scripts/deploy.sh rollback
 
 # View service status
 docker compose ps
@@ -730,13 +747,24 @@ docker compose -f docker-compose.agents.yml up -d
 
 ## Roadmap
 
+### Completed (Phases 1-5)
+
+- [x] Security audit + vulnerability remediation (auth bypass, prompt injection, shell injection, hardcoded keys)
+- [x] Runtime infrastructure (Redis task queue, Redis PubSub, graceful shutdown)
+- [x] Code quality (thread-safe AgentFactory, dead code removal, metrics wiring)
+- [x] Test suite overhaul (2762-line monolith → 7 focused modules, 261 tests)
+- [x] Frontend performance (lazy loading, dependency pruning, loading states)
+- [x] Semantic LLM cache (cosine similarity, bounded index, graceful degradation)
+- [x] API performance (SQL-side search, streaming audit export)
+- [x] Production hardening (mypy in CI, cross-browser Playwright, rolling deploy, offsite backup, DR policy)
+
 ### Near-term (1-3 months)
 
 - [ ] Vercel deployment optimization
 - [ ] Agent autonomy graduation UI
 - [ ] Multi-store support
 - [ ] Email notification integration (Resend)
-- [ ] Slack alert integration
+- [ ] Slack alert integration (webhook config ready)
 
 ### Mid-term (3-6 months)
 
