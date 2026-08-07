@@ -1,4 +1,5 @@
 import os
+import signal
 import uuid
 import time
 import logging
@@ -37,6 +38,7 @@ from ecommerce_ops.api.metrics import (
 )
 from ecommerce_ops.pipeline.runner import run_pipeline_task, execute_shop_action, update_agent_streak
 from ecommerce_ops.infra.task_queue import TaskQueue
+from ecommerce_ops.infra.redis_task_queue import RedisTaskQueue, TaskPriority
 from ecommerce_ops.infra.browser_pool import browser_pool
 from ecommerce_ops.api.shopify import router as shopify_router
 from ecommerce_ops.api.cart_recovery import router as cart_recovery_router
@@ -55,12 +57,51 @@ logger = logging.getLogger("ecommerce_ops.api")
 
 
 task_queue = TaskQueue(num_workers=2, max_queue_size=100)
+redis_task_queue: Optional["RedisTaskQueue"] = None
 SERVER_START_TIME = time.time()
+
+
+async def _pipeline_task_handler(payload: Dict[str, Any]):
+    """Handler for Redis-backed pipeline tasks."""
+    run_id = payload.get("run_id", "")
+    from ecommerce_ops.models import StoreSettings
+    async with get_db_session() as session:
+        res = await session.execute(select(StoreSettings).where(StoreSettings.id == 1))
+        db_settings = res.scalar_one_or_none()
+        if not db_settings:
+            db_settings = StoreSettings(
+                id=1, shadow_mode=True, fraud_threshold=70,
+                po_limit=1000.0, pricing_limit=5.0, reviews_rating_threshold=4,
+            )
+            session.add(db_settings)
+            await session.commit()
+    await run_pipeline_task(run_id, db_settings)
+
+
+async def _init_task_queue() -> Optional["RedisTaskQueue"]:
+    """Initialize RedisTaskQueue if Redis is available, else fall back to in-memory."""
+    try:
+        from ecommerce_ops.memory.cache import cache
+        redis_client = await cache.get_client()
+        if redis_client is None:
+            logger.warning("Redis unavailable, using in-memory task queue")
+            return None
+        rq = RedisTaskQueue(redis_client, num_workers=2, max_queue_size=100)
+        rq.register_handler("pipeline", _pipeline_task_handler)
+        await rq.start()
+        logger.info("RedisTaskQueue started (cross-worker task sharing enabled)")
+        return rq
+    except Exception as e:
+        logger.warning("RedisTaskQueue init failed, using in-memory: %s", e)
+        return None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await task_queue.start()
+    global redis_task_queue
+    redis_task_queue = await _init_task_queue()
+    if redis_task_queue is None:
+        await task_queue.start()
     supervisor_ok = False
     try:
         app.state.supervisor = None
@@ -83,6 +124,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Browser pool initialization failed (scraping will fall back): %s", e)
 
+    try:
+        from ecommerce_ops.memory.cache import cache
+        redis_client = await cache.get_client()
+        if redis_client is not None:
+            await ws_manager.init_redis(redis_client)
+    except Exception as e:
+        logger.warning("WS Redis PubSub init skipped: %s", e)
+
     if supervisor_ok:
         logger.info("Application fully initialized and ready.")
     else:
@@ -90,7 +139,23 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    await task_queue.stop(wait=True)
+    logger.info("Graceful shutdown initiated — closing WebSocket connections...")
+    async with ws_manager._lock:
+        close_snapshot = list(ws_manager._connections)
+    for conn in close_snapshot:
+        try:
+            await conn.websocket.close(code=1001, reason="Server shutting down")
+        except Exception:
+            pass
+    ws_manager._connections.clear()
+    ws_manager._ip_counts.clear()
+    logger.info("WebSocket connections drained (%d closed)", len(close_snapshot))
+
+    await ws_manager.close_redis()
+    if redis_task_queue is not None:
+        await redis_task_queue.stop(wait=True)
+    else:
+        await task_queue.stop(wait=True)
     await browser_pool.stop()
     from ecommerce_ops.memory.cache import cache
     await cache.close()
@@ -268,7 +333,10 @@ async def health(operator: str = Depends(verify_auth_optional)):
 
     # Task queue check
     try:
-        task_queue_size = task_queue._queue.qsize() if hasattr(task_queue, "_queue") else 0
+        if redis_task_queue is not None:
+            task_queue_size = len(await redis_task_queue.redis.zrange(redis_task_queue.QUEUE_KEY, 0, -1)) if redis_task_queue.redis else 0
+        else:
+            task_queue_size = task_queue._queue.qsize() if hasattr(task_queue, "_queue") else 0
         deps["task_queue_depth"] = str(task_queue_size)
         deps["task_queue"] = "healthy"
     except Exception:
@@ -932,25 +1000,47 @@ async def trigger_run(
     await ws_manager.broadcast(
         {"type": "pipeline_started", "payload": {"run_id": run_id}}
     )
-    await task_queue.enqueue("pipeline", run_pipeline_task, run_id, db_settings)
 
-    return {"message": "Operations cycle triggered", "run_id": run_id}
+    if redis_task_queue is not None:
+        task_id = await redis_task_queue.enqueue(
+            "pipeline",
+            {"run_id": run_id},
+            priority=TaskPriority.HIGH,
+        )
+    else:
+        task_id = await task_queue.enqueue("pipeline", run_pipeline_task, run_id, db_settings)
+
+    return {"message": "Operations cycle triggered", "run_id": run_id, "task_id": task_id}
 
 
 @app.get("/api/tasks/{task_id}")
 async def get_task_status(task_id: str):
-    task = task_queue.get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    return {
-        "id": task.id,
-        "name": task.name,
-        "status": task.status.value,
-        "error": task.error,
-        "created_at": task.created_at.isoformat(),
-        "started_at": task.started_at.isoformat() if task.started_at else None,
-        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
-    }
+    if redis_task_queue is not None:
+        task = await redis_task_queue.get_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        return {
+            "id": task.id,
+            "name": task.name,
+            "status": task.status.value,
+            "error": task.error,
+            "created_at": task.created_at,
+            "started_at": task.started_at,
+            "completed_at": task.completed_at,
+        }
+    else:
+        task = task_queue.get_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        return {
+            "id": task.id,
+            "name": task.name,
+            "status": task.status.value,
+            "error": task.error,
+            "created_at": task.created_at.isoformat(),
+            "started_at": task.started_at.isoformat() if task.started_at else None,
+            "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+        }
 
 
 @app.get("/metrics")
