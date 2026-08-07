@@ -35,6 +35,8 @@ from ecommerce_ops.api.metrics import (
     METRIC_DECISIONS_REJECTED,
     METRIC_DECISIONS_AUTO_APPROVED,
     METRIC_AGENT_CONFIDENCE_AVG,
+    METRIC_QUEUE_DEPTH,
+    METRIC_DB_CONNECTION_POOL,
 )
 from ecommerce_ops.pipeline.runner import run_pipeline_task, execute_shop_action, update_agent_streak
 from ecommerce_ops.infra.task_queue import TaskQueue
@@ -112,6 +114,11 @@ async def lifespan(app: FastAPI):
     try:
         await init_db()
         await seed_data_if_empty()
+        try:
+            from ecommerce_ops.models import engine
+            METRIC_DB_CONNECTION_POOL.set(engine.pool.size())
+        except Exception:
+            pass
         logger.info("Database initialization complete.")
     except Exception as e:
         logger.critical("Database initialization failed: %s", e)
@@ -337,6 +344,7 @@ async def health(operator: str = Depends(verify_auth_optional)):
             task_queue_size = len(await redis_task_queue.redis.zrange(redis_task_queue.QUEUE_KEY, 0, -1)) if redis_task_queue.redis else 0
         else:
             task_queue_size = task_queue._queue.qsize() if hasattr(task_queue, "_queue") else 0
+        METRIC_QUEUE_DEPTH.set(task_queue_size)
         deps["task_queue_depth"] = str(task_queue_size)
         deps["task_queue"] = "healthy"
     except Exception:
@@ -890,6 +898,33 @@ async def get_analytics(db: AsyncSession = Depends(get_db_session)):
 
     decision_time_dist = {"under_1m": 0, "1m_5m": 0, "5m_30m": 0, "over_30m": 0}
 
+    # Compute average decision time from actual reviewed approval actions
+    reviewed_actions = (
+        await db.execute(
+            select(ApprovalAction).where(ApprovalAction.reviewed_at.isnot(None))
+        )
+    ).scalars().all()
+    decision_minutes: List[float] = []
+    for act in reviewed_actions:
+        if act.created_at and act.reviewed_at:
+            dt_sec = (act.reviewed_at - act.created_at).total_seconds()
+            minutes = dt_sec / 60.0
+            decision_minutes.append(minutes)
+            if minutes < 1:
+                decision_time_dist["under_1m"] += 1
+            elif minutes < 5:
+                decision_time_dist["1m_5m"] += 1
+            elif minutes < 30:
+                decision_time_dist["5m_30m"] += 1
+            else:
+                decision_time_dist["over_30m"] += 1
+
+    avg_decision_minutes = (
+        round(sum(decision_minutes) / len(decision_minutes), 2)
+        if decision_minutes
+        else 0.0
+    )
+
     return {
         "summary": {
             "total_decisions": total,
@@ -897,7 +932,7 @@ async def get_analytics(db: AsyncSession = Depends(get_db_session)):
             "actions_auto_approved": auto,
             "total_financial_impact": round(financial, 2),
             "avg_confidence": round(avg_conf, 2),
-            "avg_decision_time_minutes": 4.2,
+            "avg_decision_time_minutes": avg_decision_minutes,
         },
         "graduation": [
             {
