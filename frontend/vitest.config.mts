@@ -12,6 +12,12 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
       exclude: ['node_modules/', 'tests/', 'next.config.js', 'tailwind.config.ts'],
+      thresholds: {
+        statements: 60,
+        branches: 45,
+        functions: 50,
+        lines: 65,
+      },
     },
   },
   resolve: {

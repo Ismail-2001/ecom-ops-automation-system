@@ -85,7 +85,7 @@ addopts = [
     "--cov=ecommerce_ops",
     "--cov-report=term-missing",
     "--cov-report=html:htmlcov",
-    "--cov-fail-under=55",
+    "--cov-fail-under=65",
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
