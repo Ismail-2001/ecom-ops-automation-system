@@ -5,6 +5,7 @@ Tries LLM agent first; on failure, falls back to rule-based agent.
 """
 
 import logging
+import threading
 import time
 from typing import Any, Dict, List, Optional
 
@@ -33,11 +34,19 @@ class AgentFactory:
 
     def __init__(self):
         self._agents: Dict[str, UnifiedAgent] = {}
+        self._lock = threading.Lock()
 
     def get_agent(self, name: str) -> "UnifiedAgent":
-        if name not in self._agents:
-            self._agents[name] = self._create_unified(name)
-        return self._agents[name]
+        """Get or create an agent instance, thread-safe with double-checked locking."""
+        agent = self._agents.get(name)
+        if agent is not None:
+            return agent
+        with self._lock:
+            agent = self._agents.get(name)
+            if agent is None:
+                agent = self._create_unified(name)
+                self._agents[name] = agent
+        return agent
 
     def _create_unified(self, name: str) -> "UnifiedAgent":
         if name == "fraud":
