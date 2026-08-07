@@ -5,6 +5,7 @@ Abandoned cart detection, recovery strategies, discount code generation
 
 import os
 import json
+import re
 import logging
 import secrets
 import string
@@ -14,6 +15,11 @@ from enum import Enum
 from typing import Dict, List, Optional, Any, Tuple
 from pydantic import BaseModel, Field
 from shared.llm_client import LLMClient, CircuitBreaker
+
+try:
+    from ecommerce_ops.safety.guardrails import guardrail_manager
+except ImportError:
+    guardrail_manager = None
 
 logger = logging.getLogger("cart_recovery_agent")
 
@@ -281,6 +287,22 @@ class DiscountGenerator:
         }
 
 
+def _sanitize_for_llm(value: str, max_len: int = 200) -> str:
+    """Sanitize user-controlled input before LLM prompt interpolation.
+
+    Strips control characters, truncates, and wraps in brackets to signal
+    literal data — reducing prompt injection risk.
+    """
+    if not value:
+        return ""
+    cleaned = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', value)
+    cleaned = cleaned.replace('{', '(').replace('}', ')')
+    cleaned = cleaned.replace('<', '(').replace('>', ')')
+    if len(cleaned) > max_len:
+        cleaned = cleaned[:max_len] + "..."
+    return cleaned
+
+
 class CartRecoveryAgent:
     """AI Cart Recovery Agent"""
 
@@ -299,6 +321,26 @@ class CartRecoveryAgent:
         await self.llm.close()
 
     async def analyze(self, cart: AbandonedCart) -> CartAnalysis:
+        if guardrail_manager is not None:
+            cart_text = f"{cart.customer.first_name or ''} {cart.customer.email or ''} " + " ".join(
+                i.title for i in cart.items
+            )
+            input_check = guardrail_manager.check_input(cart_text)
+            if not input_check.passed:
+                logger.warning("Prompt injection detected in cart data: %s", input_check.violations)
+                return CartAnalysis(
+                    cart_id=cart.cart_id,
+                    total_value=cart.total_value,
+                    items_count=cart.items_count,
+                    risk_level=RiskLevel.CRITICAL,
+                    recommended_strategy=RecoveryStrategy.SOCIAL_PROOF,
+                    recovery_probability=0,
+                    estimated_revenue=0,
+                    is_recoverable=False,
+                    needs_human_approval=True,
+                    reasoning=["Blocked: prompt injection detected in cart data"],
+                )
+
         if not cart.is_recoverable:
             return CartAnalysis(
                 cart_id=cart.cart_id,
@@ -384,15 +426,21 @@ class CartRecoveryAgent:
         )
 
     async def _generate_email(self, cart: AbandonedCart, ctx: Dict, strategy: RecoveryStrategy, discount_value: float) -> Tuple[str, str]:
-        prompt = f"""
-Generate a cart recovery email for an abandoned cart:
+        safe_name = _sanitize_for_llm(ctx['customer_name'])
+        safe_items = _sanitize_for_llm(ctx['cart_items'])
+        safe_value = _sanitize_for_llm(ctx['cart_value'])
+        safe_discount = _sanitize_for_llm(ctx['discount_text'])
+        safe_code = _sanitize_for_llm(ctx['discount_code'])
 
-Customer: {ctx['customer_name']}
-Items: {ctx['cart_items']}
-Cart Value: {ctx['cart_value']}
+        prompt = f"""
+Generate a cart recovery email for an abandoned cart.
+
+Customer: [{safe_name}]
+Items: [{safe_items}]
+Cart Value: [{safe_value}]
 Strategy: {strategy.value}
-Discount: {ctx['discount_text']}
-Code: {ctx['discount_code']}
+Discount: [{safe_discount}]
+Code: [{safe_code}]
 
 Provide:
 - subject: Catchy email subject line
