@@ -3,28 +3,30 @@ End-to-End Integration Tests
 Tests full pipeline: API → Supervisor → Agents → DB → Response
 """
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-import uuid
-import time
-from datetime import datetime
-from unittest.mock import AsyncMock, patch, MagicMock
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
 
-from httpx import AsyncClient, ASGITransport
 from ecommerce_ops.api.app import app
-
 
 # ── Test Client Fixture ───────────────────────────────────
 
 
-@pytest.fixture(autouse=True)
-def _patch_auth_and_db():
+@pytest_asyncio.fixture(autouse=True)
+async def _patch_auth_and_db():
     """Bypass auth for e2e tests using dependency_overrides + ensure DB has seed data."""
-    import asyncio
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
     from ecommerce_ops.api.app import app
     from ecommerce_ops.api.auth import verify_auth
+    from ecommerce_ops.models.db import (
+        StoreSettings,
+        engine,
+    )
     from ecommerce_ops.security.auth import require_admin, require_auth, role_manager
-    from ecommerce_ops.models.db import engine, Base, StoreSettings, AgentStatus, ApprovalAction, AuditEntry
-    from sqlalchemy import select
 
     mock_admin = MagicMock()
     mock_admin.id = "admin-1"
@@ -39,23 +41,15 @@ def _patch_auth_and_db():
     app.dependency_overrides[require_admin] = lambda: mock_admin
 
     # Seed DB with test data using the app's engine (StaticPool = shared in-memory DB)
-    async def _seed():
-        from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
-        sf = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
-        async with sf() as session:
-            result = await session.execute(select(StoreSettings).where(StoreSettings.id == 1))
-            if not result.scalar_one_or_none():
-                session.add(StoreSettings(
-                    id=1, shadow_mode=True, fraud_threshold=70,
-                    po_limit=1000.0, pricing_limit=5.0, reviews_rating_threshold=4,
-                ))
-                await session.commit()
-
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
-        loop.create_task(_seed())
-    else:
-        loop.run_until_complete(_seed())
+    sf = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+    async with sf() as session:
+        result = await session.execute(select(StoreSettings).where(StoreSettings.id == 1))
+        if not result.scalar_one_or_none():
+            session.add(StoreSettings(
+                id=1, shadow_mode=True, fraud_threshold=70,
+                po_limit=1000.0, pricing_limit=5.0, reviews_rating_threshold=4,
+            ))
+            await session.commit()
 
     yield
 
@@ -323,7 +317,7 @@ async def test_task_status_not_found(client):
 
 @pytest.mark.asyncio
 async def test_trigger_run_creates_task(client):
-    from ecommerce_ops.models.db import get_db_session, engine, async_sessionmaker, AsyncSession
+    from ecommerce_ops.models.db import AsyncSession, async_sessionmaker, engine, get_db_session
 
     async def override_get_db():
         sf = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
@@ -335,7 +329,7 @@ async def test_trigger_run_creates_task(client):
     with patch("ecommerce_ops.api.app.ws_manager") as mock_ws:
         mock_ws.broadcast = AsyncMock()
         with patch("ecommerce_ops.api.app.task_queue") as mock_tq:
-            mock_tq.enqueue = AsyncMock()
+            mock_tq.enqueue = AsyncMock(return_value="task-1")
             resp = await client.post("/api/run")
             assert resp.status_code == 200
             data = resp.json()

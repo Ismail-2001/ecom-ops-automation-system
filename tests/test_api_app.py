@@ -5,11 +5,9 @@ shopify, demo, websocket, metrics, analytics, and task endpoints.
 """
 
 import os
-import json
 import uuid
-import asyncio
-from datetime import datetime, timedelta, timezone
-from unittest.mock import patch, AsyncMock, MagicMock, PropertyMock
+from datetime import datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
@@ -19,26 +17,26 @@ os.environ["DATABASE_URL"] = "sqlite+aiosqlite://"
 os.environ["API_KEY"] = "test-key"
 os.environ["DEEPSEEK_API_KEY"] = "sk-test-key"
 
-from httpx import AsyncClient, ASGITransport
-
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from httpx import ASGITransport, AsyncClient
 
 # Register JSONB adapter for SQLite (maps JSONB to JSON)
 from sqlalchemy.dialects.sqlite.base import SQLiteTypeCompiler
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
 _orig_visit_JSONB = getattr(SQLiteTypeCompiler, 'visit_JSONB', None)
 if _orig_visit_JSONB is None:
     SQLiteTypeCompiler.visit_JSONB = lambda self, type_, **kw: 'JSON'
 
-from ecommerce_ops.models.db import (
-    Base,
+from ecommerce_ops.api.app import app  # noqa: E402
+from ecommerce_ops.api.auth import verify_auth  # noqa: E402
+from ecommerce_ops.config import settings as app_settings  # noqa: E402
+from ecommerce_ops.models.db import (  # noqa: E402
+    AgentStatus,
     ApprovalAction,
     AuditEntry,
-    AgentStatus,
+    Base,
     StoreSettings,
 )
-from ecommerce_ops.api.app import app
-from ecommerce_ops.api.auth import verify_auth, verify_auth_optional
-from ecommerce_ops.config import settings as app_settings
 
 TEST_API_KEY = "test-key"
 AUTH_HEADER = {"Authorization": f"Bearer {TEST_API_KEY}"}
@@ -335,9 +333,9 @@ class TestApprovals:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "test-operator"
         transport = ASGITransport(app=app)
-        with patch("ecommerce_ops.api.app.ws_manager") as mock_ws, \
-             patch("ecommerce_ops.api.app.execute_shop_action", new_callable=AsyncMock) as mock_exec, \
-             patch("ecommerce_ops.api.app.update_agent_streak", new_callable=AsyncMock):
+        with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws, \
+             patch("ecommerce_ops.api.core_routes.execute_shop_action", new_callable=AsyncMock) as mock_exec, \
+             patch("ecommerce_ops.api.core_routes.update_agent_streak", new_callable=AsyncMock):
             mock_exec.return_value = (True, "ok")
             mock_ws.broadcast = AsyncMock()
             async with AsyncClient(transport=transport, base_url="http://test") as c:
@@ -371,7 +369,7 @@ class TestApprovals:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "test-operator"
         transport = ASGITransport(app=app)
-        with patch("ecommerce_ops.api.app.ws_manager") as mock_ws:
+        with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws:
             mock_ws.broadcast = AsyncMock()
             async with AsyncClient(transport=transport, base_url="http://test") as c:
                 r = await c.post(
@@ -404,9 +402,9 @@ class TestApprovals:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "batch-op"
         transport = ASGITransport(app=app)
-        with patch("ecommerce_ops.api.app.ws_manager") as mock_ws, \
-             patch("ecommerce_ops.api.app.execute_shop_action", new_callable=AsyncMock) as mock_exec, \
-             patch("ecommerce_ops.api.app.update_agent_streak", new_callable=AsyncMock):
+        with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws, \
+             patch("ecommerce_ops.api.core_routes.execute_shop_action", new_callable=AsyncMock) as mock_exec, \
+             patch("ecommerce_ops.api.core_routes.update_agent_streak", new_callable=AsyncMock):
             mock_exec.return_value = (True, "ok")
             mock_ws.broadcast = AsyncMock()
             async with AsyncClient(transport=transport, base_url="http://test") as c:
@@ -426,7 +424,7 @@ class TestApprovals:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "batch-op"
         transport = ASGITransport(app=app)
-        with patch("ecommerce_ops.api.app.ws_manager") as mock_ws:
+        with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws:
             mock_ws.broadcast = AsyncMock()
             async with AsyncClient(transport=transport, base_url="http://test") as c:
                 r = await c.post(
@@ -443,7 +441,7 @@ class TestApprovals:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        with patch("ecommerce_ops.api.app.ws_manager") as mock_ws:
+        with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws:
             mock_ws.broadcast = AsyncMock()
             async with AsyncClient(transport=transport, base_url="http://test") as c:
                 r = await c.post(
@@ -461,7 +459,7 @@ class TestApprovals:
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
-            r = await c.post(
+            _r = await c.post(
                 "/api/approvals/act-2/approve",
                 json={},
                 headers=AUTH_HEADER,
@@ -629,7 +627,7 @@ class TestSettings:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "settings-op"
         transport = ASGITransport(app=app)
-        with patch("ecommerce_ops.api.app.ws_manager") as mock_ws:
+        with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws:
             mock_ws.broadcast = AsyncMock()
             async with AsyncClient(transport=transport, base_url="http://test") as c:
                 r = await c.patch(
@@ -646,7 +644,7 @@ class TestSettings:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        with patch("ecommerce_ops.api.app.ws_manager") as mock_ws:
+        with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws:
             mock_ws.broadcast = AsyncMock()
             async with AsyncClient(transport=transport, base_url="http://test") as c:
                 r = await c.patch(
@@ -677,7 +675,7 @@ class TestSettings:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        with patch("ecommerce_ops.api.app.ws_manager") as mock_ws:
+        with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws:
             mock_ws.broadcast = AsyncMock()
             async with AsyncClient(transport=transport, base_url="http://test") as c:
                 r = await c.patch(
@@ -708,7 +706,7 @@ class TestSettings:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        with patch("ecommerce_ops.api.app.ws_manager") as mock_ws:
+        with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws:
             mock_ws.broadcast = AsyncMock()
             async with AsyncClient(transport=transport, base_url="http://test") as c:
                 r = await c.patch(
@@ -739,7 +737,7 @@ class TestSettings:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        with patch("ecommerce_ops.api.app.ws_manager") as mock_ws:
+        with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws:
             mock_ws.broadcast = AsyncMock()
             async with AsyncClient(transport=transport, base_url="http://test") as c:
                 r = await c.patch(
@@ -770,7 +768,7 @@ class TestSettings:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        with patch("ecommerce_ops.api.app.ws_manager") as mock_ws:
+        with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws:
             mock_ws.broadcast = AsyncMock()
             async with AsyncClient(transport=transport, base_url="http://test") as c:
                 r = await c.patch(
@@ -846,7 +844,7 @@ class TestPipeline:
              patch("ecommerce_ops.api.app.task_queue") as mock_tq, \
              patch("ecommerce_ops.api.app.run_pipeline_task"):
             mock_ws.broadcast = AsyncMock()
-            mock_tq.enqueue = AsyncMock()
+            mock_tq.enqueue = AsyncMock(return_value="task-1")
             async with AsyncClient(transport=transport, base_url="http://test") as c:
                 r = await c.post("/api/run")
         app.dependency_overrides.clear()
@@ -864,7 +862,7 @@ class TestPipeline:
 
     @pytest.mark.asyncio
     async def test_get_task_found(self):
-        from ecommerce_ops.infra.task_queue import TaskQueue, Task, TaskStatus
+        from ecommerce_ops.infra.task_queue import Task, TaskQueue, TaskStatus
 
         tq = TaskQueue(num_workers=0, max_queue_size=10)
         task_id = str(uuid.uuid4())
@@ -1143,9 +1141,11 @@ class TestWebSocket:
     async def test_ws_auth_rejected_invalid_token(self):
         """WebSocket with bad token should be rejected with close code 4001."""
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
-            async with c.stream("GET", "/ws/queue?token=bad-token") as stream:
-                pass
+        async with (
+            AsyncClient(transport=transport, base_url="http://test") as c,
+            c.stream("GET", "/ws/queue?token=bad-token"),
+        ):
+            pass
         # The connection is closed by server — httpx will raise or return early.
         # We just verify the request doesn't 500; the WS endpoint accepts then closes.
         assert True
@@ -1154,9 +1154,11 @@ class TestWebSocket:
     async def test_ws_no_token_rejected(self):
         """WebSocket with no token in dev mode should connect (dev-ws-operator)."""
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
-            async with c.stream("GET", "/ws/queue") as stream:
-                pass
+        async with (
+            AsyncClient(transport=transport, base_url="http://test") as c,
+            c.stream("GET", "/ws/queue"),
+        ):
+            pass
         # In testing mode (non-production), any token is accepted by the WS manager
         assert True
 
@@ -1194,9 +1196,9 @@ class TestEdgeCases:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        with patch("ecommerce_ops.api.app.ws_manager") as mock_ws, \
-             patch("ecommerce_ops.api.app.execute_shop_action", new_callable=AsyncMock) as mock_exec, \
-             patch("ecommerce_ops.api.app.update_agent_streak", new_callable=AsyncMock):
+        with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws, \
+             patch("ecommerce_ops.api.core_routes.execute_shop_action", new_callable=AsyncMock) as mock_exec, \
+             patch("ecommerce_ops.api.core_routes.update_agent_streak", new_callable=AsyncMock):
             mock_exec.return_value = (True, "ok")
             mock_ws.broadcast = AsyncMock()
             async with AsyncClient(transport=transport, base_url="http://test") as c:
@@ -1215,9 +1217,9 @@ class TestEdgeCases:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        with patch("ecommerce_ops.api.app.ws_manager") as mock_ws, \
-             patch("ecommerce_ops.api.app.execute_shop_action", new_callable=AsyncMock) as mock_exec, \
-             patch("ecommerce_ops.api.app.update_agent_streak", new_callable=AsyncMock):
+        with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws, \
+             patch("ecommerce_ops.api.core_routes.execute_shop_action", new_callable=AsyncMock) as mock_exec, \
+             patch("ecommerce_ops.api.core_routes.update_agent_streak", new_callable=AsyncMock):
             mock_exec.return_value = (False, "Shopify API error")
             mock_ws.broadcast = AsyncMock()
             async with AsyncClient(transport=transport, base_url="http://test") as c:
@@ -1302,10 +1304,10 @@ class TestEdgeCases:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        with patch("ecommerce_ops.api.app.ws_manager") as mock_ws:
+        with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws:
             mock_ws.broadcast = AsyncMock()
             async with AsyncClient(transport=transport, base_url="http://test") as c:
-                r1 = await c.post(
+                _r1 = await c.post(
                     "/api/approvals/act-2/reject",
                     json={"reason": "first"},
                     headers=AUTH_HEADER,
@@ -1328,7 +1330,7 @@ class TestEdgeCases:
              patch("ecommerce_ops.api.app.task_queue") as mock_tq, \
              patch("ecommerce_ops.api.app.run_pipeline_task"):
             mock_ws.broadcast = AsyncMock()
-            mock_tq.enqueue = AsyncMock()
+            mock_tq.enqueue = AsyncMock(return_value="task-1")
             async with AsyncClient(transport=transport, base_url="http://test") as c:
                 r = await c.post("/api/run")
         app.dependency_overrides.clear()
@@ -1384,10 +1386,10 @@ class TestEdgeCases:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        with patch("ecommerce_ops.api.app.ws_manager") as mock_ws:
+        with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws:
             mock_ws.broadcast = AsyncMock()
             async with AsyncClient(transport=transport, base_url="http://test") as c:
-                r = await c.post(
+                _r = await c.post(
                     "/api/approvals/act-2/approve",
                     json={},
                     headers=AUTH_HEADER,

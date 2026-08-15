@@ -1,9 +1,8 @@
 """Tests for pipeline/runner.py and pipeline/builder.py."""
-import uuid
-import pytest
-from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from ecommerce_ops.pipeline.builder import build_payload_and_evidence
 from ecommerce_ops.pipeline.runner import (
@@ -11,7 +10,6 @@ from ecommerce_ops.pipeline.runner import (
     execute_shop_action,
     update_agent_streak,
 )
-
 
 # ── builder.py tests ───────────────────────────────────────
 
@@ -41,7 +39,7 @@ class TestBuildPayloadAndEvidence:
 
     def test_inventory_agent_payload(self):
         d = _make_decision("InventoryAgent", {"sku": "SKU-1", "quantity_to_order": 100})
-        payload, evidence = build_payload_and_evidence(d, [])
+        payload, _evidence = build_payload_and_evidence(d, [])
         assert payload["sku"] == "SKU-1"
         assert payload["reorder_quantity"] == 100
         assert payload["total_po_value"] == 1500.0
@@ -53,7 +51,7 @@ class TestBuildPayloadAndEvidence:
 
     def test_pricing_agent_payload(self):
         d = _make_decision("PricingAgent", {"sku": "SKU-2", "old_price": 50, "new_price": 45})
-        payload, evidence = build_payload_and_evidence(d, [])
+        payload, _evidence = build_payload_and_evidence(d, [])
         assert payload["sku"] == "SKU-2"
         assert payload["current_price"] == 50
         assert payload["proposed_price"] == 45
@@ -61,7 +59,7 @@ class TestBuildPayloadAndEvidence:
     def test_reviews_agent_with_reviews(self):
         d = _make_decision("ReviewsAgent", {"review_id": "rev-1", "sentiment": "negative"})
         reviews = [{"content": "Bad product", "rating": 2}]
-        payload, evidence = build_payload_and_evidence(d, reviews)
+        payload, _evidence = build_payload_and_evidence(d, reviews)
         assert payload["review_id"] == "rev-1"
         assert payload["rating"] == 2
         assert payload["review_text"] == "Bad product"
@@ -109,14 +107,38 @@ class TestExecuteShopAction:
         assert "Shadow" in msg
 
     @pytest.mark.asyncio
-    async def test_live_mode_returns_true(self):
+    async def test_live_mode_requires_credentials(self):
         action = MagicMock()
         action.shadow_mode = False
         action.action_type = "price_change"
         action.id = "test-id"
-        success, msg = await execute_shop_action(action)
+        with patch("ecommerce_ops.pipeline.runner.app_settings.SHOPIFY_SHOP_DOMAIN", ""), \
+             patch("ecommerce_ops.pipeline.runner.app_settings.SHOPIFY_ACCESS_TOKEN", ""):
+            success, msg = await execute_shop_action(action)
+        assert success is False
+        assert "requires Shopify credentials" in msg
+
+    @pytest.mark.asyncio
+    async def test_live_mode_price_change_success(self):
+        action = MagicMock()
+        action.shadow_mode = False
+        action.action_type = "price_change"
+        action.id = "test-id"
+        action.payload = {"sku": "SKU1", "proposed_price": 9.99}
+        with patch("ecommerce_ops.pipeline.runner.app_settings.SHOPIFY_SHOP_DOMAIN", "test-shop.myshopify.com"), \
+             patch("ecommerce_ops.pipeline.runner.app_settings.SHOPIFY_ACCESS_TOKEN", "test-token"), \
+             patch("ecommerce_ops.connectors.shopify.client.ShopifyClient") as mock_client:
+            mock_client.return_value.get_products = AsyncMock(return_value={
+                "products": [{"id": "100", "variants": [{"id": "200", "sku": "SKU1"}]}]
+            })
+            mock_client.return_value.update_product = AsyncMock()
+            mock_client.return_value.close = AsyncMock()
+            success, msg = await execute_shop_action(action)
         assert success is True
-        assert "Executed" in msg
+        assert "Updated price for SKU1 to 9.99" in msg
+        mock_client.return_value.update_product.assert_awaited_once_with(
+            "100", {"variants": [{"id": "200", "price": "9.99"}]}
+        )
 
 
 class TestUpdateAgentStreak:

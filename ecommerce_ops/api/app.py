@@ -1,59 +1,49 @@
-import os
-import signal
-import uuid
-import time
 import logging
-from datetime import datetime, timedelta
-from contextlib import asynccontextmanager
-from typing import List, Optional, Dict, Any
+import os
+import time
+import uuid
+from contextlib import asynccontextmanager, suppress
+from datetime import datetime
+from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.staticfiles import StaticFiles
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel
-from sqlalchemy import select, func, desc, update, text, cast, or_, String
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from sqlalchemy import desc, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ecommerce_ops.config import settings as app_settings
-from ecommerce_ops.models import (
-    init_db,
-    seed_data_if_empty,
-    get_db_session,
-    ApprovalAction,
-    AuditEntry,
-    AgentStatus,
-    StoreSettings,
+from ecommerce_ops.api.auth import verify_auth, verify_auth_optional
+from ecommerce_ops.api.cart_recovery import router as cart_recovery_router
+from ecommerce_ops.api.core_routes import router as core_router
+from ecommerce_ops.api.customer_support import router as customer_support_router
+from ecommerce_ops.api.demo import router as demo_router
+from ecommerce_ops.api.memory import router as memory_router
+from ecommerce_ops.api.metrics import (
+    METRIC_DB_CONNECTION_POOL,
+    METRIC_QUEUE_DEPTH,
 )
 from ecommerce_ops.api.middleware import setup_middleware
-from ecommerce_ops.api.auth import verify_auth, verify_auth_optional
-from ecommerce_ops.api.ws import ws_manager, ws_ticket_store, WS_TICKET_TTL_SECONDS
-from ecommerce_ops.api.metrics import (
-    METRIC_HTTP_REQUESTS,
-    METRIC_HTTP_DURATION,
-    METRIC_DECISIONS_APPROVED,
-    METRIC_DECISIONS_REJECTED,
-    METRIC_DECISIONS_AUTO_APPROVED,
-    METRIC_AGENT_CONFIDENCE_AVG,
-    METRIC_QUEUE_DEPTH,
-    METRIC_DB_CONNECTION_POOL,
-)
-from ecommerce_ops.pipeline.runner import run_pipeline_task, execute_shop_action, update_agent_streak
-from ecommerce_ops.infra.task_queue import TaskQueue
-from ecommerce_ops.infra.redis_task_queue import RedisTaskQueue, TaskPriority
-from ecommerce_ops.infra.browser_pool import browser_pool
-from ecommerce_ops.api.shopify import router as shopify_router
-from ecommerce_ops.api.cart_recovery import router as cart_recovery_router
-from ecommerce_ops.api.customer_support import router as customer_support_router
 from ecommerce_ops.api.observability import router as observability_router
-from ecommerce_ops.api.memory import router as memory_router
 from ecommerce_ops.api.security import router as security_router
-from ecommerce_ops.api.demo import router as demo_router
-from ecommerce_ops.api.core_routes import router as core_router
-from ecommerce_ops.security.auth import AuthenticationMiddleware
-from ecommerce_ops.security.role_manager import role_manager
-from ecommerce_ops.observability.tracing_otel import init_tracing, instrument_app
+from ecommerce_ops.api.shopify import router as shopify_router
 from ecommerce_ops.api.versioning import APIVersionMiddleware, create_v1_router
+from ecommerce_ops.api.ws import WS_TICKET_TTL_SECONDS, ws_manager, ws_ticket_store
+from ecommerce_ops.config import settings as app_settings
+from ecommerce_ops.infra.browser_pool import browser_pool
+from ecommerce_ops.infra.redis_task_queue import RedisTaskQueue, TaskPriority
+from ecommerce_ops.infra.task_queue import TaskQueue
+from ecommerce_ops.models import (
+    AuditEntry,
+    StoreSettings,
+    get_db_session,
+    init_db,
+    seed_data_if_empty,
+)
+from ecommerce_ops.observability.tracing_otel import init_tracing, instrument_app
+from ecommerce_ops.pipeline.runner import run_pipeline_task
+from ecommerce_ops.security.auth import AuthenticationMiddleware
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ecommerce_ops.api")
@@ -151,10 +141,8 @@ async def lifespan(app: FastAPI):
     async with ws_manager._lock:
         close_snapshot = list(ws_manager._connections)
     for conn in close_snapshot:
-        try:
+        with suppress(Exception):
             await conn.websocket.close(code=1001, reason="Server shutting down")
-        except Exception:
-            pass
     ws_manager._connections.clear()
     ws_manager._ip_counts.clear()
     logger.info("WebSocket connections drained (%d closed)", len(close_snapshot))
@@ -249,7 +237,7 @@ app.include_router(security_router)
 app.include_router(demo_router)
 
 # Include Core routes (approvals, agents, settings, analytics, health)
-app.include_router(core_router)
+app.include_router(core_router, prefix="/api")
 
 # ── API Versioning: /api/v1/ routes + deprecation headers ──
 v1_router = create_v1_router(
@@ -264,35 +252,6 @@ app.add_middleware(APIVersionMiddleware)
 class LoginBody(BaseModel):
     api_key: str
     operator_id: Optional[str] = None
-
-
-class DecisionActionBody(BaseModel):
-    notes: Optional[str] = None
-    draft_response: Optional[str] = None
-
-
-class RejectActionBody(BaseModel):
-    reason: str
-    notes: Optional[str] = None
-
-
-class BatchActionBody(BaseModel):
-    ids: List[str]
-    action: str
-    reason: Optional[str] = None
-    notes: Optional[str] = None
-
-
-class SettingsUpdateBody(BaseModel):
-    shadow_mode: Optional[bool] = None
-    fraud_threshold: Optional[int] = None
-    po_limit: Optional[float] = None
-    pricing_limit: Optional[float] = None
-    reviews_rating_threshold: Optional[int] = None
-    slack_channel: Optional[str] = None
-    notify_on_failure: Optional[bool] = None
-    notify_on_hitl: Optional[bool] = None
-    notify_on_graduation: Optional[bool] = None
 
 
 async def get_current_operator(identity: str = Depends(verify_auth)) -> str:
@@ -342,7 +301,7 @@ async def health(operator: str = Depends(verify_auth_optional)):
         async for session in get_db_session():
             await session.execute(select(func.now()))
         deps["database"] = "healthy"
-    except Exception as e:
+    except Exception:
         deps["database"] = "unhealthy"
         all_ok = False
 
@@ -374,7 +333,6 @@ async def health(operator: str = Depends(verify_auth_optional)):
 
     # pgvector check
     try:
-        from ecommerce_ops.memory.vector.persistent_store import PersistentVectorStore
         from ecommerce_ops.models import async_session_factory
         async with async_session_factory() as session:
             result = await session.execute(
@@ -389,7 +347,6 @@ async def health(operator: str = Depends(verify_auth_optional)):
 
     # Safety engine check
     try:
-        from ecommerce_ops.safety.safety_rules import evaluate_action_safety
         deps["safety_engine"] = "loaded"
     except Exception:
         deps["safety_engine"] = "unavailable"
@@ -433,7 +390,6 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
     Browser WS API cannot send custom headers, so query param is the standard approach.
     """
     from ecommerce_ops.api.ws import (
-        CLOSE_AUTH_FAILED,
         CLOSE_RATE_LIMITED,
     )
 
@@ -464,257 +420,6 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
         logger.warning("WS error for %s: %s", conn.operator, e)
     finally:
         await ws_manager.disconnect(conn)
-
-
-@app.get("/api/approvals")
-async def get_approvals(
-    agent: Optional[str] = None,
-    risk: Optional[str] = None,
-    status: Optional[str] = "pending",
-    search: Optional[str] = None,
-    sort: Optional[str] = "newest",
-    db: AsyncSession = Depends(get_db_session),
-):
-    query = select(ApprovalAction)
-    if status == "pending":
-        query = query.where(ApprovalAction.status == "pending")
-    if agent and agent != "all":
-        query = query.where(ApprovalAction.agent == agent)
-    if risk and risk != "all":
-        query = query.where(ApprovalAction.risk_level == risk)
-    if search:
-        # DB-side search instead of loading all rows into memory (O(n) Python scan)
-        search_like = f"%{search.lower()}%"
-        query = query.where(
-            or_(
-                func.lower(ApprovalAction.id).like(search_like),
-                func.lower(cast(ApprovalAction.payload, String)).like(search_like),
-                func.lower(cast(ApprovalAction.evidence, String)).like(search_like),
-            )
-        )
-    query = query.order_by(
-        desc(ApprovalAction.created_at) if sort == "newest" else ApprovalAction.created_at
-    )
-
-    result = await db.execute(query)
-    actions = result.scalars().all()
-
-    return actions
-
-
-@app.get("/api/approvals/{id}")
-async def get_approval(id: str, db: AsyncSession = Depends(get_db_session)):
-    result = await db.execute(select(ApprovalAction).where(ApprovalAction.id == id))
-    action = result.scalar_one_or_none()
-    if not action:
-        raise HTTPException(status_code=404, detail="Approval action not found")
-    return action
-
-
-@app.post("/api/approvals/{id}/approve")
-async def approve_approval(
-    id: str,
-    body: DecisionActionBody,
-    operator: str = Depends(get_current_operator),
-    db: AsyncSession = Depends(get_db_session),
-):
-    result = await db.execute(
-        select(ApprovalAction).where(ApprovalAction.id == id).with_for_update()
-    )
-    action = result.scalar_one_or_none()
-    if not action:
-        raise HTTPException(status_code=404, detail="Approval action not found")
-    if action.status != "pending":
-        raise HTTPException(status_code=400, detail="Action already decided")
-    if action.expires_at and action.expires_at < datetime.utcnow():
-        action.status = "expired"
-        await db.commit()
-        raise HTTPException(status_code=400, detail="Action expired")
-
-    if action.action_type == "review_response" and body.draft_response:
-        new_payload = dict(action.payload)
-        new_payload["draft_response"] = body.draft_response
-        action.payload = new_payload
-
-    action.reviewed_by = operator
-    action.reviewed_at = datetime.utcnow()
-    action.operator_notes = body.notes
-    action.status = "executing"
-    await db.commit()
-    await ws_manager.broadcast(
-        {
-            "type": "action_updated",
-            "payload": {"id": action.id, "status": "executing", "agent": action.agent},
-        }
-    )
-
-    success, exec_msg = await execute_shop_action(action)
-    action.status = "executed" if success else "failed"
-    if not success:
-        action.operator_notes = f"{action.operator_notes or ''} [Error: {exec_msg}]".strip()
-
-    financial_impact = (action.impact or {}).get("financial_impact", 0.0)
-    audit_entry = AuditEntry(
-        action_id=action.id,
-        timestamp=datetime.utcnow(),
-        agent=action.agent,
-        action_type=action.action_type,
-        decision="shadow" if action.shadow_mode else "approved",
-        operator=operator,
-        confidence_score=action.confidence_score,
-        financial_impact=financial_impact,
-        details={
-            "notes": action.operator_notes,
-            "execution_status": action.status,
-            "payload": action.payload,
-        },
-    )
-    db.add(audit_entry)
-    await update_agent_streak(action.agent, success, action.confidence_score, db)
-    await db.commit()
-
-    await ws_manager.broadcast(
-        {
-            "type": "action_updated",
-            "payload": {"id": action.id, "status": action.status, "agent": action.agent},
-        }
-    )
-
-    METRIC_DECISIONS_APPROVED.labels(agent=action.agent).inc()
-    METRIC_AGENT_CONFIDENCE_AVG.labels(agent=action.agent).set(action.confidence_score)
-
-    return action
-
-
-@app.post("/api/approvals/{id}/reject")
-async def reject_approval(
-    id: str,
-    body: RejectActionBody,
-    operator: str = Depends(get_current_operator),
-    db: AsyncSession = Depends(get_db_session),
-):
-    result = await db.execute(
-        select(ApprovalAction).where(ApprovalAction.id == id).with_for_update()
-    )
-    action = result.scalar_one_or_none()
-    if not action:
-        raise HTTPException(status_code=404, detail="Approval action not found")
-    if action.status != "pending":
-        raise HTTPException(status_code=400, detail="Action already decided")
-
-    action.reviewed_by = operator
-    action.reviewed_at = datetime.utcnow()
-    action.rejection_reason = body.reason
-    action.operator_notes = body.notes
-    action.status = "rejected"
-
-    financial_impact = (action.impact or {}).get("financial_impact", 0.0)
-    audit_entry = AuditEntry(
-        action_id=action.id,
-        timestamp=datetime.utcnow(),
-        agent=action.agent,
-        action_type=action.action_type,
-        decision="rejected",
-        operator=operator,
-        confidence_score=action.confidence_score,
-        financial_impact=financial_impact,
-        details={"reason": body.reason, "notes": body.notes},
-    )
-    db.add(audit_entry)
-    await update_agent_streak(action.agent, False, action.confidence_score, db)
-    await db.commit()
-
-    await ws_manager.broadcast(
-        {
-            "type": "action_updated",
-            "payload": {"id": action.id, "status": "rejected", "agent": action.agent},
-        }
-    )
-
-    METRIC_DECISIONS_REJECTED.labels(agent=action.agent).inc()
-    METRIC_AGENT_CONFIDENCE_AVG.labels(agent=action.agent).set(action.confidence_score)
-
-    return action
-
-
-@app.post("/api/approvals/batch")
-async def batch_approvals(
-    body: BatchActionBody,
-    operator: str = Depends(get_current_operator),
-    db: AsyncSession = Depends(get_db_session),
-):
-    results = await db.execute(
-        select(ApprovalAction).where(ApprovalAction.id.in_(body.ids))
-    )
-    actions = results.scalars().all()
-    updated_ids = []
-
-    for action in actions:
-        if action.status != "pending":
-            continue
-
-        if body.action == "approve":
-            if action.risk_level in ("high", "critical"):
-                continue
-            action.reviewed_by = operator
-            action.reviewed_at = datetime.utcnow()
-            action.operator_notes = body.notes
-            action.status = "executing"
-            await db.flush()
-
-            success, _ = await execute_shop_action(action)
-            action.status = "executed" if success else "failed"
-            financial_impact = (action.impact or {}).get("financial_impact", 0.0)
-            db.add(
-                AuditEntry(
-                    action_id=action.id,
-                    timestamp=datetime.utcnow(),
-                    agent=action.agent,
-                    action_type=action.action_type,
-                    decision="shadow" if action.shadow_mode else "approved",
-                    operator=operator,
-                    confidence_score=action.confidence_score,
-                    financial_impact=financial_impact,
-                    details={"notes": body.notes, "execution_status": action.status, "batch": True},
-                )
-            )
-            await update_agent_streak(action.agent, True, action.confidence_score, db)
-
-        elif body.action == "reject":
-            action.reviewed_by = operator
-            action.reviewed_at = datetime.utcnow()
-            action.rejection_reason = body.reason or "Batch rejected"
-            action.operator_notes = body.notes
-            action.status = "rejected"
-            financial_impact = (action.impact or {}).get("financial_impact", 0.0)
-            db.add(
-                AuditEntry(
-                    action_id=action.id,
-                    timestamp=datetime.utcnow(),
-                    agent=action.agent,
-                    action_type=action.action_type,
-                    decision="rejected",
-                    operator=operator,
-                    confidence_score=action.confidence_score,
-                    financial_impact=financial_impact,
-                    details={"reason": body.reason, "notes": body.notes, "batch": True},
-                )
-            )
-            await update_agent_streak(action.agent, False, action.confidence_score, db)
-
-        updated_ids.append(action.id)
-        await ws_manager.broadcast(
-            {
-                "type": "action_updated",
-                "payload": {"id": action.id, "status": action.status, "agent": action.agent},
-            }
-        )
-
-    await db.commit()
-    return {
-        "message": f"Processed {len(updated_ids)} batch actions",
-        "affected_ids": updated_ids,
-    }
 
 
 @app.get("/api/audit")
@@ -748,244 +453,16 @@ async def get_audit_logs(
     return {"entries": entries, "total": total, "page": page, "limit": limit}
 
 
-@app.get("/api/agents/status")
-async def get_agents_status(db: AsyncSession = Depends(get_db_session)):
-    res = await db.execute(select(AgentStatus))
-    return res.scalars().all()
-
-
-@app.get("/api/settings")
-async def get_store_settings(db: AsyncSession = Depends(get_db_session)):
-    res = await db.execute(select(StoreSettings).where(StoreSettings.id == 1))
-    store_settings = res.scalar_one_or_none()
-    return store_settings
-
-
-@app.patch("/api/settings")
-async def update_store_settings(
-    body: SettingsUpdateBody,
-    operator: str = Depends(get_current_operator),
-    db: AsyncSession = Depends(get_db_session),
-):
-    res = await db.execute(
-        select(StoreSettings).where(StoreSettings.id == 1).with_for_update()
-    )
-    store_settings = res.scalar_one_or_none()
-    if not store_settings:
-        raise HTTPException(status_code=404, detail="Settings not found")
-
-    changes = {}
-    if body.shadow_mode is not None:
-        changes["shadow_mode"] = f"{store_settings.shadow_mode} -> {body.shadow_mode}"
-        store_settings.shadow_mode = body.shadow_mode
-        autonomy = "shadow" if body.shadow_mode else "supervised"
-        await db.execute(update(AgentStatus).values(autonomy_level=autonomy))
-    if body.fraud_threshold is not None:
-        if not (0 <= body.fraud_threshold <= 100):
-            raise HTTPException(status_code=400, detail="fraud_threshold must be 0-100")
-        changes["fraud_threshold"] = f"{store_settings.fraud_threshold} -> {body.fraud_threshold}"
-        store_settings.fraud_threshold = body.fraud_threshold
-    if body.po_limit is not None:
-        if body.po_limit <= 0:
-            raise HTTPException(status_code=400, detail="po_limit must be positive")
-        changes["po_limit"] = f"{store_settings.po_limit} -> {body.po_limit}"
-        store_settings.po_limit = body.po_limit
-    if body.pricing_limit is not None:
-        if not (0 < body.pricing_limit <= 100):
-            raise HTTPException(status_code=400, detail="pricing_limit must be 0-100")
-        changes["pricing_limit"] = f"{store_settings.pricing_limit} -> {body.pricing_limit}"
-        store_settings.pricing_limit = body.pricing_limit
-    if body.reviews_rating_threshold is not None:
-        if not (1 <= body.reviews_rating_threshold <= 5):
-            raise HTTPException(status_code=400, detail="reviews_rating_threshold must be 1-5")
-        changes["reviews_rating_threshold"] = f"{store_settings.reviews_rating_threshold} -> {body.reviews_rating_threshold}"
-        store_settings.reviews_rating_threshold = body.reviews_rating_threshold
-    if body.slack_channel is not None:
-        changes["slack_channel"] = body.slack_channel
-
-    db.add(
-        AuditEntry(
-            action_id=None,
-            timestamp=datetime.utcnow(),
-            agent="System",
-            action_type="settings_change",
-            decision="approved",
-            operator=operator,
-            confidence_score=1.0,
-            financial_impact=0.0,
-            details={"changes": changes},
-        )
-    )
-    await db.commit()
-    await ws_manager.broadcast(
-        {"type": "agent_status", "payload": {"settings_updated": True}}
-    )
-    return store_settings
-
-
-@app.get("/api/analytics")
-async def get_analytics(db: AsyncSession = Depends(get_db_session)):
-    approved = (
-        await db.execute(
-            select(func.count(AuditEntry.id)).where(
-                AuditEntry.decision.in_(["approved", "shadow"])
-            )
-        )
-    ).scalar() or 0
-    rejected = (
-        await db.execute(
-            select(func.count(AuditEntry.id)).where(
-                AuditEntry.decision == "rejected"
-            )
-        )
-    ).scalar() or 0
-    auto = (
-        await db.execute(
-            select(func.count(AuditEntry.id)).where(
-                AuditEntry.decision == "auto-approved"
-            )
-        )
-    ).scalar() or 0
-    total = approved + rejected + auto
-    approval_rate = (
-        (approved / (approved + rejected) * 100) if (approved + rejected) > 0 else 100.0
-    )
-    financial = (
-        await db.execute(
-            select(func.sum(AuditEntry.financial_impact)).where(
-                AuditEntry.decision.in_(["approved", "shadow", "auto-approved"])
-            )
-        )
-    ).scalar() or 0.0
-
-    agents = (await db.execute(select(AgentStatus))).scalars().all()
-    pending = (
-        await db.execute(
-            select(ApprovalAction).where(ApprovalAction.status == "pending")
-        )
-    ).scalars().all()
-    risk_dist = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-    for a in pending:
-        risk_dist[a.risk_level] = risk_dist.get(a.risk_level, 0) + 1
-
-    now = datetime.utcnow()
-    day_start_7d = datetime(now.year, now.month, now.day) - timedelta(days=6)
-
-    agent_ids = ["FraudAgent", "InventoryAgent", "PricingAgent", "ReviewsAgent", "MarketingAgent"]
-
-    # Batch query: counts per agent per day (single query instead of 35)
-    batch_result = await db.execute(
-        select(
-            AuditEntry.agent,
-            func.date(AuditEntry.timestamp).label("day"),
-            func.count(AuditEntry.id).label("cnt"),
-        )
-        .where(
-            AuditEntry.timestamp >= day_start_7d,
-            AuditEntry.agent.in_(agent_ids),
-        )
-        .group_by(AuditEntry.agent, func.date(AuditEntry.timestamp))
-    )
-    batch_rows = batch_result.all()
-
-    # Build lookup: {(agent, day_str): count}
-    batch_lookup: dict[tuple, int] = {}
-    for row in batch_rows:
-        day_str = str(row.day)
-        batch_lookup[(row.agent, day_str)] = row.cnt
-
-    # Build timeline
-    timeline = []
-    for i in range(6, -1, -1):
-        day = now - timedelta(days=i)
-        day_str = day.strftime("%Y-%m-%d")
-        day_label = day.strftime("%b %d")
-        counts = {}
-        for agent_id in agent_ids:
-            counts[agent_id] = batch_lookup.get((agent_id, day_str), 0)
-        timeline.append({"date": day_label, **counts})
-
-    # Build volume_by_agent
-    volume_by_agent = []
-    short_names = {"FraudAgent": "Fraud", "InventoryAgent": "Inventory", "PricingAgent": "Pricing", "ReviewsAgent": "Reviews", "MarketingAgent": "Marketing"}
-    for i in range(6, -1, -1):
-        day = now - timedelta(days=i)
-        day_str = day.strftime("%Y-%m-%d")
-        vol = {"day": day.strftime("%a")}
-        for agent_id, short in short_names.items():
-            vol[short] = batch_lookup.get((agent_id, day_str), 0)
-        volume_by_agent.append(vol)
-
-    avg_conf = 0.0
-    if agents:
-        avg_conf = sum(a.avg_confidence for a in agents) / len(agents)
-
-    decision_time_dist = {"under_1m": 0, "1m_5m": 0, "5m_30m": 0, "over_30m": 0}
-
-    # Compute average decision time from actual reviewed approval actions
-    reviewed_actions = (
-        await db.execute(
-            select(ApprovalAction).where(ApprovalAction.reviewed_at.isnot(None))
-        )
-    ).scalars().all()
-    decision_minutes: List[float] = []
-    for act in reviewed_actions:
-        if act.created_at and act.reviewed_at:
-            dt_sec = (act.reviewed_at - act.created_at).total_seconds()
-            minutes = dt_sec / 60.0
-            decision_minutes.append(minutes)
-            if minutes < 1:
-                decision_time_dist["under_1m"] += 1
-            elif minutes < 5:
-                decision_time_dist["1m_5m"] += 1
-            elif minutes < 30:
-                decision_time_dist["5m_30m"] += 1
-            else:
-                decision_time_dist["over_30m"] += 1
-
-    avg_decision_minutes = (
-        round(sum(decision_minutes) / len(decision_minutes), 2)
-        if decision_minutes
-        else 0.0
-    )
-
-    return {
-        "summary": {
-            "total_decisions": total,
-            "approval_rate": round(approval_rate, 1),
-            "actions_auto_approved": auto,
-            "total_financial_impact": round(financial, 2),
-            "avg_confidence": round(avg_conf, 2),
-            "avg_decision_time_minutes": avg_decision_minutes,
-        },
-        "graduation": [
-            {
-                "agent_id": a.agent_id,
-                "streak": a.streak,
-                "autonomy_level": a.autonomy_level,
-                "total_decisions": a.total_decisions,
-                "avg_confidence": round(a.avg_confidence, 2),
-            }
-            for a in agents
-        ],
-        "risk_distribution": risk_dist,
-        "charts": {
-            "approval_rate_over_time": timeline,
-            "volume_by_agent": volume_by_agent,
-            "decision_time_dist": decision_time_dist,
-        },
-    }
-
-
 @app.get("/api/audit/export")
 async def export_audit_logs(
     format: str = "csv",
     db: AsyncSession = Depends(get_db_session),
 ):
-    from fastapi.responses import StreamingResponse
     import csv as _csv
     import io as _io
     import json as _json
+
+    from fastapi.responses import StreamingResponse
 
     query = select(AuditEntry).order_by(desc(AuditEntry.timestamp)).limit(10000)
 
@@ -1012,8 +489,8 @@ async def export_audit_logs(
         yield row
 
         result = await db.stream(query)
-        async for partition in result.partitions(500):
-            for e in partition:
+        async for srows in result.scalars().partitions(500):
+            for e in srows:
                 writer.writerow([
                     e.action_id, e.timestamp.isoformat() if e.timestamp else "", e.agent,
                     e.action_type, e.decision, e.operator, e.confidence_score,
@@ -1028,8 +505,8 @@ async def export_audit_logs(
         yield '{"entries":['
         result = await db.stream(query)
         first = True
-        async for partition in result.partitions(500):
-            for e in partition:
+        async for srows in result.scalars().partitions(500):
+            for e in srows:
                 if not first:
                     yield ","
                 first = False

@@ -1,35 +1,35 @@
-import uuid
 import logging
-import time
+import uuid
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ecommerce_ops.api.metrics import (
+    METRIC_DECISIONS_CREATED,
+    METRIC_FINANCIAL_IMPACT,
+    METRIC_PIPELINE_RUNS,
+)
+from ecommerce_ops.api.ws import ws_manager
 from ecommerce_ops.config import settings as app_settings
 from ecommerce_ops.graph.supervisor import Supervisor
+from ecommerce_ops.infra.notifications import (
+    notify_agent_graduated,
+    notify_hitl_request,
+    notify_pipeline_failed,
+)
 from ecommerce_ops.models import (
-    async_session_factory,
+    AgentStatus,
     ApprovalAction,
     AuditEntry,
-    AgentStatus,
     StoreSettings,
+    async_session_factory,
 )
-from ecommerce_ops.safety.safety_rules import evaluate_action_safety
-from ecommerce_ops.pipeline.builder import build_payload_and_evidence
-from ecommerce_ops.api.ws import ws_manager
-from ecommerce_ops.api.metrics import (
-    METRIC_PIPELINE_RUNS,
-    METRIC_DECISIONS_CREATED,
-    METRIC_DECISIONS_APPROVED,
-    METRIC_DECISIONS_REJECTED,
-    METRIC_DECISIONS_AUTO_APPROVED,
-    METRIC_FINANCIAL_IMPACT,
-)
-from ecommerce_ops.infra.notifications import notify_hitl_request, notify_pipeline_failed, notify_agent_graduated
-from ecommerce_ops.observability.langfuse_client import langfuse_client
 from ecommerce_ops.observability.evaluation import evaluation_framework
+from ecommerce_ops.observability.langfuse_client import langfuse_client
+from ecommerce_ops.pipeline.builder import build_payload_and_evidence
+from ecommerce_ops.safety.safety_rules import evaluate_action_safety
 
 logger = logging.getLogger("ecommerce_ops.pipeline.runner")
 
@@ -149,12 +149,92 @@ async def execute_shop_action(action: ApprovalAction) -> tuple[bool, str]:
     if action.shadow_mode:
         logger.info("[SHADOW] Simulating %s for %s", action.action_type, action.id)
         return True, "Shadow mode simulation"
+
+    # Live execution requires Shopify credentials; without them a real action
+    # cannot be performed, so report an honest failure instead of a fabricated
+    # "Executed" result.
+    shop_domain = app_settings.SHOPIFY_SHOP_DOMAIN
+    access_token = app_settings.SHOPIFY_ACCESS_TOKEN
+    if not shop_domain or not access_token:
+        logger.warning(
+            "[LIVE] Cannot execute %s for %s: Shopify not configured",
+            action.action_type,
+            action.id,
+        )
+        return False, (
+            "execution requires Shopify credentials "
+            "(SHOPIFY_SHOP_DOMAIN / SHOPIFY_ACCESS_TOKEN)"
+        )
+
+    from ecommerce_ops.connectors.shopify.client import ShopifyClient
+
+    client = ShopifyClient(
+        shop_domain=shop_domain,
+        access_token=access_token,
+        api_version=app_settings.SHOPIFY_API_VERSION,
+    )
+    payload = action.payload or {}
     try:
-        logger.info("[LIVE] Executing %s for %s", action.action_type, action.id)
-        return True, f"Executed {action.action_type}"
+        if action.action_type == "fraud_hold":
+            order_id = payload.get("order_id") or payload.get("id")
+            if not order_id or not str(order_id).isdigit():
+                return False, "fraud_hold requires a real Shopify order_id"
+            await client.update_order(
+                str(order_id), {"tags": ["FRAUD_HOLD"]}
+            )
+            logger.info("Applied FRAUD_HOLD to order %s", order_id)
+            return True, f"Applied FRAUD_HOLD to order {order_id}"
+
+        if action.action_type == "price_change":
+            sku = payload.get("sku")
+            new_price = payload.get("proposed_price", payload.get("new_price"))
+            if not sku or new_price is None:
+                return False, "price_change requires sku and proposed_price in payload"
+            products = (await client.get_products(limit=250)).get("products", [])
+            target = None
+            target_sku = str(sku).strip().upper()
+            for product in products:
+                for variant in product.get("variants", []):
+                    if str(variant.get("sku", "")).strip().upper() == target_sku:
+                        target = (str(product["id"]), str(variant["id"]))
+                        break
+                if target:
+                    break
+            if not target:
+                return False, f"price_change: no product variant found for sku {sku}"
+            product_id, variant_id = target
+            await client.update_product(
+                product_id, {"variants": [{"id": variant_id, "price": str(new_price)}]}
+            )
+            logger.info("Updated price for variant %s to %s", variant_id, new_price)
+            return True, f"Updated price for {sku} to {new_price}"
+
+        if action.action_type == "purchase_order":
+            return False, (
+                "purchase_order requires inventory_location_id and "
+                "reorder_quantity; not executed"
+            )
+
+        if action.action_type == "review_response":
+            return False, (
+                "review_response requires a product reviews API scope that "
+                "is not configured"
+            )
+
+        if action.action_type == "marketing_campaign":
+            return False, (
+                "marketing_campaign requires a marketing events API scope "
+                "that is not configured"
+            )
+
+        return False, f"Unknown action type: {action.action_type}"
     except Exception as e:
-        logger.error("Shop action failed: %s", e)
+        logger.error(
+            "Shop action %s for %s failed: %s", action.action_type, action.id, e
+        )
         return False, str(e)
+    finally:
+        await client.close()
 
 
 async def update_agent_streak(
@@ -197,6 +277,7 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
         active_orders = shopify_data["active_orders"]
         reviews_data = shopify_data["reviews_data"]
         abandoned_carts = shopify_data.get("abandoned_carts", [])
+        support_tickets = []
         data_source = "shopify"
         logger.info(
             "Using Shopify data: %d inventory items, %d active orders, %d abandoned carts",
@@ -295,7 +376,7 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
     try:
         # Create pipeline trace
         trace = langfuse_client.create_trace(
-            name=f"pipeline.run",
+            name="pipeline.run",
             user_id=None,
             tags=["pipeline", run_id],
             metadata={
@@ -486,7 +567,7 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                 trace_id=trace.id,
                 name="pipeline_success",
                 value=0.0,
-                comment=f"Pipeline failed: {str(e)}",
+                comment=f"Pipeline failed: {e!s}",
             )
 
         await notify_pipeline_failed(run_id, str(e))
