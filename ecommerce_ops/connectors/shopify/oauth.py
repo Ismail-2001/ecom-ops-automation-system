@@ -3,6 +3,7 @@ Shopify OAuth 2.0 Handler
 Handles app installation flow, token exchange, and shop authentication.
 """
 
+import base64
 import hashlib
 import hmac
 import logging
@@ -134,18 +135,28 @@ class ShopifyOAuth:
         return hmac.compare_digest(calculated, hmac_signature)
 
     def verify_webhook(self, body: bytes, hmac_header: str) -> bool:
-        """Verify webhook HMAC signature."""
+        """Verify webhook HMAC signature.
+
+        Shopify sends webhooks with an ``X-Shopify-Hmac-SHA256`` header whose
+        value is the BASE64-encoded SHA-256 HMAC of the raw body, signed with
+        the app client secret. (The OAuth ``hmac`` query param is hex-encoded
+        and handled separately in ``verify_hmac``.)
+        """
         if not self.client_secret:
             logger.warning("Client secret not configured, skipping webhook verification")
+            return False
+        if not hmac_header:
+            logger.warning("Missing X-Shopify-Hmac-SHA256 header")
             return False
 
         calculated = hmac.new(
             self.client_secret.encode("utf-8"),
             body,
             hashlib.sha256,
-        ).hexdigest()
+        ).digest()
+        computed_b64 = base64.b64encode(calculated).decode("utf-8")
 
-        return hmac.compare_digest(calculated, hmac_header)
+        return hmac.compare_digest(computed_b64, hmac_header)
 
     def _clean_shop_domain(self, shop_domain: str) -> str:
         """Clean and validate shop domain."""

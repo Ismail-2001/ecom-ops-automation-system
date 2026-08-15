@@ -137,9 +137,14 @@ class ShopifyWebhookRouter:
         headers: Dict[str, str],
     ) -> Dict[str, Any]:
         """Full webhook processing pipeline: verify → parse → dispatch."""
-        # Step 1: Verify HMAC
+        # Step 1: Verify HMAC — the signature header is required.
+        # A request without a valid signature is rejected outright so the
+        # HMAC check cannot be bypassed by simply omitting the header.
         hmac_header = headers.get("X-Shopify-Hmac-SHA256", "")
-        if hmac_header and not self.verify_hmac(body, hmac_header):
+        if not hmac_header:
+            logger.warning("Missing HMAC header for webhook from %s", shop_domain)
+            return {"status": "unauthorized", "topic": topic}
+        if not self.verify_hmac(body, hmac_header):
             logger.warning("Invalid HMAC for webhook from %s", shop_domain)
             return {"status": "unauthorized", "topic": topic}
 

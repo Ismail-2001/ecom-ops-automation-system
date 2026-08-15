@@ -3,7 +3,9 @@ Role Management Service (PostgreSQL-backed)
 Manages roles, users, and permission checks with persistent storage.
 """
 
+import base64
 import hashlib
+import hmac
 import logging
 import secrets
 import uuid
@@ -26,10 +28,45 @@ from ecommerce_ops.security.models import (
 
 logger = logging.getLogger("ecommerce_ops.security.role_manager")
 
+PBKDF2_ITERATIONS = 600_000
+
 
 def _hash_api_key(key: str) -> str:
-    """Hash an API key using SHA-256 for secure storage."""
+    """Hash an API key using salted PBKDF2-SHA256 for secure storage."""
+    salt = secrets.token_bytes(16)
+    dk = hashlib.pbkdf2_hmac("sha256", key.encode("utf-8"), salt, PBKDF2_ITERATIONS)
+    return "pbkdf2_sha256${}${}${}".format(
+        PBKDF2_ITERATIONS,
+        base64.b64encode(salt).decode("ascii"),
+        base64.b64encode(dk).decode("ascii"),
+    )
+
+
+def _legacy_hash_api_key(key: str) -> str:
+    """Legacy unsalted SHA-256 hexdigest (pre-migration rows only)."""
     return hashlib.sha256(key.encode()).hexdigest()
+
+
+def _verify_api_key_hash(key: str, stored: str) -> bool:
+    """Verify a key against a stored hash.
+
+    Supports the current salted PBKDF2 format and falls back to legacy
+    unsalted SHA-256 so existing keys keep working until rotated.
+    """
+    if stored.count("$") != 3:
+        return hmac.compare_digest(_legacy_hash_api_key(key), stored)
+
+    try:
+        _prefix, iterations, salt_b64, expected_b64 = stored.split("$")
+        salt = base64.b64decode(salt_b64)
+        expected = base64.b64decode(expected_b64)
+        dk = hashlib.pbkdf2_hmac(
+            "sha256", key.encode("utf-8"), salt, int(iterations)
+        )
+        return hmac.compare_digest(dk, expected)
+    except (ValueError, TypeError) as e:
+        logger.warning("Unable to parse stored API key hash: %s", e)
+        return False
 
 
 class RoleManager:
@@ -320,36 +357,33 @@ class RoleManager:
             )
 
     async def validate_api_key(self, key: str) -> Optional[APIKey]:
-        key_hash = _hash_api_key(key)
         async with async_session_factory() as session:
             result = await session.execute(
-                select(RBACApiKey).where(
-                    RBACApiKey.key_hash == key_hash,
-                    RBACApiKey.is_active == True,
+                select(RBACApiKey).where(RBACApiKey.is_active == True)
+            )
+            for db_key in result.scalars().all():
+                if not _verify_api_key_hash(key, db_key.key_hash):
+                    continue
+                if db_key.expires_at and datetime.utcnow() > db_key.expires_at:
+                    return None
+
+                db_key.last_used = datetime.utcnow()
+                db_key.usage_count = (db_key.usage_count or 0) + 1
+                await session.commit()
+
+                return APIKey(
+                    id=db_key.id,
+                    key=key,
+                    name=db_key.name,
+                    user_id=db_key.user_id,
+                    role=Role(db_key.role),
+                    permissions={Permission(p) for p in (db_key.permissions or [])},
+                    is_active=db_key.is_active,
+                    expires_at=db_key.expires_at,
+                    last_used=db_key.last_used,
+                    usage_count=db_key.usage_count,
                 )
-            )
-            db_key = result.scalar_one_or_none()
-            if not db_key:
-                return None
-            if db_key.expires_at and datetime.utcnow() > db_key.expires_at:
-                return None
-
-            db_key.last_used = datetime.utcnow()
-            db_key.usage_count = (db_key.usage_count or 0) + 1
-            await session.commit()
-
-            return APIKey(
-                id=db_key.id,
-                key=key,
-                name=db_key.name,
-                user_id=db_key.user_id,
-                role=Role(db_key.role),
-                permissions={Permission(p) for p in (db_key.permissions or [])},
-                is_active=db_key.is_active,
-                expires_at=db_key.expires_at,
-                last_used=db_key.last_used,
-                usage_count=db_key.usage_count,
-            )
+            return None
 
     async def revoke_api_key(self, key_id: str) -> bool:
         async with async_session_factory() as session:

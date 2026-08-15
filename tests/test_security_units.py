@@ -7,7 +7,6 @@ os.environ["DEEPSEEK_API_KEY"] = "sk-test-key"
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from datetime import datetime
-import hashlib
 from unittest.mock import patch
 import pytest
 import time
@@ -277,10 +276,11 @@ class TestRoleManager:
         assert Permission.AUDIT_EXPORT not in perms
 
     def test_hash_api_key(self):
-        from ecommerce_ops.security.role_manager import _hash_api_key
+        from ecommerce_ops.security.role_manager import _hash_api_key, _verify_api_key_hash
         result = _hash_api_key("test_key")
-        expected = hashlib.sha256("test_key".encode()).hexdigest()
-        assert result == expected
+        assert result.startswith("pbkdf2_sha256$")
+        assert _verify_api_key_hash("test_key", result) is True
+        assert _verify_api_key_hash("wrong_key", result) is False
 
 
 class TestAuth:
