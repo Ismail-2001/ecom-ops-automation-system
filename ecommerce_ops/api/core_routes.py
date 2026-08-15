@@ -1,24 +1,55 @@
 """Core API routes that exist on both legacy /api/* and v1 /api/v1/* namespaces."""
 
+import time
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, func, desc, update, cast, or_, String
+from sqlalchemy import String, cast, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ecommerce_ops.api.auth import verify_auth, verify_auth_optional
+from ecommerce_ops.api.metrics import (
+    METRIC_AGENT_CONFIDENCE_AVG,
+    METRIC_DECISIONS_APPROVED,
+    METRIC_DECISIONS_REJECTED,
+)
+from ecommerce_ops.api.ws import ws_manager
 from ecommerce_ops.config import settings as app_settings
 from ecommerce_ops.models import (
-    get_db_session,
+    AgentStatus,
     ApprovalAction,
     AuditEntry,
-    AgentStatus,
     StoreSettings,
+    get_db_session,
 )
-from ecommerce_ops.api.auth import verify_auth, verify_auth_optional, get_current_operator
+from ecommerce_ops.pipeline.runner import execute_shop_action, update_agent_streak
 
 router = APIRouter()
+
+SERVER_START_TIME = time.time()
+
+
+async def get_current_operator(identity: str = Depends(verify_auth)) -> str:
+    return identity or "unknown-operator"
+
+
+class DecisionActionBody(BaseModel):
+    notes: Optional[str] = None
+    draft_response: Optional[str] = None
+
+
+class RejectActionBody(BaseModel):
+    reason: str
+    notes: Optional[str] = None
+
+
+class BatchActionBody(BaseModel):
+    ids: List[str]
+    action: str
+    reason: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class SettingsUpdateBody(BaseModel):
@@ -28,11 +59,24 @@ class SettingsUpdateBody(BaseModel):
     pricing_limit: Optional[float] = None
     reviews_rating_threshold: Optional[int] = None
     slack_channel: Optional[str] = None
+    notify_on_failure: Optional[bool] = None
+    notify_on_hitl: Optional[bool] = None
+    notify_on_graduation: Optional[bool] = None
 
 
-class DecisionActionBody(BaseModel):
-    notes: Optional[str] = None
-    draft_response: Optional[str] = None
+async def expire_stale_approvals(db: AsyncSession) -> int:
+    """Flip pending approvals whose expiry has passed to 'expired'."""
+    now = datetime.utcnow()
+    result = await db.execute(
+        update(ApprovalAction)
+        .where(
+            ApprovalAction.status == "pending",
+            ApprovalAction.expires_at.isnot(None),
+            ApprovalAction.expires_at < now,
+        )
+        .values(status="expired")
+    )
+    return result.rowcount or 0
 
 
 @router.get("/approvals")
@@ -44,6 +88,7 @@ async def get_approvals(
     sort: Optional[str] = "newest",
     db: AsyncSession = Depends(get_db_session),
 ):
+    await expire_stale_approvals(db)
     query = select(ApprovalAction)
     if status == "pending":
         query = query.where(ApprovalAction.status == "pending")
@@ -60,6 +105,8 @@ async def get_approvals(
                 func.lower(cast(ApprovalAction.evidence, String)).like(search_like),
             )
         )
+    if status == "all":
+        pass
     query = query.order_by(
         desc(ApprovalAction.created_at) if sort == "newest" else ApprovalAction.created_at
     )
@@ -71,6 +118,7 @@ async def get_approvals(
 
 @router.get("/approvals/{id}")
 async def get_approval(id: str, db: AsyncSession = Depends(get_db_session)):
+    await expire_stale_approvals(db)
     result = await db.execute(select(ApprovalAction).where(ApprovalAction.id == id))
     action = result.scalar_one_or_none()
     if not action:
@@ -108,26 +156,55 @@ async def approve_approval(
     action.operator_notes = body.notes
     action.status = "executing"
     await db.commit()
-
-    from ecommerce_ops.api.ws import ws_manager
     await ws_manager.broadcast(
         {
-            "type": "approval_updated",
-            "payload": {
-                "id": action.id,
-                "status": action.status,
-                "reviewed_by": operator,
-                "reviewed_at": action.reviewed_at.isoformat() if action.reviewed_at else None,
-            },
+            "type": "action_updated",
+            "payload": {"id": action.id, "status": "executing", "agent": action.agent},
         }
     )
-    return {"status": "approved"}
+
+    success, exec_msg = await execute_shop_action(action)
+    action.status = "executed" if success else "failed"
+    if not success:
+        action.operator_notes = f"{action.operator_notes or ''} [Error: {exec_msg}]".strip()
+
+    financial_impact = (action.impact or {}).get("financial_impact", 0.0)
+    audit_entry = AuditEntry(
+        action_id=action.id,
+        timestamp=datetime.utcnow(),
+        agent=action.agent,
+        action_type=action.action_type,
+        decision="shadow" if action.shadow_mode else "approved",
+        operator=operator,
+        confidence_score=action.confidence_score,
+        financial_impact=financial_impact,
+        details={
+            "notes": action.operator_notes,
+            "execution_status": action.status,
+            "payload": action.payload,
+        },
+    )
+    db.add(audit_entry)
+    await update_agent_streak(action.agent, success, action.confidence_score, db)
+    await db.commit()
+
+    await ws_manager.broadcast(
+        {
+            "type": "action_updated",
+            "payload": {"id": action.id, "status": action.status, "agent": action.agent},
+        }
+    )
+
+    METRIC_DECISIONS_APPROVED.labels(agent=action.agent).inc()
+    METRIC_AGENT_CONFIDENCE_AVG.labels(agent=action.agent).set(action.confidence_score)
+
+    return action
 
 
 @router.post("/approvals/{id}/reject")
 async def reject_approval(
     id: str,
-    body: DecisionActionBody,
+    body: RejectActionBody,
     operator: str = Depends(get_current_operator),
     db: AsyncSession = Depends(get_db_session),
 ):
@@ -146,63 +223,123 @@ async def reject_approval(
 
     action.reviewed_by = operator
     action.reviewed_at = datetime.utcnow()
+    action.rejection_reason = body.reason
     action.operator_notes = body.notes
-    action.rejection_reason = body.notes
     action.status = "rejected"
+
+    financial_impact = (action.impact or {}).get("financial_impact", 0.0)
+    audit_entry = AuditEntry(
+        action_id=action.id,
+        timestamp=datetime.utcnow(),
+        agent=action.agent,
+        action_type=action.action_type,
+        decision="rejected",
+        operator=operator,
+        confidence_score=action.confidence_score,
+        financial_impact=financial_impact,
+        details={"reason": body.reason, "notes": body.notes},
+    )
+    db.add(audit_entry)
+    await update_agent_streak(action.agent, False, action.confidence_score, db)
     await db.commit()
 
-    from ecommerce_ops.api.ws import ws_manager
     await ws_manager.broadcast(
         {
-            "type": "approval_updated",
-            "payload": {
-                "id": action.id,
-                "status": action.status,
-                "reviewed_by": operator,
-                "reviewed_at": action.reviewed_at.isoformat() if action.reviewed_at else None,
-            },
+            "type": "action_updated",
+            "payload": {"id": action.id, "status": "rejected", "agent": action.agent},
         }
     )
-    return {"status": "rejected"}
+
+    METRIC_DECISIONS_REJECTED.labels(agent=action.agent).inc()
+    METRIC_AGENT_CONFIDENCE_AVG.labels(agent=action.agent).set(action.confidence_score)
+
+    return action
 
 
 @router.post("/approvals/batch")
-async def batch_approval(
-    ids: List[str],
-    action: str,
+async def batch_approvals(
+    body: BatchActionBody,
     operator: str = Depends(get_current_operator),
     db: AsyncSession = Depends(get_db_session),
 ):
-    if action not in ("approve", "reject"):
+    if body.action not in ("approve", "reject"):
         raise HTTPException(status_code=400, detail="Action must be 'approve' or 'reject'")
 
-    processed = 0
-    for aid in ids:
-        result = await db.execute(
-            select(ApprovalAction).where(ApprovalAction.id == aid).with_for_update()
-        )
-        approval = result.scalar_one_or_none()
-        if not approval or approval.status != "pending":
+    results = await db.execute(
+        select(ApprovalAction).where(ApprovalAction.id.in_(body.ids))
+    )
+    actions = results.scalars().all()
+    updated_ids = []
+
+    for action in actions:
+        if action.status != "pending":
             continue
-        if approval.expires_at and approval.expires_at < datetime.utcnow():
-            approval.status = "expired"
+        if action.expires_at and action.expires_at < datetime.utcnow():
+            action.status = "expired"
             continue
 
-        approval.reviewed_by = operator
-        approval.reviewed_at = datetime.utcnow()
-        approval.operator_notes = ""
-        approval.status = "executing" if action == "approve" else "rejected"
-        if action == "reject":
-            approval.rejection_reason = "batch reject"
-        processed += 1
+        if body.action == "approve":
+            if action.risk_level in ("high", "critical"):
+                continue
+            action.reviewed_by = operator
+            action.reviewed_at = datetime.utcnow()
+            action.operator_notes = body.notes
+            action.status = "executing"
+            await db.flush()
+
+            success, _ = await execute_shop_action(action)
+            action.status = "executed" if success else "failed"
+            financial_impact = (action.impact or {}).get("financial_impact", 0.0)
+            db.add(
+                AuditEntry(
+                    action_id=action.id,
+                    timestamp=datetime.utcnow(),
+                    agent=action.agent,
+                    action_type=action.action_type,
+                    decision="shadow" if action.shadow_mode else "approved",
+                    operator=operator,
+                    confidence_score=action.confidence_score,
+                    financial_impact=financial_impact,
+                    details={"notes": body.notes, "execution_status": action.status, "batch": True},
+                )
+            )
+            await update_agent_streak(action.agent, True, action.confidence_score, db)
+
+        elif body.action == "reject":
+            action.reviewed_by = operator
+            action.reviewed_at = datetime.utcnow()
+            action.rejection_reason = body.reason or "Batch rejected"
+            action.operator_notes = body.notes
+            action.status = "rejected"
+            financial_impact = (action.impact or {}).get("financial_impact", 0.0)
+            db.add(
+                AuditEntry(
+                    action_id=action.id,
+                    timestamp=datetime.utcnow(),
+                    agent=action.agent,
+                    action_type=action.action_type,
+                    decision="rejected",
+                    operator=operator,
+                    confidence_score=action.confidence_score,
+                    financial_impact=financial_impact,
+                    details={"reason": body.reason, "notes": body.notes, "batch": True},
+                )
+            )
+            await update_agent_streak(action.agent, False, action.confidence_score, db)
+
+        updated_ids.append(action.id)
+        await ws_manager.broadcast(
+            {
+                "type": "action_updated",
+                "payload": {"id": action.id, "status": action.status, "agent": action.agent},
+            }
+        )
 
     await db.commit()
-
-    from ecommerce_ops.api.ws import ws_manager
-    await ws_manager.broadcast(
-        {"type": "approvals_batch_updated", "payload": {"count": processed, "action": action}}
-    )
-    return {"processed": processed}
+    return {
+        "message": f"Processed {len(updated_ids)} batch actions",
+        "affected_ids": updated_ids,
+    }
 
 
 @router.get("/agents/status")
@@ -260,7 +397,6 @@ async def update_store_settings(
     if body.slack_channel is not None:
         changes["slack_channel"] = body.slack_channel
 
-    from ecommerce_ops.models import AuditEntry
     db.add(
         AuditEntry(
             action_id=None,
@@ -275,7 +411,6 @@ async def update_store_settings(
         )
     )
     await db.commit()
-    from ecommerce_ops.api.ws import ws_manager
     await ws_manager.broadcast(
         {"type": "agent_status", "payload": {"settings_updated": True}}
     )
@@ -284,6 +419,7 @@ async def update_store_settings(
 
 @router.get("/analytics")
 async def get_analytics(db: AsyncSession = Depends(get_db_session)):
+    await expire_stale_approvals(db)
     approved = (
         await db.execute(
             select(func.count(AuditEntry.id)).where(
@@ -440,8 +576,6 @@ async def get_analytics(db: AsyncSession = Depends(get_db_session)):
 @router.get("/health")
 async def v1_health(operator: str = Depends(verify_auth_optional)):
     """Full health check matching legacy /health response shape."""
-    import time
-    from ecommerce_ops.api.ws import ws_manager
 
     deps: dict[str, str] = {}
     all_ok = True
@@ -451,7 +585,7 @@ async def v1_health(operator: str = Depends(verify_auth_optional)):
         async for session in get_db_session():
             await session.execute(select(func.now()))
         deps["database"] = "healthy"
-    except Exception as e:
+    except Exception:
         deps["database"] = "unhealthy"
         all_ok = False
 
@@ -481,9 +615,9 @@ async def v1_health(operator: str = Depends(verify_auth_optional)):
         deps["task_queue"] = "unknown"
 
     try:
-        from ecommerce_ops.memory.vector.persistent_store import PersistentVectorStore
-        from ecommerce_ops.models import async_session_factory
         from sqlalchemy import text
+
+        from ecommerce_ops.models import async_session_factory
         async with async_session_factory() as session:
             result = await session.execute(
                 text("SELECT 1 FROM pg_extension WHERE extname = 'vector'")
@@ -496,7 +630,6 @@ async def v1_health(operator: str = Depends(verify_auth_optional)):
         deps["pgvector"] = "unavailable"
 
     try:
-        from ecommerce_ops.safety.safety_rules import evaluate_action_safety
         deps["safety_engine"] = "loaded"
     except Exception:
         deps["safety_engine"] = "unavailable"
@@ -530,6 +663,3 @@ async def v1_health(operator: str = Depends(verify_auth_optional)):
             },
         },
     )
-
-
-SERVER_START_TIME = time.time()

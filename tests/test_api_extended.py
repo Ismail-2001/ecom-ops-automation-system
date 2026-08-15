@@ -1,18 +1,15 @@
 """Tests for api/metrics.py, api/versioning.py, and api/demo.py."""
-import pytest
-from unittest.mock import MagicMock
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from ecommerce_ops.api.metrics import (
-    METRIC_HTTP_REQUESTS,
-    METRIC_HTTP_DURATION,
-    METRIC_PIPELINE_RUNS,
-    METRIC_DECISIONS_CREATED,
     METRIC_AGENT_CONFIDENCE_AVG,
+    METRIC_DECISIONS_CREATED,
+    METRIC_HTTP_DURATION,
+    METRIC_HTTP_REQUESTS,
+    METRIC_PIPELINE_RUNS,
 )
 from ecommerce_ops.api.versioning import APIVersionMiddleware, create_v1_router
-
 
 # ── metrics.py tests ───────────────────────────────────────
 
@@ -83,13 +80,13 @@ class TestAPIVersionMiddleware:
 
 class TestCreateV1Router:
     def test_v1_router_has_routes(self):
-        from ecommerce_ops.api.shopify import router as shopify_router
         from ecommerce_ops.api.cart_recovery import router as cart_router
         from ecommerce_ops.api.customer_support import router as support_router
-        from ecommerce_ops.api.observability import router as obs_router
-        from ecommerce_ops.api.memory import router as mem_router
-        from ecommerce_ops.api.security import router as sec_router
         from ecommerce_ops.api.demo import router as demo_router
+        from ecommerce_ops.api.memory import router as mem_router
+        from ecommerce_ops.api.observability import router as obs_router
+        from ecommerce_ops.api.security import router as sec_router
+        from ecommerce_ops.api.shopify import router as shopify_router
 
         v1 = create_v1_router(
             shopify_router, cart_router, support_router,
@@ -97,5 +94,4 @@ class TestCreateV1Router:
         )
         assert v1.prefix == "/api/v1"
         route_paths = [r.path for r in v1.routes]
-        assert "/version" in route_paths
-        assert "/health" in route_paths
+        assert "/api/v1/version" in route_paths

@@ -1,7 +1,8 @@
-import pytest
 import os
-from httpx import AsyncClient, ASGITransport
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from httpx import ASGITransport, AsyncClient
 
 # Set test env before importing app
 os.environ.setdefault("ENV", "testing")
@@ -10,7 +11,6 @@ os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite://")
 os.environ.setdefault("DEEPSEEK_API_KEY", "sk-test-key")
 
 from ecommerce_ops.api.app import app
-from ecommerce_ops.config import settings as app_settings
 
 
 @pytest.fixture
@@ -73,8 +73,15 @@ async def test_settings_endpoint(client):
 
 @pytest.mark.asyncio
 async def test_run_endpoint(client):
-    from ecommerce_ops.models.db import get_db_session, engine, async_sessionmaker, AsyncSession, StoreSettings
     from sqlalchemy import select
+
+    from ecommerce_ops.models.db import (
+        AsyncSession,
+        StoreSettings,
+        async_sessionmaker,
+        engine,
+        get_db_session,
+    )
 
     async def override_get_db():
         sf = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
@@ -95,7 +102,7 @@ async def test_run_endpoint(client):
     with patch("ecommerce_ops.api.app.ws_manager") as mock_ws:
         mock_ws.broadcast = AsyncMock()
         with patch("ecommerce_ops.api.app.task_queue") as mock_tq:
-            mock_tq.enqueue = AsyncMock()
+            mock_tq.enqueue = AsyncMock(return_value="task-1")
             response = await client.post("/api/run")
             assert response.status_code == 200
             data = response.json()

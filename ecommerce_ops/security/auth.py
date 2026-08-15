@@ -3,20 +3,21 @@ Authentication Middleware
 FastAPI middleware for authentication and authorization.
 """
 
+import hmac
 import logging
 import time
-from typing import Any, Callable, Optional, Set
+from typing import ClassVar, Optional, Set
 
 from fastapi import Depends, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
 
+from ecommerce_ops.config import settings as app_settings
 from ecommerce_ops.security.models import (
     AccessContext,
     Permission,
     Role,
-    SecurityEvent,
     User,
 )
 from ecommerce_ops.security.role_manager import role_manager
@@ -30,7 +31,7 @@ security = HTTPBearer(auto_error=False)
 class AuthenticationMiddleware(BaseHTTPMiddleware):
     """Middleware for request authentication and logging."""
 
-    PUBLIC_PATHS = {
+    PUBLIC_PATHS: ClassVar[Set[str]] = {
         "/",
         "/health",
         "/live",
@@ -41,9 +42,22 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         "/redoc",
     }
 
-    API_KEY_PATHS = {
+    API_KEY_PATHS: ClassVar[Set[str]] = {
         "/api/shopify/webhooks",
     }
+
+    def _matches_configured_key(self, token: str) -> bool:
+        """True if token matches the operator API key configured in settings."""
+        configured = getattr(app_settings, "API_KEY", None)
+        if not configured:
+            return False
+        try:
+            expected = configured.get_secret_value()
+        except AttributeError:
+            expected = str(configured)
+        if not expected:
+            return False
+        return hmac.compare_digest(token, expected)
 
     async def dispatch(
         self,
@@ -68,15 +82,18 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
         if api_key:
             try:
-                api_key_obj = await role_manager.validate_api_key(api_key)
-                if api_key_obj:
-                    user = await role_manager.get_user(api_key_obj.user_id)
-                    api_key_id = api_key_obj.id
+                if self._matches_configured_key(api_key):
+                    pass
                 else:
-                    return JSONResponse(
-                        status_code=401,
-                        content={"detail": "Invalid API key"},
-                    )
+                    api_key_obj = await role_manager.validate_api_key(api_key)
+                    if api_key_obj:
+                        user = await role_manager.get_user(api_key_obj.user_id)
+                        api_key_id = api_key_obj.id
+                    else:
+                        return JSONResponse(
+                            status_code=401,
+                            content={"detail": "Invalid API key"},
+                        )
             except Exception:
                 logger.error("Auth failed: API key validation error", exc_info=True)
                 return JSONResponse(
@@ -86,15 +103,18 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         elif auth_header and auth_header.startswith("Bearer "):
             token = auth_header[7:]
             try:
-                api_key_obj = await role_manager.validate_api_key(token)
-                if api_key_obj:
-                    user = await role_manager.get_user(api_key_obj.user_id)
-                    api_key_id = api_key_obj.id
+                if self._matches_configured_key(token):
+                    pass
                 else:
-                    return JSONResponse(
-                        status_code=401,
-                        content={"detail": "Invalid bearer token"},
-                    )
+                    api_key_obj = await role_manager.validate_api_key(token)
+                    if api_key_obj:
+                        user = await role_manager.get_user(api_key_obj.user_id)
+                        api_key_id = api_key_obj.id
+                    else:
+                        return JSONResponse(
+                            status_code=401,
+                            content={"detail": "Invalid bearer token"},
+                        )
             except Exception:
                 logger.error("Auth failed: Bearer token validation error", exc_info=True)
                 return JSONResponse(
@@ -112,11 +132,11 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         return response
 
     def _is_public_path(self, path: str) -> bool:
-        if path in self.PUBLIC_PATHS:
-            return True
-        if path.startswith("/static/") or path.endswith((".js", ".css", ".ico")):
-            return True
-        return False
+        return (
+            path in self.PUBLIC_PATHS
+            or path.startswith("/static/")
+            or path.endswith((".js", ".css", ".ico"))
+        )
 
     def _log_request(
         self,
