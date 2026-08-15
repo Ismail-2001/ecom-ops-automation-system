@@ -38,6 +38,7 @@ def create_v1_router(
     memory_router,
     security_router,
     demo_router,
+    core_router,
 ) -> APIRouter:
     """Create a versioned API router with all v1 endpoints.
 
@@ -53,10 +54,7 @@ def create_v1_router(
     v1.include_router(memory_router, prefix="/memory", tags=["v1"])
     v1.include_router(security_router, prefix="/security", tags=["v1"])
     v1.include_router(demo_router, prefix="/demo", tags=["v1"])
-
-    @v1.get("/health", tags=["v1"])
-    async def v1_health():
-        return {"status": "ok", "version": "1.0"}
+    v1.include_router(core_router, tags=["v1"])
 
     @v1.get("/version", tags=["v1"])
     async def api_version():

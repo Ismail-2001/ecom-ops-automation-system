@@ -1,140 +1,42 @@
 "use client"
 
 import { useState } from "react"
-import {
-  Shield,
-  ShieldAlert,
-  UserX,
-  Users,
-  TrendingUp,
-  TrendingDown,
-  ChevronLeft,
-  ChevronRight,
-  Lock,
-  Eye,
-} from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
+import { ShieldCheck } from "lucide-react"
 import Shell from "@/components/layout/Shell"
 import { cn } from "@/lib/utils"
+import { useSecurityEvents } from "@/lib/hooks"
+import { securityApi, type SecurityEvent } from "@/lib/api"
 
 const filters = ["All Events", "Critical", "Warning", "Info"]
 
-const metrics = [
-  {
-    label: "SECURITY SCORE",
-    value: "A+",
-    icon: Shield,
-    iconBg: "bg-success/10",
-    iconColor: "text-success",
-  },
-  {
-    label: "THREATS BLOCKED",
-    value: "1,247",
-    change: "+23%",
-    changeDir: "up" as const,
-    icon: ShieldAlert,
-    iconBg: "bg-primary/10",
-    iconColor: "text-primary",
-  },
-  {
-    label: "FAILED LOGINS",
-    value: "12",
-    change: "-45%",
-    changeDir: "down" as const,
-    icon: UserX,
-    iconBg: "bg-danger/10",
-    iconColor: "text-danger",
-  },
-  {
-    label: "ACTIVE SESSIONS",
-    value: "847",
-    icon: Users,
-    iconBg: "bg-info/10",
-    iconColor: "text-info",
-  },
-]
-
-const events = [
-  {
-    id: "SEC-001",
-    time: "14:22:01",
-    type: "Brute Force",
-    typeClass: "badge-danger",
-    severity: "CRITICAL",
-    severityClass: "badge-danger",
-    ip: "192.168.1.105",
-    user: "unknown",
-    action: "BLOCKED",
-    actionClass: "badge-success",
-  },
-  {
-    id: "SEC-002",
-    time: "14:21:45",
-    type: "SQL Injection",
-    typeClass: "badge-danger",
-    severity: "HIGH",
-    severityClass: "badge-danger",
-    ip: "10.0.0.52",
-    user: "admin",
-    action: "PREVENTED",
-    actionClass: "badge-success",
-  },
-  {
-    id: "SEC-003",
-    time: "14:20:33",
-    type: "Privilege Escalation",
-    typeClass: "badge-danger",
-    severity: "CRITICAL",
-    severityClass: "badge-danger",
-    ip: "172.16.0.88",
-    user: "moderator",
-    action: "BLOCKED",
-    actionClass: "badge-success",
-  },
-  {
-    id: "SEC-004",
-    time: "14:19:12",
-    type: "API Rate Limit",
-    typeClass: "badge-warning",
-    severity: "WARNING",
-    severityClass: "badge-warning",
-    ip: "192.168.1.201",
-    user: "api-user",
-    action: "THROTTLED",
-    actionClass: "badge-warning",
-  },
-  {
-    id: "SEC-005",
-    time: "14:18:55",
-    type: "Successful Login",
-    typeClass: "badge-info",
-    severity: "INFO",
-    severityClass: "badge-info",
-    ip: "10.0.0.15",
-    user: "admin",
-    action: "ALLOWED",
-    actionClass: "badge-info",
-  },
-  {
-    id: "SEC-006",
-    time: "14:17:30",
-    type: "File Upload",
-    typeClass: "badge-warning",
-    severity: "WARNING",
-    severityClass: "badge-warning",
-    ip: "172.16.0.44",
-    user: "uploader",
-    action: "SCANNING",
-    actionClass: "badge-warning",
-  },
-]
+function severityClass(severity: string) {
+  const s = severity.toUpperCase()
+  if (s === "CRITICAL" || s === "HIGH") return "badge-danger"
+  if (s === "WARNING" || s === "MEDIUM") return "badge-warning"
+  if (s === "INFO" || s === "LOW") return "badge-info"
+  return "badge-muted"
+}
 
 export default function SecurityPage() {
   const [activeFilter, setActiveFilter] = useState("All Events")
+  const { data: events, isLoading, isError } = useSecurityEvents()
 
-  const filteredEvents = events.filter((event) => {
-    if (activeFilter === "Critical") return event.severity === "CRITICAL"
-    if (activeFilter === "Warning") return event.severity === "WARNING"
-    if (activeFilter === "Info") return event.severity === "INFO"
+  const { data: health, isLoading: healthLoading, isError: healthError } = useQuery({
+    queryKey: ["security", "health"],
+    queryFn: securityApi.health,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  })
+
+  const eventList = events ?? []
+
+  const filtered = eventList.filter((event: SecurityEvent) => {
+    if (activeFilter === "Critical")
+      return event.severity.toUpperCase() === "CRITICAL"
+    if (activeFilter === "Warning")
+      return event.severity.toUpperCase() === "WARNING"
+    if (activeFilter === "Info") return event.severity.toUpperCase() === "INFO"
     return true
   })
 
@@ -161,40 +63,44 @@ export default function SecurityPage() {
           ))}
         </div>
 
-        <div className="grid grid-cols-4 gap-4">
-          {metrics.map((m) => {
-            const Icon = m.icon
-            return (
-              <div key={m.label} className="card">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className={`w-9 h-9 rounded-button ${m.iconBg} flex items-center justify-center`}>
-                    <Icon className={`w-4 h-4 ${m.iconColor}`} />
-                  </div>
-                  <span className="label-caps">{m.label}</span>
-                </div>
-                <div className={cn(
-                  "font-display text-data-lg",
-                  m.value === "A+" ? "text-success" : "text-text-primary"
-                )}>
-                  {m.value}
-                </div>
-                {m.change && (
-                  <div className="mt-1">
-                    {m.changeDir === "up" && (
-                      <span className="inline-flex items-center gap-1 text-body-sm text-success font-medium">
-                        <TrendingUp className="w-3 h-3" />{m.change}
-                      </span>
-                    )}
-                    {m.changeDir === "down" && (
-                      <span className="inline-flex items-center gap-1 text-body-sm text-success font-medium">
-                        <TrendingDown className="w-3 h-3" />{m.change}
-                      </span>
-                    )}
-                  </div>
-                )}
+        <div className="card">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 rounded-button bg-success/10 flex items-center justify-center">
+              <ShieldCheck className="w-4 h-4 text-success" />
+            </div>
+            <span className="label-caps">Security Service Health</span>
+          </div>
+          {healthLoading ? (
+            <span className="text-sm text-text-muted">Checking security service health...</span>
+          ) : healthError || !health ? (
+            <span className="text-sm text-text-muted">Security service health unreachable.</span>
+          ) : (
+            <div className="grid grid-cols-4 gap-4">
+              <div>
+                <div className="label-caps mb-1">Status</div>
+                <span
+                  className={cn(
+                    "badge",
+                    health.status === "healthy" ? "badge-success" : "badge-warning"
+                  )}
+                >
+                  {health.status}
+                </span>
               </div>
-            )
-          })}
+              <div>
+                <div className="label-caps mb-1">RBAC</div>
+                <div className="font-mono text-data-sm text-text-primary">{health.rbac}</div>
+              </div>
+              <div>
+                <div className="label-caps mb-1">Audit Logging</div>
+                <div className="font-mono text-data-sm text-text-primary">{health.audit_logging}</div>
+              </div>
+              <div>
+                <div className="label-caps mb-1">Rate Limiting</div>
+                <div className="font-mono text-data-sm text-text-primary">{health.rate_limiting}</div>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="card p-0 overflow-hidden">
@@ -207,97 +113,70 @@ export default function SecurityPage() {
                   <th className="label-caps px-5 py-4 text-left">EVENT TYPE</th>
                   <th className="label-caps px-5 py-4 text-center">SEVERITY</th>
                   <th className="label-caps px-5 py-4 text-left">SOURCE IP</th>
-                  <th className="label-caps px-5 py-4 text-left">USER</th>
-                  <th className="label-caps px-5 py-4 text-center">ACTION</th>
+                  <th className="label-caps px-5 py-4 text-left">DESCRIPTION</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredEvents.map((event) => (
-                  <tr key={event.id} className="group transition-colors">
-                    <td className="px-5 py-4">
-                      <span className="font-mono text-data-sm text-primary">{event.id}</span>
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className="font-mono text-data-sm text-text-secondary">{event.time}</span>
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className={event.typeClass}>{event.type}</span>
-                    </td>
-                    <td className="px-5 py-4 text-center">
-                      <span className={event.severityClass}>{event.severity}</span>
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className="font-mono text-data-sm text-text-secondary">{event.ip}</span>
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-2">
-                        <div className={cn(
-                          "w-6 h-6 rounded-full flex items-center justify-center shrink-0",
-                          event.user === "unknown" ? "bg-danger/15" : "bg-surface-3"
-                        )}>
-                          {event.user === "unknown" ? (
-                            <UserX className="w-3 h-3 text-danger" />
-                          ) : (
-                            <span className="text-[10px] font-medium text-text-secondary">
-                              {event.user.slice(0, 2).toUpperCase()}
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-sm text-text-primary">{event.user}</span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4 text-center">
-                      <span className={event.actionClass}>{event.action}</span>
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-8 text-center text-sm text-text-muted">
+                      Loading security events...
                     </td>
                   </tr>
-                ))}
+                ) : isError ? (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-8 text-center text-sm text-text-muted">
+                      Security events endpoint is not yet available on the backend.
+                    </td>
+                  </tr>
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-8 text-center text-sm text-text-muted">
+                      No security events to display.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((event) => (
+                    <tr key={event.id} className="group transition-colors">
+                      <td className="px-5 py-4">
+                        <span className="font-mono text-data-sm text-primary">{event.id}</span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="font-mono text-data-sm text-text-secondary">
+                          {new Date(event.created_at).toLocaleString()}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="text-sm text-text-primary">{event.type}</span>
+                      </td>
+                      <td className="px-5 py-4 text-center">
+                        <span className={cn("badge", severityClass(event.severity))}>
+                          {event.severity}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="font-mono text-data-sm text-text-secondary">
+                          {event.source_ip ?? "—"}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 max-w-[320px]">
+                        <span className="text-sm text-text-secondary line-clamp-2">
+                          {event.description}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
         </div>
 
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <div className="dot-red" />
-              <span className="text-sm text-text-secondary">
-                Critical Threats Blocked: <span className="font-mono text-data-sm text-danger">3</span>
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="dot-green" />
-              <span className="text-sm text-text-secondary">
-                Firewall Status: <span className="font-mono text-data-sm text-success">ACTIVE</span>
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-text-muted">
-              Showing <span className="text-text-secondary font-medium">6</span> of <span className="text-text-secondary font-medium">1,247</span> events
-            </span>
-            <div className="flex items-center gap-1">
-              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button className="w-8 h-8 rounded-button flex items-center justify-center bg-primary text-white shadow-lg shadow-primary/20 transition-colors">
-                1
-              </button>
-              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
-                2
-              </button>
-              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
-                3
-              </button>
-              <span className="text-text-muted px-1">...</span>
-              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
-                208
-              </button>
-              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
+        <div className="flex items-center justify-end">
+          <span className="text-sm text-text-muted">
+            Showing <span className="text-text-secondary font-medium">{filtered.length}</span> of{" "}
+            <span className="text-text-secondary font-medium">{eventList.length}</span> security events
+          </span>
         </div>
       </div>
     </Shell>

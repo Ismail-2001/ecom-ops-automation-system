@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { createContext, useCallback, useContext, useMemo, useState } from "react"
 import { Toaster } from "sonner"
 import { useWebSocket, type WSEvent } from "@/lib/useWebSocket"
+import { useAuthStore } from "@/lib/auth-store"
 
 interface WsContextValue {
   isConnected: boolean
@@ -44,6 +45,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
       }),
   )
 
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+
   const onEvent = useCallback((event: WSEvent) => {
     if (event.type === "action_updated" || event.type === "pipeline_completed") {
       queryClient.invalidateQueries({ queryKey: ["approvals"] })
@@ -54,7 +57,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     }
   }, [queryClient])
 
-  const ws = useWebSocket({ onEvent, enabled: true })
+  const ws = useWebSocket({ onEvent, enabled: isAuthenticated })
 
   const wsValue = useMemo(
     () => ({

@@ -1,110 +1,25 @@
 "use client"
 
 import { useState } from "react"
-import {
-  Search,
-  ChevronLeft,
-  ChevronRight,
-  Eye,
-  MessageSquare,
-  AlertTriangle,
-  Star,
-  TrendingUp,
-  Clock,
-  ThumbsUp,
-} from "lucide-react"
+import { Search, Star, MessageSquare, ThumbsUp, ThumbsDown } from "lucide-react"
 import Shell from "@/components/layout/Shell"
 import { cn } from "@/lib/utils"
+import { useReviews } from "@/lib/hooks"
 
-const reviews = [
-  {
-    id: 1,
-    product: "Wireless Pro Headphones",
-    customer: "Emma Rodriguez",
-    rating: 5,
-    sentiment: "POSITIVE",
-    sentimentClass: "badge-success",
-    reviewText: '"Amazing sound quality and the noise cancellation is top-notch. Worth every penny!"',
-    status: "RESPONDED",
-    statusClass: "badge-success",
-    action: "View",
-    actionIcon: Eye,
-  },
-  {
-    id: 2,
-    product: "Organic Face Serum",
-    customer: "Marcus Williams",
-    rating: 1,
-    sentiment: "NEGATIVE",
-    sentimentClass: "badge-danger",
-    reviewText: '"Caused skin irritation after two days of use. Very disappointed with this product."',
-    status: "PENDING",
-    statusClass: "badge-warning",
-    action: "Respond",
-    actionIcon: MessageSquare,
-  },
-  {
-    id: 3,
-    product: "Smart Fitness Tracker",
-    customer: "Sarah Chen",
-    rating: 4,
-    sentiment: "POSITIVE",
-    sentimentClass: "badge-success",
-    reviewText: '"Good tracker but the app sync could be faster. Overall happy with the purchase."',
-    status: "RESPONDED",
-    statusClass: "badge-success",
-    action: "View",
-    actionIcon: Eye,
-  },
-  {
-    id: 4,
-    product: "Minimalist Desk Lamp",
-    customer: "James O\'Connor",
-    rating: 3,
-    sentiment: "NEUTRAL",
-    sentimentClass: "badge-info",
-    reviewText: '"Decent lamp, takes a while to get used to the touch controls. Build quality is fine."',
-    status: "PENDING",
-    statusClass: "badge-warning",
-    action: "Respond",
-    actionIcon: MessageSquare,
-  },
-  {
-    id: 5,
-    product: "Premium Yoga Mat",
-    customer: "Yuki Tanaka",
-    rating: 5,
-    sentiment: "POSITIVE",
-    sentimentClass: "badge-success",
-    reviewText: '"Perfect thickness and grip. No more knee pain during yoga sessions. Highly recommend!"',
-    status: "RESPONDED",
-    statusClass: "badge-success",
-    action: "View",
-    actionIcon: Eye,
-  },
-  {
-    id: 6,
-    product: "Bluetooth Speaker",
-    customer: "Aisha Patel",
-    rating: 2,
-    sentiment: "NEGATIVE",
-    sentimentClass: "badge-danger",
-    reviewText: '"Speaker stopped working after a week. Terrible quality control. Want a refund."',
-    status: "FLAGGED",
-    statusClass: "badge-danger",
-    action: "Escalate",
-    actionIcon: AlertTriangle,
-  },
-]
+const filters = ["All Reviews", "Positive", "Neutral", "Negative"]
 
-const filters = ["All Reviews", "Pending", "Responded", "Flagged"]
-
-const metricCards = [
-  { label: "Total Reviews", value: "12,458", icon: Star, color: "bg-primary/15", iconColor: "text-primary" },
-  { label: "Average Rating", value: "4.2", suffix: "/5", icon: Star, color: "bg-warning/15", iconColor: "text-warning" },
-  { label: "Sentiment Score", value: "78%", suffix: " positive", icon: TrendingUp, color: "bg-success/15", iconColor: "text-success" },
-  { label: "Pending Response", value: "23", icon: Clock, color: "bg-warning/15", iconColor: "text-warning" },
-]
+function sentimentClass(sentiment: string) {
+  switch (sentiment.toUpperCase()) {
+    case "POSITIVE":
+      return "badge-success"
+    case "NEGATIVE":
+      return "badge-danger"
+    case "NEUTRAL":
+      return "badge-info"
+    default:
+      return "badge-muted"
+  }
+}
 
 function StarRating({ rating }: { rating: number }) {
   return (
@@ -125,21 +40,63 @@ function StarRating({ rating }: { rating: number }) {
 export default function ReviewsPage() {
   const [activeFilter, setActiveFilter] = useState("All Reviews")
   const [searchQuery, setSearchQuery] = useState("")
+  const { data, isLoading, isError } = useReviews()
+
+  const reviews = data ?? []
 
   const filtered = reviews.filter((review) => {
     if (searchQuery) {
       const q = searchQuery.toLowerCase()
       if (
-        !review.product.toLowerCase().includes(q) &&
-        !review.customer.toLowerCase().includes(q)
+        !review.author.toLowerCase().includes(q) &&
+        !review.content.toLowerCase().includes(q)
       )
         return false
     }
-    if (activeFilter === "Pending") return review.status === "PENDING"
-    if (activeFilter === "Responded") return review.status === "RESPONDED"
-    if (activeFilter === "Flagged") return review.status === "FLAGGED"
+    if (activeFilter === "Positive") return review.sentiment.toUpperCase() === "POSITIVE"
+    if (activeFilter === "Neutral") return review.sentiment.toUpperCase() === "NEUTRAL"
+    if (activeFilter === "Negative") return review.sentiment.toUpperCase() === "NEGATIVE"
     return true
   })
+
+  const total = reviews.length
+  const avgRating =
+    total > 0 ? reviews.reduce((sum, r) => sum + r.rating, 0) / total : 0
+  const positive = reviews.filter((r) => r.sentiment.toUpperCase() === "POSITIVE").length
+  const neutral = reviews.filter((r) => r.sentiment.toUpperCase() === "NEUTRAL").length
+  const negative = reviews.filter((r) => r.sentiment.toUpperCase() === "NEGATIVE").length
+
+  const metricCards = [
+    {
+      label: "Total Reviews",
+      value: total > 0 ? total.toLocaleString() : "—",
+      icon: MessageSquare,
+      color: "bg-primary/15",
+      iconColor: "text-primary",
+    },
+    {
+      label: "Avg Rating",
+      value: total > 0 ? avgRating.toFixed(1) : "—",
+      suffix: total > 0 ? "/5" : undefined,
+      icon: Star,
+      color: "bg-warning/15",
+      iconColor: "text-warning",
+    },
+    {
+      label: "Positive",
+      value: total > 0 ? positive.toLocaleString() : "—",
+      icon: ThumbsUp,
+      color: "bg-success/15",
+      iconColor: "text-success",
+    },
+    {
+      label: "Negative",
+      value: total > 0 ? negative.toLocaleString() : "—",
+      icon: ThumbsDown,
+      color: "bg-danger/15",
+      iconColor: "text-danger",
+    },
+  ]
 
   return (
     <Shell
@@ -206,61 +163,61 @@ export default function ReviewsPage() {
             <table className="table">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="label-caps px-5 py-4 text-left">Product</th>
+                  <th className="label-caps px-5 py-4 text-left">Review ID</th>
                   <th className="label-caps px-5 py-4 text-left">Customer</th>
                   <th className="label-caps px-5 py-4 text-center">Rating</th>
                   <th className="label-caps px-5 py-4 text-center">Sentiment</th>
                   <th className="label-caps px-5 py-4 text-left">Review Text</th>
-                  <th className="label-caps px-5 py-4 text-center">Status</th>
-                  <th className="label-caps px-5 py-4 text-right">Actions</th>
+                  <th className="label-caps px-5 py-4 text-right">Date</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((review) => {
-                  const ActionIcon = review.actionIcon
-                  return (
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-8 text-center text-sm text-text-muted">
+                      Loading reviews...
+                    </td>
+                  </tr>
+                ) : isError ? (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-8 text-center text-sm text-text-muted">
+                      Reviews endpoint is not yet available on the backend.
+                    </td>
+                  </tr>
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-8 text-center text-sm text-text-muted">
+                      No reviews match the current filters.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((review) => (
                     <tr key={review.id} className="group transition-colors">
                       <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-surface-2 flex items-center justify-center">
-                            <Star className="w-4 h-4 text-text-muted" />
-                          </div>
-                          <span className="text-sm font-medium text-text-primary">{review.product}</span>
-                        </div>
+                        <span className="font-mono text-data-sm text-primary">{review.id}</span>
                       </td>
                       <td className="px-5 py-4">
-                        <span className="text-sm text-text-secondary">{review.customer}</span>
+                        <span className="text-sm font-medium text-text-primary">{review.author}</span>
                       </td>
                       <td className="px-5 py-4 text-center">
                         <StarRating rating={review.rating} />
                       </td>
                       <td className="px-5 py-4 text-center">
-                        <span className={cn("badge", review.sentimentClass)}>{review.sentiment}</span>
+                        <span className={cn("badge", sentimentClass(review.sentiment))}>
+                          {review.sentiment}
+                        </span>
                       </td>
-                      <td className="px-5 py-4 max-w-[280px]">
-                        <span className="text-sm text-text-secondary line-clamp-2">{review.reviewText}</span>
-                      </td>
-                      <td className="px-5 py-4 text-center">
-                        <span className={cn("badge", review.statusClass)}>{review.status}</span>
+                      <td className="px-5 py-4 max-w-[320px]">
+                        <span className="text-sm text-text-secondary line-clamp-2">{review.content}</span>
                       </td>
                       <td className="px-5 py-4 text-right">
-                        <button
-                          className={cn(
-                            "btn-ghost text-xs gap-1.5",
-                            review.action === "Escalate"
-                              ? "text-danger hover:bg-danger/10 hover:text-danger"
-                              : review.action === "Respond"
-                                ? "text-primary hover:bg-primary/10 hover:text-primary"
-                                : "text-text-secondary"
-                          )}
-                        >
-                          <ActionIcon className="w-3.5 h-3.5" />
-                          {review.action}
-                        </button>
+                        <span className="font-mono text-data-sm text-text-secondary">
+                          {new Date(review.created_at).toLocaleDateString()}
+                        </span>
                       </td>
                     </tr>
-                  )
-                })}
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -271,49 +228,27 @@ export default function ReviewsPage() {
             <div className="flex items-center gap-2">
               <div className="dot-green" />
               <span className="text-sm text-text-secondary">
-                Positive: <span className="font-mono text-data-sm text-success">78%</span>
+                Positive: <span className="font-mono text-data-sm text-success">{positive}</span>
               </span>
             </div>
             <div className="flex items-center gap-2">
               <div className="dot-amber" />
               <span className="text-sm text-text-secondary">
-                Neutral: <span className="font-mono text-data-sm text-warning">15%</span>
+                Neutral: <span className="font-mono text-data-sm text-warning">{neutral}</span>
               </span>
             </div>
             <div className="flex items-center gap-2">
               <div className="dot-red" />
               <span className="text-sm text-text-secondary">
-                Negative: <span className="font-mono text-data-sm text-danger">7%</span>
+                Negative: <span className="font-mono text-data-sm text-danger">{negative}</span>
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-text-muted">
-              Showing <span className="text-text-secondary font-medium">6</span> of <span className="text-text-secondary font-medium">12,458</span> reviews
-            </span>
-            <div className="flex items-center gap-1">
-              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button className="w-8 h-8 rounded-button flex items-center justify-center bg-primary text-white shadow-lg shadow-primary/20 transition-colors">
-                1
-              </button>
-              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
-                2
-              </button>
-              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
-                3
-              </button>
-              <span className="text-text-muted px-1">...</span>
-              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
-                2077
-              </button>
-              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors border border-border">
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
+          <span className="text-sm text-text-muted">
+            Showing <span className="text-text-secondary font-medium">{filtered.length}</span> of{" "}
+            <span className="text-text-secondary font-medium">{total}</span> reviews
+          </span>
         </div>
       </div>
     </Shell>
