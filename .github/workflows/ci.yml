@@ -287,6 +287,7 @@ jobs:
   frontend:
     name: Frontend CI
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -304,13 +305,96 @@ jobs:
         working-directory: frontend
         run: npx tsc --noEmit
 
-      - name: Unit tests
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Unit tests + coverage
         working-directory: frontend
         run: npx vitest run --reporter=verbose --coverage
 
       - name: Build
         working-directory: frontend
         run: npm run build
+
+  # ── Frontend E2E (Playwright) ────────────────────────────
+  e2e-frontend:
+    name: Frontend E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ecommerce_ops_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/ecommerce_ops_e2e
+      REDIS_URL: redis://localhost:6379/0
+      ENV: testing
+      DEEPSEEK_API_KEY: sk-test-key
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
+
+      - name: Apply migrations
+        run: alembic upgrade head
+
+      - name: Start backend
+        run: |
+          nohup uvicorn ecommerce_ops.api.app:app --host 127.0.0.1 --port 8000 > /tmp/opsiq-api.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8000/health >/dev/null 2>&1; then
+              echo "Backend healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Backend failed to start"
+          cat /tmp/opsiq-api.log
+          exit 1
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --ignore-scripts
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps
+
+      - name: Run E2E tests
+        working-directory: frontend
+        run: npx playwright test
 
   # ── Performance Benchmarks ────────────────────────────────
   benchmark:

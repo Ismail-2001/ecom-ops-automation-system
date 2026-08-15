@@ -1,98 +1,29 @@
 "use client"
 
 import { useState } from "react"
-import { Search, ChevronLeft, ChevronRight, Eye, ShieldAlert, CheckCircle, Truck, Ban, Clock } from "lucide-react"
+import { Search, AlertTriangle } from "lucide-react"
 import Shell from "@/components/layout/Shell"
-import { cn } from "@/lib/utils"
-
-// TODO: Add useOrders hook when backend endpoint is ready
-
-const orders = [
-  {
-    id: "ORD-7042",
-    customer: "Sarah Chen",
-    amount: "$2,847.00",
-    status: "Processing",
-    statusClass: "badge-primary",
-    fraudScore: 87,
-    riskClass: "risk-high",
-    confidence: 98.2,
-    confidenceClass: "confidence-high",
-    action: "Review",
-    actionIcon: Eye,
-  },
-  {
-    id: "ORD-7041",
-    customer: "Marcus Williams",
-    amount: "$129.99",
-    status: "Delivered",
-    statusClass: "badge-success",
-    fraudScore: 12,
-    riskClass: "risk-low",
-    confidence: 99.1,
-    confidenceClass: "confidence-high",
-    action: "View",
-    actionIcon: Eye,
-  },
-  {
-    id: "ORD-7040",
-    customer: "Emma Rodriguez",
-    amount: "$4,521.00",
-    status: "Flagged",
-    statusClass: "badge-danger",
-    fraudScore: 94,
-    riskClass: "risk-high",
-    confidence: 82.4,
-    confidenceClass: "confidence-low",
-    action: "Block",
-    actionIcon: Ban,
-  },
-  {
-    id: "ORD-7039",
-    customer: "James O'Connor",
-    amount: "$89.99",
-    status: "Processing",
-    statusClass: "badge-primary",
-    fraudScore: 23,
-    riskClass: "risk-low",
-    confidence: 95.7,
-    confidenceClass: "confidence-high",
-    action: "Review",
-    actionIcon: Eye,
-  },
-  {
-    id: "ORD-7038",
-    customer: "Yuki Tanaka",
-    amount: "$1,245.00",
-    status: "Pending",
-    statusClass: "badge-warning",
-    fraudScore: 67,
-    riskClass: "risk-medium",
-    confidence: 88.9,
-    confidenceClass: "confidence-medium",
-    action: "Approve",
-    actionIcon: CheckCircle,
-  },
-  {
-    id: "ORD-7037",
-    customer: "Aisha Patel",
-    amount: "$342.00",
-    status: "Shipped",
-    statusClass: "badge-info",
-    fraudScore: 8,
-    riskClass: "risk-low",
-    confidence: 97.3,
-    confidenceClass: "confidence-high",
-    action: "Track",
-    actionIcon: Truck,
-  },
-]
+import { useOrders } from "@/lib/hooks"
+import { cn, formatCurrency, formatPercent, getRiskColor } from "@/lib/utils"
 
 const filters = ["All Orders", "Pending Review", "Flagged", "Completed"]
+
+function orderBadge(status: string): string {
+  const s = status.toLowerCase()
+  if (s.includes("flagged")) return "badge-danger"
+  if (s.includes("pending")) return "badge-warning"
+  if (s.includes("processing")) return "badge-primary"
+  if (s.includes("completed") || s.includes("delivered") || s.includes("shipped")) return "badge-success"
+  if (s.includes("cancel")) return "badge-muted"
+  return "badge-info"
+}
 
 export default function OrdersPage() {
   const [activeFilter, setActiveFilter] = useState("All Orders")
   const [searchQuery, setSearchQuery] = useState("")
+  const { data, isLoading, isError } = useOrders()
+
+  const orders = data?.orders ?? []
 
   const filteredOrders = orders.filter((order) => {
     if (searchQuery) {
@@ -101,9 +32,14 @@ export default function OrdersPage() {
         return false
       }
     }
-    if (activeFilter === "Pending Review") return order.status === "Pending"
-    if (activeFilter === "Flagged") return order.status === "Flagged"
-    if (activeFilter === "Completed") return order.status === "Delivered"
+    if (activeFilter === "Pending Review") return order.status.toLowerCase().includes("pending")
+    if (activeFilter === "Flagged") return order.status.toLowerCase().includes("flagged")
+    if (activeFilter === "Completed") {
+      return (
+        order.status.toLowerCase().includes("completed") ||
+        order.status.toLowerCase().includes("delivered")
+      )
+    }
     return true
   })
 
@@ -144,112 +80,81 @@ export default function OrdersPage() {
         </div>
 
         <div className="bg-white rounded-card shadow-card border border-border overflow-hidden">
-          <div className="table-container">
-            <table className="table">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="label-caps px-5 py-4 text-left">Order ID</th>
-                  <th className="label-caps px-5 py-4 text-left">Customer</th>
-                  <th className="label-caps px-5 py-4 text-right">Amount</th>
-                  <th className="label-caps px-5 py-4 text-center">Status</th>
-                  <th className="label-caps px-5 py-4 text-left">Fraud Score</th>
-                  <th className="label-caps px-5 py-4 text-center">AI Confidence</th>
-                  <th className="label-caps px-5 py-4 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredOrders.map((order) => {
-                  const ActionIcon = order.actionIcon
-                  return (
-                    <tr key={order.id} className="border-b border-border last:border-b-0 hover:bg-surface-2 transition-colors">
-                      <td className="px-5 py-4">
-                        <span className="font-mono text-data-sm text-primary">{order.id}</span>
-                      </td>
-                      <td className="px-5 py-4">
-                        <span className="text-sm font-medium text-text-primary">{order.customer}</span>
-                      </td>
-                      <td className="px-5 py-4 text-right">
-                        <span className="font-mono text-data-sm text-text-primary">{order.amount}</span>
-                      </td>
-                      <td className="px-5 py-4 text-center">
-                        <span className={cn("badge", order.statusClass)}>{order.status}</span>
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-3 min-w-[140px]">
-                          <div className="risk-bar flex-1">
-                            <div
-                              className={cn("risk-bar-fill", order.riskClass)}
-                              style={{ width: `${order.fraudScore}%` }}
-                            />
-                          </div>
-                          <span className="font-mono text-data-sm text-text-secondary w-10 text-right">
-                            {order.fraudScore}%
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 text-center">
-                        <span className={cn("confidence-pill", order.confidenceClass)}>
-                          {order.confidence}%
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-right">
-                        <button
-                          className={cn(
-                            "btn-ghost text-xs gap-1.5",
-                            order.action === "Block" && "text-danger hover:bg-danger/10 hover:text-danger"
-                          )}
-                        >
-                          <ActionIcon className="w-3.5 h-3.5" />
-                          {order.action}
-                        </button>
+          {isError ? (
+            <div className="m-4 flex items-center gap-2 p-3 rounded-lg bg-danger-light border border-danger/20">
+              <AlertTriangle className="w-4 h-4 text-danger shrink-0" />
+              <span className="text-sm text-danger">
+                Orders endpoint is not yet available on the backend.
+              </span>
+            </div>
+          ) : isLoading ? (
+            <div className="p-8 text-center text-sm text-text-secondary">Loading...</div>
+          ) : (
+            <div className="table-container">
+              <table className="table">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="label-caps px-5 py-4 text-left">Order ID</th>
+                    <th className="label-caps px-5 py-4 text-left">Customer</th>
+                    <th className="label-caps px-5 py-4 text-right">Amount</th>
+                    <th className="label-caps px-5 py-4 text-center">Status</th>
+                    <th className="label-caps px-5 py-4 text-left">Fraud Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-5 py-8 text-center text-sm text-text-secondary">
+                        No orders found.
                       </td>
                     </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                  ) : (
+                    filteredOrders.map((order) => (
+                      <tr key={order.id} className="border-b border-border last:border-b-0 hover:bg-surface-2 transition-colors">
+                        <td className="px-5 py-4">
+                          <span className="font-mono text-data-sm text-primary">{order.id}</span>
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className="text-sm font-medium text-text-primary">{order.customer}</span>
+                        </td>
+                        <td className="px-5 py-4 text-right">
+                          <span className="font-mono text-data-sm text-text-primary">
+                            {formatCurrency(order.total)}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-center">
+                          <span className={cn("badge", orderBadge(order.status))}>{order.status}</span>
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3 min-w-[140px]">
+                            <div className="risk-bar flex-1">
+                              <div
+                                className={cn("risk-bar-fill", getRiskColor(order.fraud_score))}
+                                style={{ width: `${Math.max(0, Math.min(1, order.fraud_score)) * 100}%` }}
+                              />
+                            </div>
+                            <span className="font-mono text-data-sm text-text-secondary w-10 text-right">
+                              {formatPercent(order.fraud_score)}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <div className="dot-red" />
-              <span className="text-sm text-text-secondary">Total Flagged Orders: <span className="font-mono text-data-sm text-danger">18</span></span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="dot-blue" />
-              <span className="text-sm text-text-secondary">Avg Processing Time: <span className="font-mono text-data-sm text-primary">2.3s</span></span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
+        {data && !isLoading && !isError && filteredOrders.length > 0 && (
+          <div className="flex items-center justify-end">
             <span className="text-sm text-text-muted">
-              Showing <span className="text-text-secondary font-medium">6</span> of <span className="text-text-secondary font-medium">2,847</span> orders
+              Showing <span className="text-text-secondary font-medium">{filteredOrders.length}</span> of{" "}
+              <span className="text-text-secondary font-medium">{data.total}</span> orders
             </span>
-            <div className="flex items-center gap-1">
-              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-3 hover:text-text-primary transition-colors border border-border">
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <button className="w-8 h-8 rounded-button flex items-center justify-center bg-primary text-white shadow-sm transition-colors">
-                1
-              </button>
-              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-3 hover:text-text-primary transition-colors border border-border">
-                2
-              </button>
-              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-3 hover:text-text-primary transition-colors border border-border">
-                3
-              </button>
-              <span className="text-text-muted px-1">...</span>
-              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-3 hover:text-text-primary transition-colors border border-border">
-                475
-              </button>
-              <button className="w-8 h-8 rounded-button flex items-center justify-center text-text-muted hover:bg-surface-3 hover:text-text-primary transition-colors border border-border">
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
           </div>
-        </div>
+        )}
       </div>
     </Shell>
   )

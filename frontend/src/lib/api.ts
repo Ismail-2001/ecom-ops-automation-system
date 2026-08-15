@@ -1,6 +1,8 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
-const API_VERSION = process.env.NEXT_PUBLIC_API_VERSION || "v1"
-const API_PREFIX = `/api/${API_VERSION}`
+const API_PREFIX = "/api/v1"
+
+const DEFAULT_TIMEOUT_MS = 30_000
+const MAX_RETRIES = 3
+const BASE_RETRY_DELAY_MS = 500
 
 class ApiError extends Error {
   status: number
@@ -14,49 +16,84 @@ class ApiError extends Error {
   }
 }
 
-function getCookie(name: string): string | null {
-  if (typeof document === 'undefined') return null
-  const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'))
-  return match ? decodeURIComponent(match[1]) : null
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 async function request<T>(
   path: string,
   options: RequestInit = {},
+  retryCount = 0,
 ): Promise<T> {
-  const url = `${API_BASE}${path}`
-  const token = getCookie("opsiq_api_key")
-
+  // Same-origin request: the BFF route handlers and middleware in `src/app/api`
+  // attach the authenticated backend identity. The browser never stores or
+  // sends the raw API key.
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers as Record<string, string>),
   }
 
-  const res = await fetch(url, { ...options, headers })
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS)
 
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, body.detail || res.statusText, body)
+  try {
+    const res = await fetch(path, { ...options, headers, signal: controller.signal })
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+
+      // Retry on 5xx errors
+      if (res.status >= 500 && retryCount < MAX_RETRIES) {
+        const delay = BASE_RETRY_DELAY_MS * Math.pow(2, retryCount)
+        await sleep(delay)
+        return request(path, options, retryCount + 1)
+      }
+
+      throw new ApiError(res.status, body.detail || res.statusText, body)
+    }
+
+    if (res.status === 204) return undefined as T
+    return res.json()
+  } catch (err) {
+    if (err instanceof ApiError) throw err
+
+    // Retry on network errors / timeout
+    if (retryCount < MAX_RETRIES && (err instanceof TypeError || err instanceof DOMException)) {
+      const delay = BASE_RETRY_DELAY_MS * Math.pow(2, retryCount)
+      await sleep(delay)
+      return request(path, options, retryCount + 1)
+    }
+
+    throw err
+  } finally {
+    clearTimeout(timeoutId)
   }
-
-  if (res.status === 204) return undefined as T
-  return res.json()
 }
 
 export const authApi = {
   login: (apiKey: string) =>
-    request<{ status: string; operator?: string; permissions?: string[] }>(
-      `${API_PREFIX}/auth/login`,
-      {
-        method: "POST",
-        body: JSON.stringify({ api_key: apiKey }),
-      }
+    request<{ status: string; operator?: string }>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ api_key: apiKey }),
+    }),
+  logout: () => request<{ status: string }>("/api/auth/logout", { method: "POST" }),
+  me: () =>
+    request<{ status: string; operator?: string; authenticated?: boolean }>(
+      "/api/auth/me"
     ),
 }
 
 export const healthApi = {
-  check: () => request<{ status: string; version?: string; uptime?: number }>(`${API_PREFIX}/health`),
+  check: () =>
+    request<{
+      status: string
+      version?: string
+      version_number?: string
+      environment?: string
+      uptime_seconds?: number
+      dependencies?: Record<string, string>
+      checks?: Record<string, string>
+    }>(`${API_PREFIX}/health`),
 }
 
 export const agentApi = {
@@ -91,7 +128,7 @@ export const approvalApi = {
 
 export const analyticsApi = {
   summary: (days?: number) =>
-    request<AnalyticsSummary>(`${API_PREFIX}/analytics/summary` + (days ? `?days=${days}` : "")),
+    request<AnalyticsSummary>(`${API_PREFIX}/analytics` + (days ? `?days=${days}` : "")),
 }
 
 export const orderApi = {
@@ -164,16 +201,14 @@ export const shopifyApi = {
 }
 
 export interface AgentStatus {
-  name: string
-  display_name: string
+  agent_id: string
   status: string
-  accuracy: number
-  confidence: number
-  processed_today: number
-  last_activity: string
-  uptime: number
-  error_rate: number
-  avg_response_time: number
+  streak: number
+  autonomy_level: string
+  total_decisions: number
+  total_approvals: number
+  total_rejections: number
+  avg_confidence: number
 }
 
 export interface InferenceLog {
@@ -188,35 +223,46 @@ export interface InferenceLog {
 
 export interface ApprovalAction {
   id: string
-  action_type: string
   agent: string
-  action: string
-  rationale: string
-  risk_level: string
-  confidence: number
-  financial_impact: number
+  action_type: string
   status: string
-  shopify_entity_id: string | null
-  shopify_entity_type: string | null
-  suggested_response: string | null
-  draft_response: string | null
-  execution_result: string | null
-  error_message: string | null
-  executed_at: string | null
-  expires_at: string | null
-  metadata: unknown
+  risk_level: string
+  confidence_score: number
   created_at: string
-  updated_at: string
+  expires_at: string | null
+  requires_hitl: boolean
+  shadow_mode: boolean
+  payload: Record<string, unknown>
+  evidence: Record<string, unknown>
+  impact: Record<string, unknown>
+  reviewed_by: string | null
+  reviewed_at: string | null
+  rejection_reason: string | null
+  operator_notes: string | null
 }
 
 export interface AnalyticsSummary {
   summary: {
     total_decisions: number
-    auto_approved: number
-    escalated: number
+    approval_rate: number
+    actions_auto_approved: number
     total_financial_impact: number
+    avg_confidence: number
+    avg_decision_time_minutes: number
   }
-  agent_breakdown: Record<string, { decisions: number; avg_confidence: number }>
+  graduation: Array<{
+    agent_id: string
+    streak: number
+    autonomy_level: string
+    total_decisions: number
+    avg_confidence: number
+  }>
+  risk_distribution: Record<string, number>
+  charts: {
+    approval_rate_over_time: Array<Record<string, unknown>>
+    volume_by_agent: Array<Record<string, unknown>>
+    decision_time_dist: Record<string, number>
+  }
 }
 
 export interface Order {
@@ -246,11 +292,15 @@ export interface CartItem {
 }
 
 export interface CartRecoveryAnalytics {
-  total_carts: number
-  recovered_carts: number
+  total_abandoned: number
+  total_recovered: number
   recovery_rate: number
   total_revenue_lost: number
-  revenue_recovered: number
+  total_revenue_recovered: number
+  average_cart_value: number
+  average_recovery_time_hours: number
+  top_recovery_strategy: string
+  risk_distribution?: Record<string, number>
 }
 
 export interface Review {
@@ -301,21 +351,18 @@ export interface SecurityEvent {
 
 export interface StoreSettings {
   id: number
-  shop_name: string
-  shop_url: string
-  auto_approve_threshold: number
-  max_order_value: number
-  fraud_check_enabled: boolean
-  inventory_sync_enabled: boolean
-  notification_email: string
+  shadow_mode: boolean
+  fraud_threshold: number
+  po_limit: number
+  pricing_limit: number
+  reviews_rating_threshold: number
 }
 
 export interface ShopifyStatus {
-  connected: boolean
-  shop_name: string
-  last_sync: string | null
-  products_count: number
-  orders_count: number
+  configured: boolean
+  shop_domain: string | null
+  api_version: string
+  webhook_topics: string[]
 }
 
 export { ApiError }

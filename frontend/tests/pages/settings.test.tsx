@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import './mocks'
+import { useSettings, useUpdateSettings } from '@/lib/hooks'
 import SettingsPage from '@/app/settings/page'
 
 vi.mock('@/components/layout/Shell', () => ({
@@ -32,31 +33,32 @@ describe('SettingsPage', () => {
     expect(screen.getByText('System Settings')).toBeDefined()
   })
 
-  it('renders API Configuration section', () => {
+  it('renders Automation Behavior section', () => {
     render(<SettingsPage />)
-    expect(screen.getByText('API Configuration')).toBeDefined()
-    expect(screen.getByText('Manage LLM provider credentials')).toBeDefined()
+    expect(screen.getByText('Automation Behavior')).toBeDefined()
+    expect(screen.getByText('Control how agents operate across the store')).toBeDefined()
   })
 
-  it('renders Notification Settings section', () => {
+  it('renders Risk & Spend Limits section', () => {
     render(<SettingsPage />)
-    expect(screen.getByText('Notification Settings')).toBeDefined()
-    expect(screen.getByText('Configure alert delivery channels')).toBeDefined()
+    expect(screen.getByText('Risk & Spend Limits')).toBeDefined()
+    expect(screen.getByText('Set caps agents must respect before taking action')).toBeDefined()
   })
 
-  it('renders System Maintenance section', () => {
+  it('renders configuration inputs', () => {
     render(<SettingsPage />)
-    expect(screen.getByText('System Maintenance')).toBeDefined()
-    expect(screen.getByText('Clear Cache')).toBeDefined()
-    expect(screen.getByText('Restart Agents')).toBeDefined()
-    expect(screen.getByText('Export Logs')).toBeDefined()
-    expect(screen.getByText('Reset Defaults')).toBeDefined()
+    expect(screen.getByText('Shadow Mode')).toBeDefined()
+    expect(screen.getByText('Fraud Score Threshold')).toBeDefined()
+    expect(screen.getByText('Purchase Order Limit')).toBeDefined()
+    expect(screen.getByText('Pricing Change Limit (%)')).toBeDefined()
+    expect(screen.getByText('Review Sentiment Threshold')).toBeDefined()
   })
 
-  it('renders LLM provider select with default value', () => {
+  it('hydrates form values from settings', () => {
     render(<SettingsPage />)
-    const select = screen.getByDisplayValue('Google Gemini')
-    expect(select).toBeDefined()
+    expect((screen.getByText('Fraud Score Threshold').parentElement?.querySelector('input[type="range"]') as HTMLInputElement)?.value).toBe('70')
+    expect((screen.getByText('Purchase Order Limit').parentElement?.querySelector('input[type="number"]') as HTMLInputElement)?.value).toBe('1000')
+    expect((screen.getByText('Pricing Change Limit (%)').parentElement?.querySelector('input[type="number"]') as HTMLInputElement)?.value).toBe('5')
   })
 
   it('renders Save Changes button', () => {
@@ -64,19 +66,69 @@ describe('SettingsPage', () => {
     expect(screen.getByText('Save Changes')).toBeDefined()
   })
 
-  it('renders notification toggles', () => {
+  it('renders shadow mode toggle enabled by default', () => {
     render(<SettingsPage />)
-    expect(screen.getByText('Email Notifications')).toBeDefined()
-    expect(screen.getByText('Slack Alerts')).toBeDefined()
-    expect(screen.getByText('SMS Alerts')).toBeDefined()
-    expect(screen.getByText('Browser Push')).toBeDefined()
+    const toggle = screen.getByRole('switch')
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
   })
 
-  it('toggles notification state on click', () => {
+  it('toggles shadow mode state on click', () => {
     render(<SettingsPage />)
-    const toggles = screen.getAllByRole('switch')
-    expect(toggles.length).toBeGreaterThanOrEqual(4)
-    fireEvent.click(toggles[0])
-    expect(toggles[0].getAttribute('aria-checked')).toBe('false')
+    const toggle = screen.getByRole('switch')
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-checked')).toBe('false')
+  })
+
+  it('renders loading state while settings load', () => {
+    vi.mocked(useSettings).mockReturnValueOnce({ data: undefined, isLoading: true } as any)
+    render(<SettingsPage />)
+    expect(screen.getByText(/Loading current settings from the backend/)).toBeDefined()
+  })
+
+  it('renders error banner when settings fail to load', () => {
+    vi.mocked(useSettings).mockReturnValueOnce({ data: undefined, isLoading: false, isError: true } as any)
+    render(<SettingsPage />)
+    expect(screen.getByText(/Failed to load settings\. Showing last known values\./)).toBeDefined()
+  })
+
+  it('updates fraud score threshold via range input', () => {
+    render(<SettingsPage />)
+    const input = screen.getByText('Fraud Score Threshold').parentElement?.querySelector('input[type="range"]') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '85' } })
+    expect(screen.getAllByText('85').length).toBeGreaterThan(0)
+  })
+
+  it('updates purchase order limit via input', () => {
+    render(<SettingsPage />)
+    const input = screen.getByText('Purchase Order Limit').parentElement?.querySelector('input[type="number"]') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '2500' } })
+    expect(input.value).toBe('2500')
+  })
+
+  it('keeps previous value when number input is cleared', () => {
+    render(<SettingsPage />)
+    const input = screen.getByText('Purchase Order Limit').parentElement?.querySelector('input[type="number"]') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '' } })
+    expect(input.value).toBe('1000')
+  })
+
+  it('calls update mutation and shows saved confirmation', () => {
+    const mutate = vi.fn((_payload: unknown, cb?: { onSuccess?: () => void }) => cb?.onSuccess?.())
+    vi.mocked(useUpdateSettings).mockReturnValue({ mutate, isPending: false })
+    render(<SettingsPage />)
+    fireEvent.click(screen.getByText('Save Changes'))
+    expect(mutate).toHaveBeenCalled()
+    expect(screen.getByText('Saved Successfully')).toBeDefined()
+  })
+
+  it('survives unstable settings object identity without looping', () => {
+    const unstable = vi.fn(() => ({
+      data: { shadow_mode: true, fraud_threshold: 70, po_limit: 1000, pricing_limit: 5, reviews_rating_threshold: 4 },
+      isLoading: false,
+    }))
+    vi.mocked(useSettings).mockImplementation(unstable)
+    render(<SettingsPage />)
+    expect(screen.getByText('System Settings')).toBeDefined()
+    expect(unstable.mock.calls.length).toBeLessThanOrEqual(3)
   })
 })

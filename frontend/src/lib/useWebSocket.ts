@@ -6,6 +6,7 @@ const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000/ws/qu
 const RECONNECT_BASE_MS = 1_000
 const RECONNECT_MAX_MS = 30_000
 const PING_INTERVAL_MS = 30_000
+const TICKET_TTL_MARGIN_MS = 5_000
 
 // WebSocket close codes matching backend
 const CLOSE_AUTH_FAILED = 4001
@@ -38,10 +39,21 @@ interface WebSocketState {
   authFailed: boolean
 }
 
-function getAuthToken(): string | null {
-  if (typeof document === "undefined") return null
-  const match = document.cookie.match(/(?:^|; )opsiq_api_key=([^;]*)/)
-  return match ? decodeURIComponent(match[1]) : null
+/**
+ * Fetch a short-lived, single-use WS ticket from the BFF. The ticket is issued
+ * server-side from the HttpOnly session; the raw API key never touches JS.
+ */
+async function fetchTicket(): Promise<{ ticket: string; ttlMs: number }> {
+  const res = await fetch("/api/auth/ws-ticket", { cache: "no-store" })
+  if (!res.ok) {
+    throw new Error(`ws-ticket failed: ${res.status}`)
+  }
+  const body = await res.json().catch(() => null)
+  if (!body?.ticket) {
+    throw new Error("ws-ticket returned no ticket")
+  }
+  const ttlSeconds = Number(body.ttl_seconds || 60)
+  return { ticket: body.ticket as string, ttlMs: ttlSeconds * 1000 }
 }
 
 export function useWebSocket(options: UseWebSocketOptions = {}) {
@@ -51,6 +63,19 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const pingTimer = useRef<ReturnType<typeof setInterval> | null>(null)
   const attemptRef = useRef(0)
   const authFailedRef = useRef(false)
+  const ticketExpiryRef = useRef(0)
+
+  // Use refs for all callbacks to avoid stale closures and circular deps
+  const onEventRef = useRef(onEvent)
+  const onConnectRef = useRef(onConnect)
+  const onDisconnectRef = useRef(onDisconnect)
+  const enabledRef = useRef(enabled)
+  const connectRef = useRef<() => Promise<void>>()
+
+  onEventRef.current = onEvent
+  onConnectRef.current = onConnect
+  onDisconnectRef.current = onDisconnect
+  enabledRef.current = enabled
 
   const [state, setState] = useState<WebSocketState>({
     isConnected: false,
@@ -60,32 +85,46 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     authFailed: false,
   })
 
-  const buildWsUrl = useCallback(() => {
-    const token = getAuthToken()
-    if (token) {
-      return `${WS_BASE_URL}?token=${encodeURIComponent(token)}`
+  const cleanup = useCallback(() => {
+    if (pingTimer.current) {
+      clearInterval(pingTimer.current)
+      pingTimer.current = null
     }
-    return WS_BASE_URL
+    if (reconnectTimer.current) {
+      clearTimeout(reconnectTimer.current)
+      reconnectTimer.current = null
+    }
   }, [])
 
-  const connect = useCallback(() => {
-    if (!enabled) return
+  const scheduleReconnect = useCallback(() => {
+    if (!enabledRef.current || authFailedRef.current) return
+    const delay = Math.min(
+      RECONNECT_BASE_MS * Math.pow(2, attemptRef.current),
+      RECONNECT_MAX_MS,
+    )
+    attemptRef.current += 1
+    setState((s) => ({ ...s, reconnectAttempt: attemptRef.current }))
+
+    reconnectTimer.current = setTimeout(() => {
+      connectRef.current?.()
+    }, delay)
+  }, [])
+
+  const connect = useCallback(async () => {
+    if (!enabledRef.current) return
     if (wsRef.current?.readyState === WebSocket.OPEN) return
     if (authFailedRef.current) return
-
-    // Re-check auth token — if no token and in production, don't attempt
-    const token = getAuthToken()
-    if (!token && process.env.NODE_ENV === "production") {
-      authFailedRef.current = true
-      setState((s) => ({ ...s, authFailed: true }))
-      return
-    }
 
     setState((s) => ({ ...s, isConnecting: true }))
 
     try {
-      const wsUrl = buildWsUrl()
-      const ws = new WebSocket(wsUrl)
+      // Mint a fresh single-use ticket from the BFF per connection attempt.
+      const { ticket, ttlMs } = await fetchTicket()
+      ticketExpiryRef.current = Date.now() + ttlMs - TICKET_TTL_MARGIN_MS
+
+      const base = WS_BASE_URL
+      const finalUrl = `${base}${base.includes("?") ? "&" : "?"}ticket=${encodeURIComponent(ticket)}`
+      const ws = new WebSocket(finalUrl)
 
       ws.onopen = () => {
         attemptRef.current = 0
@@ -97,7 +136,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
           reconnectAttempt: 0,
           authFailed: false,
         }))
-        onConnect?.()
+        onConnectRef.current?.()
 
         pingTimer.current = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
@@ -111,13 +150,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
           const event: WSEvent = JSON.parse(msg.data)
           if (event.type === "pong") return
 
-          // Handle auth error from server
           if (event.type === "error" && event.payload?.code === "rate_limited") {
             return
           }
 
           setState((s) => ({ ...s, lastEvent: event }))
-          onEvent?.(event)
+          onEventRef.current?.(event)
         } catch {
           // Ignore malformed messages
         }
@@ -143,7 +181,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
         }
 
         setState((s) => ({ ...s, isConnected: false, isConnecting: false }))
-        onDisconnect?.()
+        onDisconnectRef.current?.()
         scheduleReconnect()
       }
 
@@ -156,32 +194,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       setState((s) => ({ ...s, isConnecting: false }))
       scheduleReconnect()
     }
-  }, [enabled, onEvent, onConnect, onDisconnect, buildWsUrl])
+  }, [cleanup, scheduleReconnect])
 
-  const cleanup = useCallback(() => {
-    if (pingTimer.current) {
-      clearInterval(pingTimer.current)
-      pingTimer.current = null
-    }
-    if (reconnectTimer.current) {
-      clearTimeout(reconnectTimer.current)
-      reconnectTimer.current = null
-    }
-  }, [])
-
-  const scheduleReconnect = useCallback(() => {
-    if (!enabled || authFailedRef.current) return
-    const delay = Math.min(
-      RECONNECT_BASE_MS * Math.pow(2, attemptRef.current),
-      RECONNECT_MAX_MS,
-    )
-    attemptRef.current += 1
-    setState((s) => ({ ...s, reconnectAttempt: attemptRef.current }))
-
-    reconnectTimer.current = setTimeout(() => {
-      connect()
-    }, delay)
-  }, [enabled, connect])
+  // Update connectRef after connect is defined
+  connectRef.current = connect
 
   const disconnect = useCallback(() => {
     cleanup()
@@ -195,11 +211,13 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       authFailed: false,
     })
     authFailedRef.current = false
+    ticketExpiryRef.current = 0
   }, [cleanup])
 
-  // Reset auth state when token changes (e.g., after login)
+  // Reset auth state after a new session is established (e.g., after login)
   const resetAuth = useCallback(() => {
     authFailedRef.current = false
+    ticketExpiryRef.current = 0
     setState((s) => ({ ...s, authFailed: false }))
     attemptRef.current = 0
     connect()
@@ -216,7 +234,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   return {
     ...state,
     disconnect,
-    reconnect: connect,
+    reconnect: () => connect(),
     resetAuth,
   }
 }

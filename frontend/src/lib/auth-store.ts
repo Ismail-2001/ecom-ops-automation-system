@@ -3,34 +3,20 @@ import { persist } from "zustand/middleware"
 import { authApi, ApiError } from "./api"
 
 interface AuthState {
-  apiKey: string | null
   operator: string | null
   isAuthenticated: boolean
   isLoading: boolean
   error: string | null
 
   login: (apiKey: string) => Promise<boolean>
-  logout: () => void
+  logout: () => Promise<void>
+  checkSession: () => Promise<boolean>
   clearError: () => void
-}
-
-function setCookie(name: string, value: string, days = 7) {
-  if (typeof document === 'undefined') return
-  const expires = new Date(Date.now() + days * 864e5).toUTCString()
-  const secure = window.location.protocol === 'https:' ? '; Secure' : ''
-  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Strict${secure}`
-}
-
-function deleteCookie(name: string) {
-  if (typeof document === 'undefined') return
-  const secure = window.location.protocol === 'https:' ? '; Secure' : ''
-  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Strict${secure}`
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
-      apiKey: null,
       operator: null,
       isAuthenticated: false,
       isLoading: false,
@@ -41,13 +27,11 @@ export const useAuthStore = create<AuthState>()(
         try {
           const res = await authApi.login(apiKey)
           if (res.status === "ok") {
-            setCookie("opsiq_api_key", apiKey)
-            setCookie("opsiq_auth", "true")
             set({
-              apiKey,
-              operator: res.operator,
+              operator: res.operator ?? "api-operator",
               isAuthenticated: true,
               isLoading: false,
+              error: null,
             })
             return true
           }
@@ -58,31 +42,54 @@ export const useAuthStore = create<AuthState>()(
             err instanceof ApiError
               ? err.status === 401
                 ? "Invalid API key"
-                : `Server error (${err.status})`
+                : err.status === 502
+                  ? "Connection failed — is the backend running?"
+                  : `Server error (${err.status})`
               : "Connection failed — is the backend running?"
           set({ isLoading: false, error: message })
           return false
         }
       },
 
-      logout: () => {
-        deleteCookie("opsiq_api_key")
-        deleteCookie("opsiq_auth")
+      logout: async () => {
+        try {
+          await authApi.logout()
+        } catch {
+          // Best-effort: continue clearing local state even if backend is down.
+        }
         set({
-          apiKey: null,
           operator: null,
           isAuthenticated: false,
           error: null,
         })
       },
 
+      checkSession: async () => {
+        try {
+          const res = await authApi.me()
+          if (res.authenticated) {
+            set({
+              operator: res.operator ?? "api-operator",
+              isAuthenticated: true,
+              error: null,
+            })
+            return true
+          }
+        } catch {
+          // no session or backend down
+        }
+        set({ isAuthenticated: false, operator: null })
+        return false
+      },
+
       clearError: () => set({ error: null }),
     }),
     {
       name: "opsiq-auth",
+      // Only persist the operator string. The API key and real session live
+      // server-side in an HttpOnly cookie and are never exposed to JS.
       partialize: (state) => ({
         operator: state.operator,
-        isAuthenticated: state.isAuthenticated,
       }),
     },
   ),
