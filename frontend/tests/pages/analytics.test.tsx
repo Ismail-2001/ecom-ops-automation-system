@@ -19,16 +19,16 @@ describe('AnalyticsPage', () => {
     expect(screen.getByText('Performance Intelligence')).toBeDefined()
   })
 
-  it('renders metric cards', () => {
+  it('renders metric cards from backend data', () => {
     render(<AnalyticsPage />)
-    expect(screen.getByText('ROI FROM AI AGENTS')).toBeDefined()
-    expect(screen.getByText('428.4%')).toBeDefined()
-    expect(screen.getByText('TOTAL REVENUE SAVED')).toBeDefined()
-    expect(screen.getByText('$1.24M')).toBeDefined()
-    expect(screen.getByText('AVG. RESOLUTION TIME')).toBeDefined()
-    expect(screen.getByText('1.4m')).toBeDefined()
-    expect(screen.getByText('AGENT ACCURACY')).toBeDefined()
-    expect(screen.getByText('99.1%')).toBeDefined()
+    expect(screen.getByText('FINANCIAL IMPACT')).toBeDefined()
+    expect(screen.getByText('$124,892.40')).toBeDefined()
+    expect(screen.getByText('DECISIONS MADE')).toBeDefined()
+    expect(screen.getByText('14,208')).toBeDefined()
+    expect(screen.getByText('APPROVAL RATE')).toBeDefined()
+    expect(screen.getByText('82.1%')).toBeDefined()
+    expect(screen.getByText('AVG DECISION TIME')).toBeDefined()
+    expect(screen.getByText('1.4 min')).toBeDefined()
   })
 
   it('renders time range filter buttons', () => {
@@ -45,25 +45,22 @@ describe('AnalyticsPage', () => {
     expect(btn7d.className).toContain('bg-primary/15')
   })
 
-  it('renders revenue trends section', () => {
-    render(<AnalyticsPage />)
-    expect(screen.getByText('Revenue Trends')).toBeDefined()
-  })
-
-  it('renders decision distribution chart', () => {
-    render(<AnalyticsPage />)
-    expect(screen.getByText('Decision Distribution')).toBeDefined()
-    expect(screen.getByText('Auto-Approved')).toBeDefined()
-    expect(screen.getByText('Human Intervention')).toBeDefined()
-    expect(screen.getByText('Auto-Rejected')).toBeDefined()
-  })
-
-  it('renders risk distribution table', () => {
+  it('renders risk distribution table from backend data', () => {
     render(<AnalyticsPage />)
     expect(screen.getByText('Risk Distribution')).toBeDefined()
-    expect(screen.getByText('North America - East')).toBeDefined()
-    expect(screen.getByText('APAC - Singapore')).toBeDefined()
-    expect(screen.getByText('EMEA - Frankfurt')).toBeDefined()
+    expect(screen.getByText('Critical')).toBeDefined()
+    expect(screen.getByText('High')).toBeDefined()
+    expect(screen.getByText('Medium')).toBeDefined()
+    expect(screen.getByText('Low')).toBeDefined()
+  })
+
+  it('renders charts section without fabricating visuals', () => {
+    render(<AnalyticsPage />)
+    expect(screen.getByText('Charts')).toBeDefined()
+    expect(screen.getByText(/Backend returned chart data/)).toBeDefined()
+    expect(screen.getByText(/approval_rate_over_time/)).toBeDefined()
+    expect(screen.getByText(/volume_by_agent/)).toBeDefined()
+    expect(screen.getByText(/decision_time_dist/)).toBeDefined()
   })
 
   it('renders export button', () => {

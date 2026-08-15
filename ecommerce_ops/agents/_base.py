@@ -1,16 +1,18 @@
 import abc
-from typing import Dict, Any, List, Optional
+from typing import Any
+
+import structlog
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
+
 from ecommerce_ops.config import settings, Environment
 from ecommerce_ops.graph.state import AgentDecision
-from ecommerce_ops.memory.agent_memory import store_decision_memory, get_recent_memories, get_pattern_insight
-import structlog
+from ecommerce_ops.memory.agent_memory import get_pattern_insight, get_recent_memories, store_decision_memory
 
 logger = structlog.get_logger(__name__)
 
 
-class BaseAgent(abc.ABC):
+class BaseAgent(abc.ABC):  # noqa: B024
     def __init__(self, agent_name: str):
         self.agent_name = agent_name
         google_key = settings.GOOGLE_API_KEY.get_secret_value() if settings.GOOGLE_API_KEY else None
@@ -40,12 +42,12 @@ class BaseAgent(abc.ABC):
                 timeout=30,
             )
 
-    async def run(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def run(self, state: dict[str, Any]) -> dict[str, Any]:
         raise NotImplementedError(
             f"{self.__class__.__name__} must implement 'run' or use a custom method"
         )
 
-    async def load_memory_context(self, state: Dict[str, Any]) -> str:
+    async def load_memory_context(self, state: dict[str, Any]) -> str:
         recent = await get_recent_memories(self.agent_name, 5)
         insight = await get_pattern_insight(self.agent_name)
         lines = []
@@ -76,7 +78,7 @@ class BaseAgent(abc.ABC):
         self,
         action_type: str,
         reasoning: str,
-        data: Dict[str, Any],
+        data: dict[str, Any],
         confidence: float,
         requires_approval: bool = True,
     ) -> AgentDecision:

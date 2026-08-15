@@ -8,6 +8,7 @@ import asyncio
 import json
 import hmac
 import logging
+import secrets
 import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set
@@ -23,6 +24,7 @@ MAX_WS_CONNECTIONS = 500
 MAX_CONNECTIONS_PER_IP = 5
 RATE_LIMIT_MESSAGES = 30  # per minute
 RATE_LIMIT_WINDOW = 60.0  # seconds
+WS_TICKET_TTL_SECONDS = 60  # short-lived, single-use WS tickets
 
 # ── WebSocket Close Codes (RFC 6455 + custom) ──────────────
 CLOSE_NORMAL = 1000
@@ -32,6 +34,49 @@ CLOSE_TRY_AGAIN_LATER = 1013
 CLOSE_AUTH_FAILED = 4001
 CLOSE_RATE_LIMITED = 4008
 CLOSE_TOO_MANY_CONNECTIONS = 4013
+
+
+class WSTicketStore:
+    """
+    In-memory store of short-lived, single-use WebSocket tickets.
+
+    A ticket is a random high-entropy value that the frontend exchanges its
+    session for (via the BFF route). It is never reused and expires quickly,
+    so a leaked ticket in a proxy/log is not a usable standing credential.
+    """
+
+    def __init__(self) -> None:
+        self._tickets: Dict[str, float] = {}
+        self._lock = asyncio.Lock()
+
+    async def issue(self, operator: str = "ws-operator") -> str:
+        ticket = secrets.token_urlsafe(32)
+        async with self._lock:
+            self._purge_locked()
+            self._tickets[ticket] = time.monotonic() + WS_TICKET_TTL_SECONDS
+        return ticket
+
+    async def verify(self, ticket: str) -> Optional[str]:
+        """
+        Validate and consume a single-use ticket.
+
+        Returns the operator id on success, None on invalid/expired/reused.
+        """
+        now = time.monotonic()
+        async with self._lock:
+            expiry = self._tickets.pop(ticket, None)
+        if expiry is None or expiry < now:
+            return None
+        return "ws-operator"
+
+    def _purge_locked(self) -> None:
+        now = time.monotonic()
+        expired = [t for t, exp in self._tickets.items() if exp < now]
+        for t in expired:
+            self._tickets.pop(t, None)
+
+
+ws_ticket_store = WSTicketStore()
 
 
 class AuthenticatedConnection:
@@ -145,7 +190,7 @@ class ConnectionManager:
 
     def _verify_token(self, token: Optional[str]) -> Optional[str]:
         """
-        Verify WS auth token against API_KEY.
+        Verify WS auth token against a single-use ticket or the API_KEY.
         Returns operator ID if valid, None if invalid.
         """
         if not token:
@@ -156,12 +201,6 @@ class ConnectionManager:
             expected_key = api_key_setting.get_secret_value()
             if hmac.compare_digest(token, expected_key):
                 return "ws-operator"
-
-            # Also check cookie-based auth key (from frontend)
-            cookie_key = token
-            if hmac.compare_digest(cookie_key, expected_key):
-                return "ws-operator"
-
             return None
 
         # Dev mode: accept any token
@@ -177,8 +216,10 @@ class ConnectionManager:
         """
         client_ip = self._get_client_ip(websocket)
 
-        # 1. Verify auth token
-        operator = self._verify_token(token)
+        # 0. Accept a one-time ticket (single-use, TTL-bounded) OR an API key
+        operator: Optional[str] = None
+        if token:
+            operator = await ws_ticket_store.verify(token) or self._verify_token(token)
         if not operator:
             logger.warning("WS auth rejected from %s: invalid token", client_ip)
             await websocket.accept()

@@ -1,20 +1,37 @@
 "use client"
 
-import { useRouter } from "next/navigation"
-import { useEffect } from "react"
+import { usePathname, useRouter } from "next/navigation"
+import { useEffect, useRef } from "react"
 import { useAuthStore } from "@/lib/auth-store"
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, checkSession } = useAuthStore()
   const router = useRouter()
+  const pathname = usePathname()
+  const checkedRef = useRef(false)
+
+  // On first mount (e.g., a hard refresh), verify the HttpOnly session against
+  // the BFF so a stale Zustand persist value can't grant access.
+  useEffect(() => {
+    if (checkedRef.current) return
+    checkedRef.current = true
+    checkSession().then((valid) => {
+      if (!valid && pathname !== "/login") {
+        router.replace("/login")
+      }
+    })
+  }, [checkSession, pathname, router])
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated && pathname !== "/login") {
       router.replace("/login")
     }
-  }, [isAuthenticated, router])
+  }, [isAuthenticated, pathname, router])
 
-  if (!isAuthenticated) return null
+  // Gate: render children only when authenticated or on the login page itself.
+  if (!isAuthenticated && pathname !== "/login") {
+    return null
+  }
 
   return <>{children}</>
 }

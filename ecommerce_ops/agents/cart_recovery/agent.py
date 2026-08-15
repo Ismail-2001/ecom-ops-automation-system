@@ -5,8 +5,8 @@ Analyzes abandoned carts and creates recovery campaigns.
 
 import logging
 import time
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from datetime import datetime
+from typing import Any, Optional
 
 from ecommerce_ops.agents._base import BaseAgent
 from ecommerce_ops.agents.cart_recovery.discounts import DiscountCodeGenerator
@@ -14,7 +14,6 @@ from ecommerce_ops.agents.cart_recovery.models import (
     AbandonedCart,
     CartItem,
     CartRecoveryResult,
-    CartRiskLevel,
     CartStatus,
     CustomerProfile,
     RecoveryStrategy,
@@ -33,7 +32,7 @@ class AbandonedCartAgent(BaseAgent):
         self.strategy_engine = RecoveryStrategyEngine()
         self.discount_generator = DiscountCodeGenerator()
 
-    async def run(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def run(self, state: dict[str, Any]) -> dict[str, Any]:
         """Run the abandoned cart analysis."""
         start_time = time.time()
 
@@ -155,7 +154,7 @@ class AbandonedCartAgent(BaseAgent):
             requires_approval=requires_approval,
         )
 
-    def _parse_cart(self, cart_data: Dict[str, Any]) -> AbandonedCart:
+    def _parse_cart(self, cart_data: dict[str, Any]) -> AbandonedCart:
         """Parse raw cart data into AbandonedCart model."""
         # Parse items
         items = []
@@ -216,7 +215,7 @@ class AbandonedCartAgent(BaseAgent):
             metadata=cart_data.get("metadata", {}),
         )
 
-    def _requires_approval(self, cart: AbandonedCart, recommendation: Dict[str, Any]) -> bool:
+    def _requires_approval(self, cart: AbandonedCart, recommendation: dict[str, Any]) -> bool:
         """Determine if recovery action needs human approval."""
         # High-value carts need approval
         if cart.total_value > 200:
@@ -237,7 +236,7 @@ class AbandonedCartAgent(BaseAgent):
         return False
 
     async def generate_recovery_report(
-        self, results: List[Dict[str, Any]]
+        self, results: list[dict[str, Any]]
     ) -> Dict[str, Any]:
         """Generate aggregate recovery report."""
         total_carts = len(results)
