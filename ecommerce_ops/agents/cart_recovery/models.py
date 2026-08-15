@@ -5,7 +5,7 @@ Pydantic models for cart recovery analytics and strategy.
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -41,30 +41,30 @@ class CartItem(BaseModel):
     product_id: int
     variant_id: int
     title: str
-    sku: Optional[str] = None
+    sku: str | None = None
     quantity: int = 1
     price: float = 0.0
     total: float = 0.0
-    image_url: Optional[str] = None
-    product_type: Optional[str] = None
-    vendor: Optional[str] = None
+    image_url: str | None = None
+    product_type: str | None = None
+    vendor: str | None = None
 
     class Config:
         extra = "allow"
 
 
 class CustomerProfile(BaseModel):
-    id: Optional[int] = None
-    email: Optional[str] = None
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
+    id: int | None = None
+    email: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
     total_orders: int = 0
     total_spent: float = 0.0
     average_order_value: float = 0.0
-    last_order_date: Optional[datetime] = None
+    last_order_date: datetime | None = None
     is_repeat_customer: bool = False
     segment: str = "new"
-    tags: List[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
 
     @property
     def lifetime_value_tier(self) -> str:
@@ -80,9 +80,9 @@ class CustomerProfile(BaseModel):
 class AbandonedCart(BaseModel):
     id: str
     shop_domain: str
-    checkout_token: Optional[str] = None
-    customer: Optional[CustomerProfile] = None
-    items: List[CartItem] = Field(default_factory=list)
+    checkout_token: str | None = None
+    customer: CustomerProfile | None = None
+    items: list[CartItem] = Field(default_factory=list)
     total_value: float = 0.0
     currency: str = "USD"
     items_count: int = 0
@@ -95,19 +95,19 @@ class AbandonedCart(BaseModel):
     recovery_link_clicked: bool = False
     recovery_completed: bool = False
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    abandoned_at: Optional[datetime] = None
-    recovered_at: Optional[datetime] = None
-    expires_at: Optional[datetime] = None
-    checkout_url: Optional[str] = None
-    recovery_url: Optional[str] = None
-    notes: Optional[str] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    abandoned_at: datetime | None = None
+    recovered_at: datetime | None = None
+    expires_at: datetime | None = None
+    checkout_url: str | None = None
+    recovery_url: str | None = None
+    notes: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     class Config:
         extra = "allow"
 
     @property
-    def time_abandoned_hours(self) -> Optional[float]:
+    def time_abandoned_hours(self) -> float | None:
         if self.abandoned_at:
             delta = datetime.utcnow() - self.abandoned_at
             return delta.total_seconds() / 3600
@@ -167,15 +167,15 @@ class RecoveryEmailTemplate(BaseModel):
     preview_text: str
     body_template: str
     cta_text: str = "Complete Your Order"
-    discount_code: Optional[str] = None
-    discount_value: Optional[float] = None
+    discount_code: str | None = None
+    discount_value: float | None = None
     urgency_hours: int = 24
 
 
 class CartRecoveryResult(BaseModel):
     cart_id: str
     strategy_used: RecoveryStrategy
-    discount_code: Optional[str] = None
+    discount_code: str | None = None
     discount_value: float = 0.0
     email_sent: bool = False
     email_opened: bool = False
@@ -183,7 +183,7 @@ class CartRecoveryResult(BaseModel):
     recovered: bool = False
     revenue_recovered: float = 0.0
     processing_time_ms: float = 0.0
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class CartAnalytics(BaseModel):
@@ -194,7 +194,7 @@ class CartAnalytics(BaseModel):
     total_revenue_recovered: float = 0.0
     average_cart_value: float = 0.0
     average_recovery_time_hours: float = 0.0
-    top_recovery_strategy: Optional[RecoveryStrategy] = None
-    strategy_breakdown: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
-    hourly_distribution: List[Dict[str, Any]] = Field(default_factory=list)
-    risk_distribution: Dict[str, int] = Field(default_factory=dict)
+    top_recovery_strategy: RecoveryStrategy | None = None
+    strategy_breakdown: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    hourly_distribution: list[dict[str, Any]] = Field(default_factory=list)
+    risk_distribution: dict[str, int] = Field(default_factory=dict)

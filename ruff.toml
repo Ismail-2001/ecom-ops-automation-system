@@ -2,6 +2,10 @@
 target-version = "py312"
 line-length = 100
 
+exclude = [
+    "ecommerce_ops/ecommerce_ops",  # nested duplicate — not part of the package
+]
+
 [lint]
 select = [
     "E",    # pycodestyle errors
@@ -19,6 +23,9 @@ ignore = [
     "E501",   # line too long (handled by formatter)
     "B008",   # function call in default argument
     "UP007",  # use X | Y for union types
+    "UP035",  # deprecated typing imports (Dict, List, Optional)
+    "UP006",  # use builtin types for annotations
+    "UP045",  # use X | None instead of Optional[X]
 ]
 
 [lint.per-file-ignores]
