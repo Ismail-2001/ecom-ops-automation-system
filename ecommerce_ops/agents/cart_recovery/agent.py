@@ -6,7 +6,7 @@ Analyzes abandoned carts and creates recovery campaigns.
 import logging
 import time
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from ecommerce_ops.agents._base import BaseAgent
 from ecommerce_ops.agents.cart_recovery.discounts import DiscountCodeGenerator
@@ -92,7 +92,7 @@ class AbandonedCartAgent(BaseAgent):
             "recovery_results": [r.model_dump() for r in recovery_results],
         }
 
-    async def _analyze_cart(self, cart: AbandonedCart) -> Optional[AgentDecision]:
+    async def _analyze_cart(self, cart: AbandonedCart) -> AgentDecision | None:
         """Analyze a single cart and create a recovery decision."""
         if not cart.is_recoverable:
             logger.debug("Cart %s is not recoverable (status: %s)", cart.id, cart.status)
@@ -230,14 +230,11 @@ class AbandonedCartAgent(BaseAgent):
             return True
 
         # Low confidence needs approval
-        if recommendation["recovery_probability"] < 0.3:
-            return True
-
-        return False
+        return recommendation["recovery_probability"] < 0.3
 
     async def generate_recovery_report(
         self, results: list[dict[str, Any]]
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate aggregate recovery report."""
         total_carts = len(results)
         total_value = sum(r.get("total_value", 0) for r in results)

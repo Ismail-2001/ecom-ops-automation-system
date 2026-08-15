@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Optional, Dict, List
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, SecretStr, model_validator
 
@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     
     # Authentication
     API_KEY: Optional[SecretStr] = None
-    CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:8000"]
+    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:8000"]
     
     # API Keys
     GOOGLE_API_KEY: Optional[SecretStr] = None

@@ -5,9 +5,13 @@ import structlog
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 
-from ecommerce_ops.config import settings, Environment
+from ecommerce_ops.config import Environment, settings
 from ecommerce_ops.graph.state import AgentDecision
-from ecommerce_ops.memory.agent_memory import get_pattern_insight, get_recent_memories, store_decision_memory
+from ecommerce_ops.memory.agent_memory import (
+    get_pattern_insight,
+    get_recent_memories,
+    store_decision_memory,
+)
 
 logger = structlog.get_logger(__name__)
 

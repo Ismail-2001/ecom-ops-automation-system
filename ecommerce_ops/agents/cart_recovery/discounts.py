@@ -7,9 +7,8 @@ import hashlib
 import logging
 import secrets
 import string
-import time
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+from typing import Any
 
 from ecommerce_ops.agents.cart_recovery.models import (
     AbandonedCart,
@@ -71,7 +70,7 @@ class DiscountCodeGenerator:
         discount_value: float,
         code: str,
         cart: AbandonedCart,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get discount configuration for Shopify price rule."""
         now = datetime.utcnow()
         expires_at = now + timedelta(hours=24)
@@ -110,7 +109,7 @@ class DiscountCodeGenerator:
         code: str,
         strategy: RecoveryStrategy,
         discount_value: float,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get context for recovery email template."""
         customer_name = "there"
         if cart.customer and cart.customer.first_name:
