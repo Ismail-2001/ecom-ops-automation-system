@@ -65,7 +65,11 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        if settings.ENV != Environment.PRODUCTION:
+        # Rate limiting is always-on for real environments (production,
+        # development, staging, demo). Only the automated test harness is
+        # exempt, since it issues far more than RATE_LIMIT_PER_MINUTE
+        # requests per minute from a single source.
+        if settings.ENV == Environment.TESTING:
             return await call_next(request)
 
         forwarded = request.headers.get("X-Forwarded-For", "")

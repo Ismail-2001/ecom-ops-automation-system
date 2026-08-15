@@ -1,7 +1,6 @@
 """Tests for Security — Role Manager, Auth, Audit."""
 
 import pytest
-import hashlib
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -13,7 +12,11 @@ from ecommerce_ops.security.models import (
     RoleDefinition,
     DEFAULT_ROLES,
 )
-from ecommerce_ops.security.role_manager import RoleManager, _hash_api_key
+from ecommerce_ops.security.role_manager import (
+    RoleManager,
+    _hash_api_key,
+    _verify_api_key_hash,
+)
 
 
 # ── Role Manager Unit Tests ───────────────────────────────
@@ -51,12 +54,14 @@ def test_role_definitions_are_system_roles():
         assert definition.is_system is True
 
 
-def test_hash_api_key_deterministic():
+def test_hash_api_key_is_salted_pbkdf2():
     key = "test_key_123"
     h1 = _hash_api_key(key)
     h2 = _hash_api_key(key)
-    assert h1 == h2
-    assert h1 == hashlib.sha256(key.encode()).hexdigest()
+    assert h1 != h2
+    assert h1.startswith("pbkdf2_sha256$")
+    assert _verify_api_key_hash(key, h1) is True
+    assert _verify_api_key_hash("wrong_key", h1) is False
 
 
 def test_hash_api_key_different_keys():

@@ -18,11 +18,26 @@ interface SessionPayload {
   exp: number // epoch ms
 }
 
+let devSecret: string | undefined
+
+function generateRandomSecret(): string {
+  const bytes = new Uint8Array(32)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")
+}
+
 function getSecret(): string {
   const secret = process.env.SESSION_SECRET
   if (secret) return secret
-  // Development-only fallback. Production MUST set SESSION_SECRET.
-  return "opsiq-dev-session-secret-change-me"
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "SESSION_SECRET is not set. Generate one with `openssl rand -hex 32` and set it as an environment variable before starting the frontend in production."
+    )
+  }
+  // Non-production only: a random per-process key so sessions cannot be forged
+  // with a publicly-known constant. Production MUST set SESSION_SECRET.
+  if (!devSecret) devSecret = generateRandomSecret()
+  return devSecret
 }
 
 // ── Base64url helpers (no Buffer) ─────────────────────────────
