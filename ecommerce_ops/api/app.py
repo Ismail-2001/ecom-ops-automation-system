@@ -27,7 +27,7 @@ from ecommerce_ops.models import (
 )
 from ecommerce_ops.api.middleware import setup_middleware
 from ecommerce_ops.api.auth import verify_auth, verify_auth_optional
-from ecommerce_ops.api.ws import ws_manager
+from ecommerce_ops.api.ws import ws_manager, ws_ticket_store, WS_TICKET_TTL_SECONDS
 from ecommerce_ops.api.metrics import (
     METRIC_HTTP_REQUESTS,
     METRIC_HTTP_DURATION,
@@ -49,6 +49,7 @@ from ecommerce_ops.api.observability import router as observability_router
 from ecommerce_ops.api.memory import router as memory_router
 from ecommerce_ops.api.security import router as security_router
 from ecommerce_ops.api.demo import router as demo_router
+from ecommerce_ops.api.core_routes import router as core_router
 from ecommerce_ops.security.auth import AuthenticationMiddleware
 from ecommerce_ops.security.role_manager import role_manager
 from ecommerce_ops.observability.tracing_otel import init_tracing, instrument_app
@@ -247,10 +248,14 @@ app.include_router(security_router)
 # Include Demo routes
 app.include_router(demo_router)
 
+# Include Core routes (approvals, agents, settings, analytics, health)
+app.include_router(core_router)
+
 # ── API Versioning: /api/v1/ routes + deprecation headers ──
 v1_router = create_v1_router(
     shopify_router, cart_recovery_router, customer_support_router,
     observability_router, memory_router, security_router, demo_router,
+    core_router,
 )
 app.include_router(v1_router)
 app.add_middleware(APIVersionMiddleware)
@@ -306,6 +311,23 @@ async def login(body: LoginBody):
     return {
         "status": "ok",
         "operator": body.operator_id or "api-operator",
+    }
+
+
+@app.get("/api/auth/ws-ticket")
+async def issue_ws_ticket(operator: str = Depends(get_current_operator)):
+    """
+    Exchange a valid API key for a short-lived, single-use WebSocket ticket.
+
+    The frontend must NOT send its API key in the WS query string. Instead it
+    calls this endpoint (through the BFF with an Authorization header managed
+    server-side) and uses the returned ticket for the WS handshake.
+    """
+    ticket = await ws_ticket_store.issue(operator)
+    return {
+        "ticket": ticket,
+        "ttl_seconds": WS_TICKET_TTL_SECONDS,
+        "expires_in": WS_TICKET_TTL_SECONDS,
     }
 
 

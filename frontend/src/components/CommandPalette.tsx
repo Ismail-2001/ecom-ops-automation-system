@@ -197,17 +197,6 @@ function getCommands(
       action: () => nav("/analytics"),
     },
     {
-      id: "quick-api",
-      label: "Copy API Key",
-      icon: <Key size={18} />,
-      category: "Quick",
-      action: () => {
-        const key = document.cookie.match(/opsiq_api_key=([^;]*)/)?.[1] || "not-set";
-        navigator.clipboard.writeText(decodeURIComponent(key));
-        setOpen(false);
-      },
-    },
-    {
       id: "quick-logs",
       label: "View Logs",
       icon: <ScrollText size={18} />,

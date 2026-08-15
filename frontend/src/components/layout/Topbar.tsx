@@ -1,16 +1,85 @@
 "use client"
 import { useState, useRef, useEffect } from "react"
-import { Search, Bell, Wifi, WifiOff, User, Menu, LogOut, Settings, ChevronDown, Check, Clock, AlertTriangle, X } from "lucide-react"
+import { Search, Bell, User, Menu, LogOut, Settings, ChevronDown, Check, AlertTriangle, X, Sparkles } from "lucide-react"
 import { useWs } from "@/app/providers"
 import { useAuthStore } from "@/lib/auth-store"
 import { useRouter } from "next/navigation"
+import type { WSEvent } from "@/lib/useWebSocket"
 
-const mockNotifications = [
-  { id: 1, icon: AlertTriangle, iconBg: "bg-danger/10", iconColor: "text-danger", title: "Fraud Alert", message: "High-risk order #ORD-90210 flagged for review", time: "2 min ago", read: false },
-  { id: 2, icon: Check, iconBg: "bg-success/10", iconColor: "text-success", title: "Agent Deployed", message: "Price Optimization agent restarted successfully", time: "15 min ago", read: false },
-  { id: 3, icon: Clock, iconBg: "bg-warning/10", iconColor: "text-warning", title: "Cart Abandoned", message: "3 new carts abandoned in the last hour", time: "1 hr ago", read: true },
-  { id: 4, icon: Check, iconBg: "bg-info/10", iconColor: "text-info", title: "Sync Complete", message: "Shopify products synced — 1,247 items updated", time: "2 hrs ago", read: true },
-]
+interface UINotification {
+  id: string
+  icon: typeof Check
+  iconBg: string
+  iconColor: string
+  title: string
+  message: string
+  time: string
+  read: boolean
+}
+
+function notificationFromEvent(event: WSEvent): UINotification | null {
+  if (event.type === "action_updated") {
+    return {
+      id: `action-${Date.now()}`,
+      icon: Check,
+      iconBg: "bg-success/10",
+      iconColor: "text-success",
+      title: "Decision Updated",
+      message: `Approval action ${String(event.payload?.id ?? "")} now ${event.payload?.status ?? "updated"}`,
+      time: "just now",
+      read: false,
+    }
+  }
+  if (event.type === "pipeline_started") {
+    return {
+      id: `pipe-${Date.now()}`,
+      icon: Sparkles,
+      iconBg: "bg-warning/10",
+      iconColor: "text-warning",
+      title: "Pipeline Started",
+      message: "A new agent pipeline has begun.",
+      time: "just now",
+      read: false,
+    }
+  }
+  if (event.type === "pipeline_completed") {
+    return {
+      id: `pipe-done-${Date.now()}`,
+      icon: Check,
+      iconBg: "bg-info/10",
+      iconColor: "text-info",
+      title: "Pipeline Completed",
+      message: "Agent pipeline finished successfully.",
+      time: "just now",
+      read: false,
+    }
+  }
+  if (event.type === "pipeline_failed") {
+    return {
+      id: `pipe-fail-${Date.now()}`,
+      icon: AlertTriangle,
+      iconBg: "bg-danger/10",
+      iconColor: "text-danger",
+      title: "Pipeline Failed",
+      message: "An agent pipeline encountered an error.",
+      time: "just now",
+      read: false,
+    }
+  }
+  if (event.type === "notification") {
+    return {
+      id: `notif-${Date.now()}`,
+      icon: Bell,
+      iconBg: "bg-primary/10",
+      iconColor: "text-primary",
+      title: "Notification",
+      message: String(event.payload?.message ?? "New event received"),
+      time: "just now",
+      read: false,
+    }
+  }
+  return null
+}
 
 export default function Topbar({ title, subtitle, actions, onMenuToggle }: {
   title?: string
@@ -18,15 +87,25 @@ export default function Topbar({ title, subtitle, actions, onMenuToggle }: {
   actions?: React.ReactNode
   onMenuToggle?: () => void
 }) {
-  const { isConnected } = useWs()
-  const { logout } = useAuthStore()
+  const { isConnected, lastEvent } = useWs()
+  const { logout, operator } = useAuthStore()
   const router = useRouter()
   const [notifOpen, setNotifOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [notifications, setNotifications] = useState<UINotification[]>([])
   const notifRef = useRef<HTMLDivElement>(null)
   const profileRef = useRef<HTMLDivElement>(null)
 
-  const unreadCount = mockNotifications.filter(n => !n.read).length
+  // Derive notifications from real WebSocket events only.
+  useEffect(() => {
+    if (!lastEvent) return
+    const n = notificationFromEvent(lastEvent)
+    if (n) {
+      setNotifications((prev) => [n, ...prev].slice(0, 20))
+    }
+  }, [lastEvent])
+
+  const unreadCount = notifications.filter(n => !n.read).length
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -93,24 +172,35 @@ export default function Topbar({ title, subtitle, actions, onMenuToggle }: {
                 <span className="badge-primary text-[10px]">{unreadCount} NEW</span>
               </div>
               <div className="max-h-80 overflow-y-auto">
-                {mockNotifications.map(n => {
-                  const Icon = n.icon
-                  return (
-                    <div key={n.id} className={`flex items-start gap-3 px-4 py-3 border-b border-border/50 hover:bg-surface-2 transition-colors cursor-pointer ${!n.read ? 'bg-primary/5' : ''}`}>
-                      <div className={`w-8 h-8 rounded-lg ${n.iconBg} flex items-center justify-center shrink-0 mt-0.5`}>
-                        <Icon className={`w-4 h-4 ${n.iconColor}`} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-text-primary">{n.title}</span>
-                          {!n.read && <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+                {notifications.length === 0 ? (
+                  <div className="px-4 py-8 text-center">
+                    <Bell className="w-6 h-6 text-text-muted mx-auto mb-2" />
+                    <p className="text-sm text-text-muted">No notifications yet</p>
+                    <p className="text-xs text-text-muted mt-1">Events broadcast over the WebSocket will appear here.</p>
+                    {!isConnected && (
+                      <p className="text-xs text-danger mt-2 font-medium">WebSocket is disconnected</p>
+                    )}
+                  </div>
+                ) : (
+                  notifications.map(n => {
+                    const Icon = n.icon
+                    return (
+                      <div key={n.id} className={`flex items-start gap-3 px-4 py-3 border-b border-border/50 hover:bg-surface-2 transition-colors cursor-pointer ${!n.read ? 'bg-primary/5' : ''}`}>
+                        <div className={`w-8 h-8 rounded-lg ${n.iconBg} flex items-center justify-center shrink-0 mt-0.5`}>
+                          <Icon className={`w-4 h-4 ${n.iconColor}`} />
                         </div>
-                        <p className="text-xs text-text-muted mt-0.5 truncate">{n.message}</p>
-                        <span className="text-[10px] font-mono text-text-muted mt-1 block">{n.time}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-text-primary">{n.title}</span>
+                            {!n.read && <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+                          </div>
+                          <p className="text-xs text-text-muted mt-0.5 truncate">{n.message}</p>
+                          <span className="text-[10px] font-mono text-text-muted mt-1 block">{n.time}</span>
+                        </div>
                       </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })
+                )}
               </div>
               <div className="px-4 py-2.5 border-t border-border text-center">
                 <button className="text-xs font-medium text-primary hover:text-primary-hover transition-colors">View All Notifications</button>
@@ -126,8 +216,8 @@ export default function Topbar({ title, subtitle, actions, onMenuToggle }: {
             className="hidden sm:flex items-center gap-2.5 pl-2 ml-1 border-l border-border hover:bg-surface-2 rounded-button px-2 py-1 transition-colors cursor-pointer"
           >
             <div className="text-right hidden md:block">
-              <div className="text-sm font-medium text-text-primary">Admin User</div>
-              <div className="text-[10px] font-mono uppercase tracking-wider text-text-muted">SUPERUSER_ROOT</div>
+              <div className="text-sm font-medium text-text-primary">{operator || "Admin User"}</div>
+              <div className="text-[10px] font-mono uppercase tracking-wider text-text-muted">OPERATOR</div>
             </div>
             <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center ring-2 ring-primary/20">
               <User className="w-4 h-4 text-primary" />
@@ -138,8 +228,8 @@ export default function Topbar({ title, subtitle, actions, onMenuToggle }: {
           {profileOpen && (
             <div className="absolute right-0 top-full mt-2 w-56 bg-surface border border-border rounded-card shadow-2xl shadow-black/30 overflow-hidden z-50">
               <div className="px-4 py-3 border-b border-border">
-                <div className="text-sm font-medium text-text-primary">Admin User</div>
-                <div className="text-xs font-mono text-text-muted mt-0.5">admin@opsiq.dev</div>
+                <div className="text-sm font-medium text-text-primary">{operator || "Admin User"}</div>
+                <div className="text-xs font-mono text-text-muted mt-0.5">{operator ? `${operator}@opsiq.local` : "admin@opsiq.dev"}</div>
                 <div className="flex items-center gap-1.5 mt-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-success" />
                   <span className="text-[10px] font-mono text-success uppercase">Active</span>

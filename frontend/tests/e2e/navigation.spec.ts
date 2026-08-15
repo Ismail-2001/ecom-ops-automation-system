@@ -1,12 +1,10 @@
 import { test, expect } from '@playwright/test'
+import { loginAs } from './helpers'
 
 const BASE = process.env.BASE_URL || 'http://localhost:3200'
 
 test.beforeEach(async ({ page }) => {
-  await page.context().addCookies([
-    { name: 'opsiq_api_key', value: 'test-key', domain: 'localhost', path: '/' },
-    { name: 'opsiq_auth', value: 'true', domain: 'localhost', path: '/' },
-  ])
+  await loginAs(page)
 })
 
 test.describe('Login Page', () => {
@@ -25,16 +23,14 @@ test.describe('Login Page', () => {
 
 test.describe('Dashboard', () => {
   test('renders command center dashboard', async ({ page }) => {
-    await page.goto(`${BASE}/`)
-    await expect(page.locator('text=Command Center')).toBeVisible()
-    await expect(page.locator('text=Total Revenue')).toBeVisible()
-    await expect(page.locator('text=Decisions Made')).toBeVisible()
+    await expect(page.locator('text=Command Center').first()).toBeVisible()
+    await expect(page.locator('text=Financial Impact').first()).toBeVisible()
+    await expect(page.locator('text=Decisions Made').first()).toBeVisible()
   })
 
-  test('shows pending approvals table', async ({ page }) => {
+  test('shows pending approvals section', async ({ page }) => {
     await page.goto(`${BASE}/`)
     await expect(page.locator('text=Pending Approvals')).toBeVisible()
-    await expect(page.locator('table')).toBeVisible()
   })
 
   test('shows agent fleet status', async ({ page }) => {

@@ -5,6 +5,7 @@ import "../styles/globals.css"
 import { Providers } from "./providers"
 import { CommandPaletteProvider } from "@/components/CommandPalette"
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary"
+import { AuthGuard } from "@/components/auth/AuthGuard"
 
 const CommandPalette = dynamic(
   () => import("@/components/CommandPalette").then((m) => m.default),
@@ -84,7 +85,7 @@ export default function RootLayout({
             </a>
             <CommandPalette />
             <ErrorBoundary>
-              {children}
+              <AuthGuard>{children}</AuthGuard>
             </ErrorBoundary>
           </CommandPaletteProvider>
         </Providers>
