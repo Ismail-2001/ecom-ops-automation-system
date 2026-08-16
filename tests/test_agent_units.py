@@ -56,7 +56,7 @@ class TestBaseAgent:
             mock_settings.GOOGLE_API_KEY = None
             mock_settings.DEEPSEEK_API_KEY = None
             mock_settings.ENV = "production"
-            with pytest.raises(RuntimeError, match="No API key configured"):
+            with pytest.raises(RuntimeError, match="No LLM API key configured"):
                 TestAgent("TestAgent")
 
     def test_create_decision(self):

@@ -119,27 +119,33 @@ async def oauth_callback(
 async def shopify_webhook(
     topic: str,
     request: Request,
-    background_tasks: BackgroundTasks,
 ):
-    """Handle incoming Shopify webhooks."""
+    """Handle incoming Shopify webhooks with HMAC verification."""
     body = await request.body()
     headers = dict(request.headers)
 
-    # Extract shop domain from headers or topic
+    # Extract shop domain from headers
     shop_domain = headers.get("x-shopify-shop-domain", "unknown")
 
     logger.info("Received webhook: topic=%s shop=%s", topic, shop_domain)
 
-    # Process in background to respond quickly
-    background_tasks.add_task(
-        webhook_router.handle_webhook,
+    # Process synchronously to validate HMAC before responding
+    result = await webhook_router.handle_webhook(
         topic=topic,
         shop_domain=shop_domain,
         body=body,
         headers=headers,
     )
 
-    return {"status": "received", "topic": topic}
+    if result.get("status") == "unauthorized":
+        logger.warning("Webhook HMAC verification failed: topic=%s shop=%s", topic, shop_domain)
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+    if result.get("status") == "parse_error":
+        logger.error("Webhook parse error: topic=%s shop=%s", topic, shop_domain)
+        raise HTTPException(status_code=400, detail="Invalid webhook payload")
+
+    return {"status": "received", "topic": topic, "result": result}
 
 
 # ── Sync ───────────────────────────────────────────────────

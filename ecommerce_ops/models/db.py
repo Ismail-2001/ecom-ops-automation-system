@@ -169,6 +169,27 @@ class RBACApiKey(Base):
     metadata_json = Column(JSON, default=dict, nullable=False)
 
 
+# ── Shopify Webhook Events (Persistent) ───────────────────
+
+class ShopifyWebhookEvent(Base):
+    __tablename__ = "shopify_webhook_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    topic = Column(String, nullable=False, index=True)
+    shop_domain = Column(String, nullable=False, index=True)
+    api_version = Column(String, nullable=True)
+    event_id = Column(String, nullable=True, index=True)
+    received_at = Column(DateTime, default=utcnow, nullable=False, index=True)
+    processed = Column(Boolean, default=False, nullable=False)
+    error = Column(String, nullable=True)
+    payload = Column(JSON, nullable=False)
+
+    __table_args__ = (
+        Index("ix_shopify_webhook_events_topic_time", "topic", "received_at"),
+        Index("ix_shopify_webhook_events_shop_time", "shop_domain", "received_at"),
+    )
+
+
 # ── Security Audit Log (Persistent) ───────────────────────
 
 class SecurityAuditLog(Base):

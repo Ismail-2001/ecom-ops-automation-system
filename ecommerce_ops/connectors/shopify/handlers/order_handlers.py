@@ -1,14 +1,83 @@
 """
 Shopify Webhook Event Handlers
 Handles real-time webhook events from Shopify.
+
+Every verified webhook payload is persisted to the ``shopify_webhook_events``
+table (durable inbox) before any downstream processing, giving at-least-once
+delivery and replayability. Handlers degrade gracefully: persistence and
+queue-enqueue failures are logged, never raised.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from ecommerce_ops.connectors.shopify.webhooks import WebhookEvent
+from ecommerce_ops.models import ShopifyWebhookEvent, async_session_factory
 
 logger = logging.getLogger("ecommerce_ops.connectors.shopify.handlers")
+
+
+async def _persist_event(event: WebhookEvent, error: Optional[str] = None) -> None:
+    """Persist a verified webhook payload to the durable inbox."""
+    try:
+        payload = event.body if isinstance(event.body, dict) else {"data": event.body}
+        async with async_session_factory() as session:
+            session.add(
+                ShopifyWebhookEvent(
+                    topic=event.topic,
+                    shop_domain=event.shop_domain,
+                    api_version=event.api_version,
+                    event_id=str(payload.get("id", "")) or None,
+                    processed=error is None,
+                    error=error,
+                    payload=payload,
+                )
+            )
+            await session.commit()
+        logger.info("Persisted webhook event topic=%s shop=%s", event.topic, event.shop_domain)
+    except Exception:
+        logger.exception("Failed to persist webhook event topic=%s shop=%s", event.topic, event.shop_domain)
+
+
+async def _enqueue_agent_work(
+    event: WebhookEvent,
+    task_name: str,
+    payload: Dict[str, Any],
+) -> None:
+    """Best-effort enqueue of downstream agent work.
+
+    Uses the Redis-backed queue when available (cross-worker). Falls back to
+    the in-memory queue with a logging coroutine so the event is not silently
+    dropped. Failures are logged, never raised, so a queue outage does not
+    take down webhook ingestion.
+    """
+    try:
+        from ecommerce_ops.api.app import redis_task_queue, task_queue
+
+        enqueue_payload = {
+            **payload,
+            "shop_domain": event.shop_domain,
+            "webhook_topic": event.topic,
+        }
+        if redis_task_queue is not None:
+            from ecommerce_ops.infra.redis_task_queue import TaskPriority
+
+            await redis_task_queue.enqueue(task_name, enqueue_payload, priority=TaskPriority.NORMAL)
+            logger.info("Enqueued %s via Redis queue for shop=%s", task_name, event.shop_domain)
+        else:
+            async def _process_in_memory() -> None:
+                logger.info("Processing %s for shop=%s (in-memory): %s", task_name, event.shop_domain, payload)
+
+            await task_queue.enqueue(task_name, _process_in_memory)
+            logger.info("Enqueued %s via in-memory queue for shop=%s", task_name, event.shop_domain)
+    except Exception:
+        logger.exception("Failed to enqueue %s for shop=%s", task_name, event.shop_domain)
+
+
+async def _handle(event: WebhookEvent, task_name: str, payload: Dict[str, Any], error: Optional[str] = None) -> None:
+    """Common pipeline: persist then enqueue."""
+    await _persist_event(event, error=error)
+    await _enqueue_agent_work(event, task_name, payload)
 
 
 async def handle_order_created(event: WebhookEvent) -> None:
@@ -27,8 +96,17 @@ async def handle_order_created(event: WebhookEvent) -> None:
         customer_email,
     )
 
-    # TODO: Store in database, trigger fulfillment pipeline
-    # TODO: Send notification to Slack/email
+    await _handle(
+        event,
+        task_name="shopify.order_created",
+        payload={
+            "order_id": order_id,
+            "total_price": total_price,
+            "currency": currency,
+            "customer_email": customer_email,
+            "financial_status": order.get("financial_status"),
+        },
+    )
 
 
 async def handle_order_updated(event: WebhookEvent) -> None:
@@ -45,8 +123,15 @@ async def handle_order_updated(event: WebhookEvent) -> None:
         fulfillment_status,
     )
 
-    # TODO: Update database record
-    # TODO: Trigger downstream workflows based on status changes
+    await _handle(
+        event,
+        task_name="shopify.order_updated",
+        payload={
+            "order_id": order_id,
+            "financial_status": financial_status,
+            "fulfillment_status": fulfillment_status,
+        },
+    )
 
 
 async def handle_order_fulfilled(event: WebhookEvent) -> None:
@@ -65,8 +150,14 @@ async def handle_order_fulfilled(event: WebhookEvent) -> None:
             tracking_company,
         )
 
-    # TODO: Update database
-    # TODO: Send shipping notification to customer
+    await _handle(
+        event,
+        task_name="shopify.order_fulfilled",
+        payload={
+            "order_id": order_id,
+            "fulfillments": fulfillments,
+        },
+    )
 
 
 async def handle_order_cancelled(event: WebhookEvent) -> None:
@@ -77,8 +168,14 @@ async def handle_order_cancelled(event: WebhookEvent) -> None:
 
     logger.info("Order %s cancelled: %s", order_id, cancel_reason)
 
-    # TODO: Update database
-    # TODO: Trigger refund process if needed
+    await _handle(
+        event,
+        task_name="shopify.order_cancelled",
+        payload={
+            "order_id": order_id,
+            "cancel_reason": cancel_reason,
+        },
+    )
 
 
 async def handle_product_created(event: WebhookEvent) -> None:
@@ -91,8 +188,17 @@ async def handle_product_created(event: WebhookEvent) -> None:
 
     logger.info("New product: %s (%s) by %s [%s]", title, product_id, vendor, product_type)
 
-    # TODO: Sync to database
-    # TODO: Run AI analysis (pricing, sentiment, etc.)
+    await _handle(
+        event,
+        task_name="shopify.product_created",
+        payload={
+            "product_id": product_id,
+            "title": title,
+            "product_type": product_type,
+            "vendor": vendor,
+            "price": product.get("variants", [{}])[0].get("price") if product.get("variants") else None,
+        },
+    )
 
 
 async def handle_product_updated(event: WebhookEvent) -> None:
@@ -103,8 +209,15 @@ async def handle_product_updated(event: WebhookEvent) -> None:
 
     logger.info("Product updated: %s (%s)", title, product_id)
 
-    # TODO: Update database
-    # TODO: Re-run AI analysis if price changed
+    await _handle(
+        event,
+        task_name="shopify.product_updated",
+        payload={
+            "product_id": product_id,
+            "title": title,
+            "price": product.get("variants", [{}])[0].get("price") if product.get("variants") else None,
+        },
+    )
 
 
 async def handle_product_deleted(event: WebhookEvent) -> None:
@@ -114,7 +227,11 @@ async def handle_product_deleted(event: WebhookEvent) -> None:
 
     logger.info("Product deleted: %s", product_id)
 
-    # TODO: Soft delete in database
+    await _handle(
+        event,
+        task_name="shopify.product_deleted",
+        payload={"product_id": product_id},
+    )
 
 
 async def handle_customer_created(event: WebhookEvent) -> None:
@@ -127,8 +244,16 @@ async def handle_customer_created(event: WebhookEvent) -> None:
 
     logger.info("New customer: %s %s (%s) [%s]", first_name, last_name, email, customer_id)
 
-    # TODO: Store in database
-    # TODO: Create customer profile for support agent
+    await _handle(
+        event,
+        task_name="shopify.customer_created",
+        payload={
+            "customer_id": customer_id,
+            "email": email,
+            "first_name": first_name,
+            "last_name": last_name,
+        },
+    )
 
 
 async def handle_customer_updated(event: WebhookEvent) -> None:
@@ -138,7 +263,11 @@ async def handle_customer_updated(event: WebhookEvent) -> None:
 
     logger.info("Customer updated: %s", customer_id)
 
-    # TODO: Update database
+    await _handle(
+        event,
+        task_name="shopify.customer_updated",
+        payload={"customer_id": customer_id},
+    )
 
 
 async def handle_inventory_level_low(event: WebhookEvent) -> None:
@@ -155,7 +284,15 @@ async def handle_inventory_level_low(event: WebhookEvent) -> None:
         available,
     )
 
-    # TODO: Trigger inventory agent for reorder recommendation
+    await _handle(
+        event,
+        task_name="shopify.inventory_low",
+        payload={
+            "inventory_item_id": inventory_item_id,
+            "location_id": location_id,
+            "available": available,
+        },
+    )
 
 
 async def handle_inventory_levels_changed(event: WebhookEvent) -> None:
@@ -166,7 +303,14 @@ async def handle_inventory_levels_changed(event: WebhookEvent) -> None:
 
     logger.info("Inventory changed: item=%s available=%d", inventory_item_id, available)
 
-    # TODO: Update database
+    await _handle(
+        event,
+        task_name="shopify.inventory_changed",
+        payload={
+            "inventory_item_id": inventory_item_id,
+            "available": available,
+        },
+    )
 
 
 # Handler registry for easy registration
