@@ -4,10 +4,10 @@ Endpoints for cart recovery operations and analytics.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Query
 from pydantic import BaseModel
 
 from ecommerce_ops.agents.cart_recovery.agent import AbandonedCartAgent
@@ -15,9 +15,6 @@ from ecommerce_ops.agents.cart_recovery.discounts import DiscountCodeGenerator
 from ecommerce_ops.agents.cart_recovery.models import (
     AbandonedCart,
     CartAnalytics,
-    CartRecoveryResult,
-    CartRiskLevel,
-    CartStatus,
     RecoveryStrategy,
 )
 from ecommerce_ops.agents.cart_recovery.strategy import RecoveryStrategyEngine

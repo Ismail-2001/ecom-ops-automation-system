@@ -1,6 +1,7 @@
-import pytest
 import os
-from unittest.mock import patch
+
+import pytest
+
 from ecommerce_ops.agents.marketing import MarketingAgent
 
 os.environ["DEEPSEEK_API_KEY"] = "sk-dummy-key"

@@ -1,14 +1,15 @@
 import hashlib
-from typing import Dict, Any, List
+from typing import Any, Dict, List
+
+import structlog
+from openai import APIConnectionError, APIError, APITimeoutError
+from pydantic import BaseModel, Field
+
 from ecommerce_ops.agents._base import BaseAgent
 from ecommerce_ops.agents.cost_tracker import track_llm_cost
-from ecommerce_ops.config import settings
-from ecommerce_ops.infra.retry import async_retry_decorator
 from ecommerce_ops.infra.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
+from ecommerce_ops.infra.retry import async_retry_decorator
 from ecommerce_ops.memory.cache import cache
-from pydantic import BaseModel, Field
-from openai import APIError, APITimeoutError, APIConnectionError
-import structlog
 
 logger = structlog.get_logger(__name__)
 

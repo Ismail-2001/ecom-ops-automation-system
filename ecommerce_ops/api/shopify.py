@@ -6,14 +6,11 @@ OAuth flow, webhooks, and sync endpoints.
 import logging
 import secrets
 import time
-from typing import Dict, Optional
+from typing import Dict
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from ecommerce_ops.config import settings
 from ecommerce_ops.connectors.shopify.client import ShopifyClient
 from ecommerce_ops.connectors.shopify.handlers.order_handlers import WEBHOOK_HANDLERS
 from ecommerce_ops.connectors.shopify.oauth import shopify_oauth

@@ -6,7 +6,7 @@ Handles customer inquiries, generates responses, and manages ticket lifecycle.
 import logging
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from ecommerce_ops.agents._base import BaseAgent
 from ecommerce_ops.agents.customer_support.models import (

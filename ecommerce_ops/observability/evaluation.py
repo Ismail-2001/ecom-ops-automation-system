@@ -6,7 +6,7 @@ Comprehensive evaluation of agent performance and decision quality.
 import logging
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 

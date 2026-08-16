@@ -1,9 +1,7 @@
 import logging
-from typing import Optional
-from datetime import datetime
 
-from ecommerce_ops.config import settings
 from ecommerce_ops.api.ws import ws_manager
+from ecommerce_ops.config import settings
 
 logger = logging.getLogger("ecommerce_ops.infra.notifications")
 

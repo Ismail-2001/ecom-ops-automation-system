@@ -4,7 +4,6 @@ Replaces in-memory rate limiter for horizontal scalability.
 """
 import logging
 import time
-from typing import Optional
 
 logger = logging.getLogger("ecommerce_ops.security.redis_rate_limiter")
 

@@ -5,17 +5,17 @@ and Redis PubSub for cross-worker broadcast.
 """
 
 import asyncio
-import json
 import hmac
+import json
 import logging
 import secrets
 import time
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Set
+from typing import Dict, List, Optional
 
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import WebSocket
 
-from ecommerce_ops.config import settings, Environment
+from ecommerce_ops.config import Environment, settings
 
 logger = logging.getLogger("ecommerce_ops.api.ws")
 
@@ -82,7 +82,7 @@ ws_ticket_store = WSTicketStore()
 class AuthenticatedConnection:
     """Tracks a single authenticated WebSocket connection."""
 
-    __slots__ = ("websocket", "operator", "client_ip", "connected_at", "_message_times")
+    __slots__ = ("_message_times", "client_ip", "connected_at", "operator", "websocket")
 
     def __init__(self, websocket: WebSocket, operator: str, client_ip: str):
         self.websocket = websocket

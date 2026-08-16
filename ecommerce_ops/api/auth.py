@@ -1,6 +1,8 @@
 import hmac
-from fastapi import Request, HTTPException
-from ecommerce_ops.config import settings, Environment
+
+from fastapi import HTTPException, Request
+
+from ecommerce_ops.config import Environment, settings
 
 
 async def verify_auth(request: Request) -> str:

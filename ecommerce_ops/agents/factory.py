@@ -7,17 +7,17 @@ Tries LLM agent first; on failure, falls back to rule-based agent.
 import logging
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from ecommerce_ops.agents._base import BaseAgent
 from ecommerce_ops.agents.fraud import FraudAgent
 from ecommerce_ops.agents.fraud_llm import FraudDetectionAgentLLM
 from ecommerce_ops.agents.inventory import InventoryAgent
 from ecommerce_ops.agents.inventory_llm import InventoryManagementAgentLLM
-from ecommerce_ops.agents.pricing import PricingAgent
-from ecommerce_ops.agents.reviews import ReviewsAgent
 from ecommerce_ops.agents.marketing import MarketingAgent
 from ecommerce_ops.agents.marketing_llm import MarketingAutomationAgentLLM
+from ecommerce_ops.agents.pricing import PricingAgent
+from ecommerce_ops.agents.reviews import ReviewsAgent
 
 logger = logging.getLogger("ecommerce_ops.agents.factory")
 

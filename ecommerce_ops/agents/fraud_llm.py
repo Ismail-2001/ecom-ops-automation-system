@@ -3,8 +3,7 @@ LLM-Powered Fraud Detection Agent
 Uses LLM for advanced fraud pattern recognition and risk assessment.
 """
 import logging
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
@@ -241,7 +240,7 @@ Provide your fraud analysis with risk score, decision, and reasoning.
     async def _store_decision(self, analysis: Dict[str, Any]):
         """Store decision in memory."""
         try:
-            from ecommerce_ops.memory.vector.persistent_store import PersistentVectorStore
+            pass
             # Store for future reference
         except Exception as e:
             logger.warning(f"Failed to store decision: {e}")

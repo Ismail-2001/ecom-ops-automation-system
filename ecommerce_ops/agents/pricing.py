@@ -1,9 +1,11 @@
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
+import structlog
+
 from ecommerce_ops.agents._base import BaseAgent
 from ecommerce_ops.config import settings
 from ecommerce_ops.memory import cache
 from ecommerce_ops.tools.registry import ToolRegistry
-import structlog
 
 logger = structlog.get_logger(__name__)
 

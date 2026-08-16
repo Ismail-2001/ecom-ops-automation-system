@@ -1,10 +1,7 @@
 """Tests for Guardrails and Safety System."""
 
-import pytest
-from unittest.mock import MagicMock
 
 from ecommerce_ops.safety.guardrails import GuardrailManager, guardrail_manager
-
 
 # ── Guardrail Manager Tests ───────────────────────────────
 

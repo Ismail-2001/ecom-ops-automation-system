@@ -12,7 +12,6 @@ Usage:
 """
 
 import logging
-from typing import Optional
 
 logger = logging.getLogger("ecommerce_ops.cost_tracker")
 
@@ -50,10 +49,10 @@ def track_llm_cost(response, agent: str, model: str = "gemini-2.0-flash") -> dic
 
         try:
             from ecommerce_ops.api.metrics import (
-                METRIC_LLM_TOKENS_INPUT,
-                METRIC_LLM_TOKENS_OUTPUT,
                 METRIC_LLM_COST_DOLLARS,
                 METRIC_LLM_DAILY_COST,
+                METRIC_LLM_TOKENS_INPUT,
+                METRIC_LLM_TOKENS_OUTPUT,
             )
             METRIC_LLM_TOKENS_INPUT.labels(agent=agent, model=model).inc(tokens_input)
             METRIC_LLM_TOKENS_OUTPUT.labels(agent=agent, model=model).inc(tokens_output)

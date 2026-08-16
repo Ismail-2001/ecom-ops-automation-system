@@ -1,9 +1,9 @@
 """Integration tests for the LangGraph supervisor pipeline."""
 
-import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
 from datetime import datetime
-from typing import Dict, Any
+from unittest.mock import patch
+
+import pytest
 
 from ecommerce_ops.graph.supervisor import Supervisor
 

@@ -3,23 +3,22 @@ WebSocket Authentication Tests
 Tests for WS connection auth, rejection, rate limiting, and per-IP limits.
 """
 
-import pytest
 import os
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
+
+import pytest
 
 # Set test env before imports
 os.environ["ENV"] = "testing"
 os.environ["API_KEY"] = "test-ws-key-2024"
 
 from ecommerce_ops.api.ws import (
-    ConnectionManager,
-    AuthenticatedConnection,
     CLOSE_AUTH_FAILED,
-    CLOSE_RATE_LIMITED,
     CLOSE_TOO_MANY_CONNECTIONS,
-    RATE_LIMIT_MESSAGES,
-    RATE_LIMIT_WINDOW,
     MAX_CONNECTIONS_PER_IP,
+    RATE_LIMIT_MESSAGES,
+    AuthenticatedConnection,
+    ConnectionManager,
 )
 
 

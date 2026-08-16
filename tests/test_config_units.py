@@ -1,4 +1,5 @@
 import os
+
 os.environ["ENV"] = "testing"
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite://"
 os.environ["API_KEY"] = "test-key"
@@ -40,7 +41,7 @@ class TestConfig:
         assert settings.DEEPSEEK_API_KEY is not None
 
     def test_production_validation_missing_api_key(self):
-        from ecommerce_ops.config import Settings, Environment
+        from ecommerce_ops.config import Environment, Settings
         with pytest.raises(ValueError, match="API_KEY must be set"):
             Settings(
                 ENV=Environment.PRODUCTION,
@@ -50,7 +51,7 @@ class TestConfig:
             )
 
     def test_production_validation_missing_llm_keys(self):
-        from ecommerce_ops.config import Settings, Environment
+        from ecommerce_ops.config import Environment, Settings
         with pytest.raises(ValueError, match="Either GOOGLE_API_KEY or DEEPSEEK_API_KEY must be set"):
             Settings(
                 ENV=Environment.PRODUCTION,
@@ -61,7 +62,7 @@ class TestConfig:
             )
 
     def test_production_validation_non_postgresql(self):
-        from ecommerce_ops.config import Settings, Environment
+        from ecommerce_ops.config import Environment, Settings
         with pytest.raises(ValueError, match="DATABASE_URL must use PostgreSQL"):
             Settings(
                 ENV=Environment.PRODUCTION,
@@ -71,7 +72,7 @@ class TestConfig:
             )
 
     def test_non_production_validation_passes(self):
-        from ecommerce_ops.config import Settings, Environment
+        from ecommerce_ops.config import Environment, Settings
         settings = Settings(
             ENV=Environment.DEVELOPMENT,
             API_KEY=None,

@@ -1,10 +1,12 @@
 import os
+
 os.environ["ENV"] = "testing"
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite://"
 os.environ["API_KEY"] = "test-key"
 os.environ["DEEPSEEK_API_KEY"] = "sk-test-key"
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
+
 import pytest
 
 

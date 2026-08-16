@@ -1,23 +1,23 @@
 """Customer Support Agent package."""
 
 from ecommerce_ops.agents.customer_support.models import (
+    ResponseSuggestion,
+    SentimentType,
+    SupportAnalytics,
     SupportTicket,
-    TicketStatus,
-    TicketPriority,
     TicketCategory,
     TicketChannel,
-    SentimentType,
-    ResponseSuggestion,
-    SupportAnalytics,
+    TicketPriority,
+    TicketStatus,
 )
 
 __all__ = [
+    "ResponseSuggestion",
+    "SentimentType",
+    "SupportAnalytics",
     "SupportTicket",
-    "TicketStatus",
-    "TicketPriority",
     "TicketCategory",
     "TicketChannel",
-    "SentimentType",
-    "ResponseSuggestion",
-    "SupportAnalytics",
+    "TicketPriority",
+    "TicketStatus",
 ]

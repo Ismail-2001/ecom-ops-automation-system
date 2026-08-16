@@ -4,18 +4,14 @@ Automatically classifies, prioritizes, and routes support tickets.
 """
 
 import logging
-import re
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from ecommerce_ops.agents.customer_support.models import (
     EscalationRule,
     SentimentType,
     SupportTicket,
     TicketCategory,
-    TicketChannel,
     TicketPriority,
-    TicketStatus,
 )
 
 logger = logging.getLogger("ecommerce_ops.agents.customer_support.routing")

@@ -12,13 +12,12 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set
 
-from sqlalchemy import select, update, delete, func
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
-from ecommerce_ops.models.db import RBACUser, RBACApiKey, async_session_factory
+from ecommerce_ops.models.db import RBACApiKey, RBACUser, async_session_factory
 from ecommerce_ops.security.models import (
-    APIKey,
     DEFAULT_ROLES,
+    APIKey,
     Permission,
     PermissionCheck,
     Role,

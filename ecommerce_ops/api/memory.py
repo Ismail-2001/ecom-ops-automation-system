@@ -12,7 +12,6 @@ from pydantic import BaseModel
 
 from ecommerce_ops.memory.vector.agent_integration import agent_memory_manager
 from ecommerce_ops.memory.vector.models import (
-    MemoryEntry,
     MemoryImportance,
     MemoryType,
 )

@@ -4,10 +4,10 @@ Endpoints for ticket management, responses, and analytics.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Query
 from pydantic import BaseModel
 
 from ecommerce_ops.agents.customer_support.agent import CustomerSupportAgent

@@ -1,15 +1,12 @@
 """Tests for Memory API endpoints."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from ecommerce_ops.api.memory import (
     MemoryCreateRequest,
     MemorySearchRequest,
     SessionCreateRequest,
 )
-from ecommerce_ops.memory.vector.models import MemoryType, MemoryImportance
-
+from ecommerce_ops.memory.vector.models import MemoryImportance, MemoryType
 
 # ── Request Model Tests ───────────────────────────────────
 

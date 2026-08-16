@@ -1,15 +1,15 @@
-import json
 import hashlib
+import json
 import logging
 from typing import Any, Optional
 
 import redis.asyncio as redis
 from redis.exceptions import ConnectionError, TimeoutError
 
-from ecommerce_ops.config import settings
-from ecommerce_ops.infra.retry import async_retry_decorator
-from ecommerce_ops.infra.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
 from ecommerce_ops.api.metrics import METRIC_CACHE_HIT_RATIO
+from ecommerce_ops.config import settings
+from ecommerce_ops.infra.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
+from ecommerce_ops.infra.retry import async_retry_decorator
 
 logger = logging.getLogger("ecommerce_ops.memory")
 

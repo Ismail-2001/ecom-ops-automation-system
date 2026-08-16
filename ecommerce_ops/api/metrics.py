@@ -1,4 +1,4 @@
-from prometheus_client import Counter, Histogram, Gauge
+from prometheus_client import Counter, Gauge, Histogram
 
 METRIC_HTTP_REQUESTS = Counter(
     "http_requests_total", "Total HTTP requests", ["method", "endpoint", "status"]

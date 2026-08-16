@@ -4,7 +4,9 @@ Run with: python -m pytest tests/test_evaluation.py -v --asyncio-mode=auto
 """
 
 import pytest
+
 from ecommerce_ops.safety.safety_rules import evaluate_action_safety
+
 
 class MockSettings:
     def __init__(self, shadow_mode=False, fraud_threshold=70, po_limit=1000.0,

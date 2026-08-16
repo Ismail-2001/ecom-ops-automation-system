@@ -2,13 +2,10 @@
 import base64
 import hashlib
 import hmac
-import pytest
-from unittest.mock import MagicMock, patch
 
-from ecommerce_ops.security.audit import AuditLogger, AuditEntry
-from ecommerce_ops.security.webhook import WebhookVerifier, InputSanitizer
+from ecommerce_ops.security.audit import AuditEntry, AuditLogger
 from ecommerce_ops.security.models import SecurityEvent
-
+from ecommerce_ops.security.webhook import InputSanitizer, WebhookVerifier
 
 # ── AuditLogger tests ──────────────────────────────────────
 

@@ -1,14 +1,12 @@
 """Tests for demo/ module (roi_calculator, helpers, seed_data)."""
-import pytest
-from ecommerce_ops.demo.roi_calculator import ROICalculator, CostBreakdown, SavingsEstimate, ROIReport
 from ecommerce_ops.demo.helpers import (
-    generate_demo_order,
-    generate_demo_cart,
-    generate_demo_ticket,
-    generate_demo_product,
     generate_demo_analytics,
+    generate_demo_cart,
+    generate_demo_order,
+    generate_demo_product,
+    generate_demo_ticket,
 )
-
+from ecommerce_ops.demo.roi_calculator import CostBreakdown, ROICalculator, ROIReport
 
 # ── ROICalculator tests ────────────────────────────────────
 
