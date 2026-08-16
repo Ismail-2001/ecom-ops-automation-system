@@ -150,6 +150,12 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
 def setup_middleware(app: FastAPI):
     allowed_origins = settings.CORS_ORIGINS
     if not allowed_origins:
+        if settings.ENV == Environment.PRODUCTION:
+            raise RuntimeError(
+                "CORS_ORIGINS must be explicitly set in production. "
+                "Configure allowed origins in environment variables."
+            )
+        # Development fallback only
         allowed_origins = ["http://localhost:3000", "http://localhost:5173"]
 
     app.add_middleware(BodySizeLimitMiddleware)
