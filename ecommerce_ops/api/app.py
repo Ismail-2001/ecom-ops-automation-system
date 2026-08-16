@@ -44,8 +44,9 @@ from ecommerce_ops.models import (
 from ecommerce_ops.observability.tracing_otel import init_tracing, instrument_app
 from ecommerce_ops.pipeline.runner import run_pipeline_task
 from ecommerce_ops.security.auth import AuthenticationMiddleware
+from ecommerce_ops.telemetry import configure_logger
 
-logging.basicConfig(level=logging.INFO)
+configure_logger()
 logger = logging.getLogger("ecommerce_ops.api")
 
 

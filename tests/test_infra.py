@@ -2,11 +2,15 @@
 
 import asyncio
 import time
+from unittest.mock import AsyncMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
-from ecommerce_ops.infra.rate_limiter import _memory_check, _memory_store, _memory_block_until
-
+from ecommerce_ops.infra.rate_limiter import (
+    _memory_block_until,
+    _memory_check,
+    _memory_store,
+)
 
 # ── Rate Limiter Tests ────────────────────────────────────
 
@@ -24,7 +28,7 @@ def test_memory_check_allows_up_to_limit():
     _memory_store.clear()
     _memory_block_until.clear()
 
-    for i in range(4):
+    for _ in range(4):
         allowed, count = _memory_check("test_key", 5, 60)
         assert allowed is True
 
@@ -40,7 +44,7 @@ def test_memory_check_blocks_at_limit():
     for _ in range(5):
         _memory_check("test_key", 5, 60)
 
-    allowed, count = _memory_check("test_key", 5, 60)
+    allowed, _ = _memory_check("test_key", 5, 60)
     assert allowed is False
 
 
@@ -51,7 +55,7 @@ def test_memory_check_different_keys_independent():
     for _ in range(5):
         _memory_check("key1", 5, 60)
 
-    allowed, count = _memory_check("key2", 5, 60)
+    allowed, _ = _memory_check("key2", 5, 60)
     assert allowed is True
 
 
@@ -64,7 +68,7 @@ def test_memory_check_evicts_old_entries():
 
     _memory_store["test_key"] = [time.time() - 10]
 
-    allowed, count = _memory_check("test_key", 5, 1)
+    allowed, _ = _memory_check("test_key", 5, 1)
     assert allowed is True
 
 
@@ -77,6 +81,57 @@ def test_memory_check_blocks_for_window():
 
     allowed, _ = _memory_check("test_key", 5, 60)
     assert allowed is False
+
+
+def test_memory_check_eviction_keeps_recent_keys(monkeypatch):
+    """When the store exceeds its cap, only the least-recent keys are evicted —
+    active clients must keep their sliding windows (regression for the full-clear
+    bug that would flush every caller's state on a surge)."""
+    import ecommerce_ops.infra.rate_limiter as rl
+
+    monkeypatch.setattr(rl, "MEMORY_MAX_ENTRIES", 3)
+    _memory_store.clear()
+    _memory_block_until.clear()
+
+    now = time.time()
+    _memory_store["stale"] = [now - 100]
+    _memory_store["active"] = [now]
+    _memory_store["newer"] = [now]
+    assert len(_memory_store) == 3  # at cap, nothing evicted
+
+    # Crossing the cap evicts only the oldest key
+    allowed, count = _memory_check("fresh", 50, 60)
+    assert allowed is True
+    assert count == 1
+    assert "stale" not in _memory_store
+    assert "active" in _memory_store and "newer" in _memory_store
+
+    # The recently-active key keeps its sliding window and is still rate limited
+    for _ in range(4):
+        allowed, _ = _memory_check("active", 5, 60)
+        assert allowed is True
+    allowed, _ = _memory_check("active", 5, 60)
+    assert allowed is False
+
+
+def test_memory_check_eviction_drops_blocked_keys(monkeypatch):
+    """Evicted keys also lose their block entries so they are not permanently stuck."""
+    import ecommerce_ops.infra.rate_limiter as rl
+
+    monkeypatch.setattr(rl, "MEMORY_MAX_ENTRIES", 2)
+    _memory_store.clear()
+    _memory_block_until.clear()
+
+    now = time.time()
+    _memory_store["stale"] = [now - 100]
+    _memory_store["fresh"] = [now]
+    _memory_block_until["stale"] = now + 60
+    assert "stale" in _memory_block_until
+
+    _memory_check("new", 50, 60)  # pushes store over the cap
+    assert len(_memory_store) <= 2
+    assert "stale" not in _memory_store
+    assert "stale" not in _memory_block_until
 
 
 # ── Task Queue Tests ──────────────────────────────────────
@@ -94,8 +149,8 @@ async def test_task_queue_enqueue():
 
 @pytest.mark.asyncio
 async def test_task_queue_max_tasks():
-    from ecommerce_ops.infra.task_queue import TaskQueue, MAX_TASKS, Task, TaskStatus
-    from datetime import datetime
+
+    from ecommerce_ops.infra.task_queue import MAX_TASKS, Task, TaskQueue, TaskStatus
 
     tq = TaskQueue(num_workers=0)
     tq._tasks = {str(i): Task(str(i), "test", AsyncMock) for i in range(MAX_TASKS)}
@@ -108,8 +163,9 @@ async def test_task_queue_max_tasks():
 
 @pytest.mark.asyncio
 async def test_task_queue_evicts_expired():
-    from ecommerce_ops.infra.task_queue import TaskQueue, Task, TaskStatus
     from datetime import datetime, timedelta
+
+    from ecommerce_ops.infra.task_queue import Task, TaskQueue, TaskStatus
 
     tq = TaskQueue(num_workers=0)
     old_task = Task("old", "test", AsyncMock)

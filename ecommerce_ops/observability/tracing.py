@@ -42,9 +42,6 @@ def trace_agent(
                 },
             )
 
-            # Extract state from args/kwargs
-            state = kwargs.get("state") or (args[1] if len(args) > 1 else None)
-
             try:
                 # Execute the function
                 result = await func(*args, **kwargs)
@@ -86,7 +83,7 @@ def trace_agent(
                         trace_id=trace_id,
                         name="success",
                         value=0.0,
-                        comment=f"Agent failed: {str(e)}",
+                        comment=f"Agent failed: {e!s}",
                     )
 
                 logger.error("Agent %s failed: %s", agent_name, e)
@@ -120,13 +117,14 @@ def trace_llm_call(
                 # Track generation
                 if trace_id:
                     duration = time.time() - start_time
+                    usage = _extract_usage(result) or kwargs.get("usage")
                     langfuse_client.create_generation(
                         trace_id=trace_id,
                         name=call_name,
                         model=model,
                         input=kwargs.get("prompt", kwargs.get("messages", "")),
                         output=result,
-                        usage=kwargs.get("usage"),
+                        usage=usage,
                         metadata={
                             "duration_ms": round(duration * 1000, 2),
                             "function": func.__name__,
@@ -142,6 +140,31 @@ def trace_llm_call(
         return wrapper  # type: ignore
 
     return decorator
+
+
+def _extract_usage(result: Any) -> Optional[Dict[str, Any]]:
+    """Best-effort extraction of token usage from an LLM response.
+
+    Prefer usage that comes back *in* the model's response (mapping/message
+    shapes) rather than expecting the caller to forward it as a keyword arg,
+    which is easy to miss and was the source of silent ``usage=None`` spans.
+    """
+    if isinstance(result, dict):
+        usage = result.get("usage")
+        if isinstance(usage, dict):
+            return usage
+        usage_meta = result.get("usage_metadata")
+        if isinstance(usage_meta, dict):
+            return usage_meta
+    usage_attr = getattr(result, "usage", None)
+    if usage_attr is None:
+        return None
+    if isinstance(usage_attr, dict):
+        return usage_attr
+    try:
+        return dict(usage_attr)
+    except Exception:
+        return None
 
 
 def trace_tool(
@@ -249,7 +272,7 @@ def trace_pipeline(
                         trace_id=trace_id,
                         name="pipeline_success",
                         value=0.0,
-                        comment=f"Pipeline failed: {str(e)}",
+                        comment=f"Pipeline failed: {e!s}",
                     )
 
                 logger.error("Pipeline %s failed: %s", pipeline_name, e)
@@ -286,7 +309,7 @@ class TracedAgent:
             name=f"agent.{self.agent_name}",
             user_id=self.user_id,
             session_id=self.session_id,
-            tags=[self.agent_name] + self.tags,
+            tags=[self.agent_name, *self.tags],
             metadata=self.metadata,
         )
         return self
@@ -299,7 +322,7 @@ class TracedAgent:
                 trace_id=self.trace_id,
                 name="success",
                 value=0.0,
-                comment=f"Failed: {str(exc_val)}",
+                comment=f"Failed: {exc_val!s}",
             )
         else:
             langfuse_client.score(
