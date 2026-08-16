@@ -4,21 +4,17 @@ Endpoints for traces, evaluations, and metrics.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from ecommerce_ops.config import settings
 from ecommerce_ops.observability.evaluation import (
-    AgentEvaluation,
-    EvaluationFramework,
     evaluation_framework,
 )
 from ecommerce_ops.observability.langfuse_client import langfuse_client
 from ecommerce_ops.observability.trace_models import (
-    StoredTrace,
     TraceAggregation,
     TraceStatus,
 )

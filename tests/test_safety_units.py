@@ -1,4 +1,5 @@
 import os
+
 os.environ["ENV"] = "testing"
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite://"
 os.environ["API_KEY"] = "test-key"

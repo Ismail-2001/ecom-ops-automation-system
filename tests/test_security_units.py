@@ -1,16 +1,15 @@
 import os
+
 os.environ["ENV"] = "testing"
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite://"
 os.environ["API_KEY"] = "test-key"
 os.environ["DEEPSEEK_API_KEY"] = "sk-test-key"
 
-from unittest.mock import AsyncMock
-from unittest.mock import MagicMock
-from datetime import datetime
-from unittest.mock import patch
-import pytest
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 class TestSecurityModels:
@@ -33,24 +32,24 @@ class TestSecurityModels:
         assert Role.API_ONLY.value == "api_only"
 
     def test_user_is_admin_super_admin(self):
-        from ecommerce_ops.security.models import User, Role
+        from ecommerce_ops.security.models import Role, User
         user = User(id="1", email="a@b.com", role=Role.SUPER_ADMIN)
         assert user.is_admin is True
         assert user.is_super_admin is True
 
     def test_user_is_admin_admin(self):
-        from ecommerce_ops.security.models import User, Role
+        from ecommerce_ops.security.models import Role, User
         user = User(id="1", email="a@b.com", role=Role.ADMIN)
         assert user.is_admin is True
         assert user.is_super_admin is False
 
     def test_user_is_admin_operator(self):
-        from ecommerce_ops.security.models import User, Role
+        from ecommerce_ops.security.models import Role, User
         user = User(id="1", email="a@b.com", role=Role.OPERATOR)
         assert user.is_admin is False
 
     def test_user_is_admin_viewer(self):
-        from ecommerce_ops.security.models import User, Role
+        from ecommerce_ops.security.models import Role, User
         user = User(id="1", email="a@b.com", role=Role.VIEWER)
         assert user.is_admin is False
 
@@ -81,7 +80,7 @@ class TestSecurityModels:
         assert key.is_expired is False
 
     def test_role_definition_model(self):
-        from ecommerce_ops.security.models import RoleDefinition, Role, Permission
+        from ecommerce_ops.security.models import Permission, Role, RoleDefinition
         rd = RoleDefinition(
             name=Role.VIEWER, display_name="Viewer", description="Read-only",
             permissions={Permission.DASHBOARD_VIEW},
@@ -90,7 +89,7 @@ class TestSecurityModels:
         assert Permission.DASHBOARD_VIEW in rd.permissions
 
     def test_permission_check_model(self):
-        from ecommerce_ops.security.models import PermissionCheck, Permission
+        from ecommerce_ops.security.models import PermissionCheck
         pc = PermissionCheck(allowed=True, role=None)
         assert pc.allowed is True
         assert pc.missing_permissions == []
@@ -127,8 +126,8 @@ class TestSecurityModels:
 
 class TestRoleManager:
     def test_get_role_by_enum(self):
-        from ecommerce_ops.security.role_manager import RoleManager
         from ecommerce_ops.security.models import Role
+        from ecommerce_ops.security.role_manager import RoleManager
         rm = RoleManager()
         defn = rm.get_role(Role.ADMIN)
         assert defn is not None
@@ -152,8 +151,8 @@ class TestRoleManager:
         assert len(roles) == 5
 
     def test_create_role(self):
-        from ecommerce_ops.security.role_manager import RoleManager
         from ecommerce_ops.security.models import Permission
+        from ecommerce_ops.security.role_manager import RoleManager
         rm = RoleManager()
         defn = rm.create_role(
             name="custom_role", display_name="Custom",
@@ -163,17 +162,18 @@ class TestRoleManager:
         assert Permission.DASHBOARD_VIEW in defn.permissions
 
     def test_create_role_duplicate_raises(self):
-        from ecommerce_ops.security.role_manager import RoleManager
         from ecommerce_ops.security.models import Permission
+        from ecommerce_ops.security.role_manager import RoleManager
         rm = RoleManager()
         rm.create_role("dup_role", "Dup", "Dup role", {Permission.DASHBOARD_VIEW})
         with pytest.raises(ValueError, match="already exists"):
             rm.create_role("dup_role", "Dup2", "Dup2", {Permission.DASHBOARD_VIEW})
 
     def test_update_role_permissions(self):
-        from ecommerce_ops.security.role_manager import RoleManager
-        from ecommerce_ops.security.models import Permission, RoleDefinition, Role
         from datetime import datetime
+
+        from ecommerce_ops.security.models import Permission, Role, RoleDefinition
+        from ecommerce_ops.security.role_manager import RoleManager
         rm = RoleManager()
         rm._roles["custom_role"] = RoleDefinition(
             name=Role.VIEWER, display_name="Custom", description="Custom role", permissions=set(), is_system=False,
@@ -183,22 +183,22 @@ class TestRoleManager:
         assert result is True
 
     def test_update_role_permissions_not_found(self):
-        from ecommerce_ops.security.role_manager import RoleManager
         from ecommerce_ops.security.models import Permission
+        from ecommerce_ops.security.role_manager import RoleManager
         rm = RoleManager()
         result = rm.update_role_permissions("nonexistent", {Permission.AGENTS_VIEW})
         assert result is False
 
     def test_update_system_role_denied(self):
-        from ecommerce_ops.security.role_manager import RoleManager
         from ecommerce_ops.security.models import Permission, Role
+        from ecommerce_ops.security.role_manager import RoleManager
         rm = RoleManager()
         result = rm.update_role_permissions(Role.ADMIN, {Permission.DASHBOARD_VIEW})
         assert result is False
 
     def test_delete_role(self):
-        from ecommerce_ops.security.role_manager import RoleManager
         from ecommerce_ops.security.models import Permission
+        from ecommerce_ops.security.role_manager import RoleManager
         rm = RoleManager()
         rm.create_role("to_delete", "Delete", "To delete", {Permission.DASHBOARD_VIEW})
         assert rm.delete_role("to_delete") is True
@@ -209,22 +209,22 @@ class TestRoleManager:
         assert rm.delete_role("nonexistent") is False
 
     def test_delete_system_role_denied(self):
-        from ecommerce_ops.security.role_manager import RoleManager
         from ecommerce_ops.security.models import Role
+        from ecommerce_ops.security.role_manager import RoleManager
         rm = RoleManager()
         assert rm.delete_role(Role.ADMIN) is False
 
     def test_check_permission_active_user_with_role_perm(self):
+        from ecommerce_ops.security.models import Permission, Role, User
         from ecommerce_ops.security.role_manager import RoleManager
-        from ecommerce_ops.security.models import User, Permission, Role
         rm = RoleManager()
         user = User(id="u1", email="a@b.com", role=Role.VIEWER, is_active=True)
         result = rm.check_permission(user, Permission.DASHBOARD_VIEW)
         assert result.allowed is True
 
     def test_check_permission_inactive_user(self):
+        from ecommerce_ops.security.models import Permission, Role, User
         from ecommerce_ops.security.role_manager import RoleManager
-        from ecommerce_ops.security.models import User, Permission, Role
         rm = RoleManager()
         user = User(id="u1", email="a@b.com", role=Role.VIEWER, is_active=False)
         result = rm.check_permission(user, Permission.DASHBOARD_VIEW)
@@ -232,16 +232,16 @@ class TestRoleManager:
         assert "inactive" in result.reason
 
     def test_check_permission_denied(self):
+        from ecommerce_ops.security.models import Permission, Role, User
         from ecommerce_ops.security.role_manager import RoleManager
-        from ecommerce_ops.security.models import User, Permission, Role
         rm = RoleManager()
         user = User(id="u1", email="a@b.com", role=Role.VIEWER, is_active=True)
         result = rm.check_permission(user, Permission.AUDIT_EXPORT)
         assert result.allowed is False
 
     def test_check_permission_user_level_override(self):
+        from ecommerce_ops.security.models import Permission, Role, User
         from ecommerce_ops.security.role_manager import RoleManager
-        from ecommerce_ops.security.models import User, Permission, Role
         rm = RoleManager()
         user = User(
             id="u1", email="a@b.com", role=Role.VIEWER, is_active=True,
@@ -251,24 +251,24 @@ class TestRoleManager:
         assert result.allowed is True
 
     def test_check_permissions_multiple(self):
+        from ecommerce_ops.security.models import Permission, Role, User
         from ecommerce_ops.security.role_manager import RoleManager
-        from ecommerce_ops.security.models import User, Permission, Role
         rm = RoleManager()
         user = User(id="u1", email="a@b.com", role=Role.VIEWER, is_active=True)
         result = rm.check_permissions(user, {Permission.DASHBOARD_VIEW, Permission.AUDIT_VIEW})
         assert result.allowed is True
 
     def test_check_permissions_one_missing(self):
+        from ecommerce_ops.security.models import Permission, Role, User
         from ecommerce_ops.security.role_manager import RoleManager
-        from ecommerce_ops.security.models import User, Permission, Role
         rm = RoleManager()
         user = User(id="u1", email="a@b.com", role=Role.VIEWER, is_active=True)
         result = rm.check_permissions(user, {Permission.DASHBOARD_VIEW, Permission.AUDIT_EXPORT})
         assert result.allowed is False
 
     def test_get_user_permissions(self):
+        from ecommerce_ops.security.models import Permission, Role, User
         from ecommerce_ops.security.role_manager import RoleManager
-        from ecommerce_ops.security.models import User, Permission, Role
         rm = RoleManager()
         user = User(id="u1", email="a@b.com", role=Role.VIEWER, is_active=True)
         perms = rm.get_user_permissions(user)
@@ -410,8 +410,8 @@ class TestAuth:
 
     @pytest.mark.asyncio
     async def test_middleware_dispatch_api_key_exception(self):
+
         from ecommerce_ops.security.auth import AuthenticationMiddleware
-        from starlette.responses import JSONResponse
         mw = AuthenticationMiddleware(app=MagicMock())
         mock_request = MagicMock()
         mock_request.url.path = "/api/data"
@@ -438,7 +438,7 @@ class TestAuth:
     @pytest.mark.asyncio
     async def test_require_auth_valid(self):
         from ecommerce_ops.security.auth import require_auth
-        from ecommerce_ops.security.models import User, Role
+        from ecommerce_ops.security.models import Role, User
         mock_creds = MagicMock()
         mock_creds.credentials = "valid-token"
         mock_api_key = MagicMock()
@@ -453,8 +453,9 @@ class TestAuth:
 
     @pytest.mark.asyncio
     async def test_require_auth_invalid_key(self):
-        from ecommerce_ops.security.auth import require_auth
         from fastapi import HTTPException
+
+        from ecommerce_ops.security.auth import require_auth
         mock_creds = MagicMock()
         mock_creds.credentials = "bad-token"
 
@@ -466,8 +467,9 @@ class TestAuth:
 
     @pytest.mark.asyncio
     async def test_require_auth_inactive_user(self):
-        from ecommerce_ops.security.auth import require_auth
         from fastapi import HTTPException
+
+        from ecommerce_ops.security.auth import require_auth
         mock_creds = MagicMock()
         mock_creds.credentials = "valid-token"
         mock_api_key = MagicMock()
@@ -494,8 +496,9 @@ class TestAuth:
 
     @pytest.mark.asyncio
     async def test_require_admin_no_user(self):
-        from ecommerce_ops.security.auth import require_admin
         from fastapi import HTTPException
+
+        from ecommerce_ops.security.auth import require_admin
         with patch("ecommerce_ops.security.auth.require_auth", new_callable=AsyncMock, return_value=None):
             with pytest.raises(HTTPException) as exc_info:
                 await require_admin(user=None)
@@ -503,9 +506,10 @@ class TestAuth:
 
     @pytest.mark.asyncio
     async def test_require_admin_not_admin(self):
-        from ecommerce_ops.security.auth import require_admin
-        from ecommerce_ops.security.models import User, Role
         from fastapi import HTTPException
+
+        from ecommerce_ops.security.auth import require_admin
+        from ecommerce_ops.security.models import Role, User
         user = User(id="u1", email="a@b.com", role=Role.VIEWER)
         with pytest.raises(HTTPException) as exc_info:
             await require_admin(user=user)
@@ -514,7 +518,7 @@ class TestAuth:
     @pytest.mark.asyncio
     async def test_require_admin_is_admin(self):
         from ecommerce_ops.security.auth import require_admin
-        from ecommerce_ops.security.models import User, Role
+        from ecommerce_ops.security.models import Role, User
         user = User(id="u1", email="a@b.com", role=Role.ADMIN)
         result = await require_admin(user=user)
         assert result == user
@@ -528,7 +532,7 @@ class TestAuth:
     @pytest.mark.asyncio
     async def test_get_current_user_valid(self):
         from ecommerce_ops.security.auth import get_current_user
-        from ecommerce_ops.security.models import User, Role
+        from ecommerce_ops.security.models import Role, User
         mock_creds = MagicMock()
         mock_creds.credentials = "token"
         mock_api_key = MagicMock()

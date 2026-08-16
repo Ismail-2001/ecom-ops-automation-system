@@ -1,5 +1,6 @@
 import pytest
-from ecommerce_ops.tools.registry import ToolRegistry, Tool
+
+from ecommerce_ops.tools.registry import Tool, ToolRegistry
 
 
 class DummyTool(Tool):

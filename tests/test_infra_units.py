@@ -1,14 +1,14 @@
 import os
+
 os.environ["ENV"] = "testing"
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite://"
 os.environ["API_KEY"] = "test-key"
 os.environ["DEEPSEEK_API_KEY"] = "sk-test-key"
 
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
+
 import pytest
-from datetime import timedelta
-from datetime import timezone
 
 
 class TestTaskQueue:
@@ -100,16 +100,16 @@ class TestTaskQueue:
         assert tq.get_task("nonexistent") is None
 
     def test_evict_expired(self):
-        from ecommerce_ops.infra.task_queue import TaskQueue, Task
+        from ecommerce_ops.infra.task_queue import Task, TaskQueue
         tq = TaskQueue()
         old_task = Task("old", "test", lambda: None)
-        old_task.created_at = datetime.now(timezone.utc) - timedelta(hours=25)
+        old_task.created_at = datetime.now(UTC) - timedelta(hours=25)
         tq._tasks["old"] = old_task
         tq._evict_expired()
         assert "old" not in tq._tasks
 
     def test_evict_expired_keeps_fresh(self):
-        from ecommerce_ops.infra.task_queue import TaskQueue, Task
+        from ecommerce_ops.infra.task_queue import Task, TaskQueue
         tq = TaskQueue()
         fresh_task = Task("fresh", "test", lambda: None)
         tq._tasks["fresh"] = fresh_task
@@ -117,16 +117,16 @@ class TestTaskQueue:
         assert "fresh" in tq._tasks
 
     def test_evict_expired_with_int_timestamp(self):
-        from ecommerce_ops.infra.task_queue import TaskQueue, Task
+        from ecommerce_ops.infra.task_queue import Task, TaskQueue
         tq = TaskQueue()
         old_task = Task("old", "test", lambda: None)
-        old_task.created_at = (datetime.now(timezone.utc) - timedelta(hours=25)).timestamp()
+        old_task.created_at = (datetime.now(UTC) - timedelta(hours=25)).timestamp()
         tq._tasks["old"] = old_task
         tq._evict_expired()
         assert "old" not in tq._tasks
 
     def test_evict_expired_with_naive_datetime(self):
-        from ecommerce_ops.infra.task_queue import TaskQueue, Task
+        from ecommerce_ops.infra.task_queue import Task, TaskQueue
         tq = TaskQueue()
         old_task = Task("old", "test", lambda: None)
         old_task.created_at = datetime.utcnow() - timedelta(hours=25)

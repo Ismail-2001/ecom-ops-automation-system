@@ -1,23 +1,21 @@
 """Tests for Security — Role Manager, Auth, Audit."""
 
-import pytest
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from ecommerce_ops.security.models import (
+    DEFAULT_ROLES,
+    APIKey,
     Permission,
     Role,
     User,
-    APIKey,
-    RoleDefinition,
-    DEFAULT_ROLES,
 )
 from ecommerce_ops.security.role_manager import (
     RoleManager,
     _hash_api_key,
     _verify_api_key_hash,
 )
-
 
 # ── Role Manager Unit Tests ───────────────────────────────
 

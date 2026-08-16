@@ -93,10 +93,12 @@ This matters more than any feature list. A system that automates the wrong decis
 ### Security & Compliance
 
 - **5-Role RBAC** — super_admin, admin, operator, viewer, api_only with 35 granular permissions across 12 categories
-- **SHA-256 API Key Management** — `eops_` prefixed keys with 90-day expiry, usage tracking, and secure hashing
+- **PBKDF2 API Key Management** — SHA-256 hashed keys with `eops_` prefix, 90-day expiry, usage tracking (Phase 1 hardening)
 - **Comprehensive Audit Logging** — Every action, decision, and security event logged to PostgreSQL with risk-level assessment and sensitive-field redaction
-- **Rate Limiting** — Redis sliding window (60 req/min) with in-memory fallback, per-IP tracking, and automatic blocking
+- **Rate Limiting** — Redis sliding window (60 req/min) with LRU-eviction in-memory fallback, per-IP tracking, and automatic blocking
 - **Security Hardening** — HSTS, CSP, X-Frame-Options: DENY, input sanitization (25+ injection patterns), SQL/XSS blocking, no hardcoded secrets
+- **Webhook HMAC Verification** — Shopify webhooks validated with HMAC signature (Phase 1)
+- **Session Secret Rotation** — Cryptographically random session secrets, rotated on deploy (Phase 1)
 
 ### Observability
 
@@ -307,7 +309,7 @@ graph TD
 </tr>
 <tr>
 <td><strong>Observability</strong></td>
-<td>Prometheus, Grafana, Tempo, OpenTelemetry, Langfuse</td>
+<td>Prometheus, Grafana, Tempo, OpenTelemetry, Langfuse, structlog</td>
 <td>Metrics, dashboards, tracing, LLM monitoring</td>
 </tr>
 <tr>
@@ -591,26 +593,28 @@ For a store doing **$200K/year** in revenue:
 
 ### Authentication & Authorization
 
-- **API Key Auth**: SHA-256 hashed keys with `eops_` prefix, 90-day expiry, usage tracking
+- **API Key Auth**: PBKDF2 hashed keys with `eops_` prefix, 90-day expiry, usage tracking (Phase 1 hardening)
 - **5-Role RBAC**: `super_admin` → `admin` → `operator` → `viewer` → `api_only`
 - **35 Granular Permissions**: Dashboard, agents, approvals, Shopify, cart recovery, support, observability, memory, settings, users, roles, audit, API keys
 - **Permission Dependencies**: `require_auth()`, `require_permission()`, `require_role()`, `require_admin()`
+- **Fail-Secure Auth**: Returns 503 on DB errors, never silently proceeds unauthenticated (Phase 2 fix)
 
 ### Data Protection
 
 - **Input Sanitization**: Blocks `<script`, `javascript:`, `eval()`, SQL injection, XSS patterns
 - **Security Headers**: HSTS, CSP, X-Frame-Options: DENY, X-XSS-Protection, Referrer-Policy
 - **Audit Logging**: Every action logged with risk-level assessment and sensitive-field redaction
-- **Rate Limiting**: Redis sliding window (60 req/min) with per-IP blocking
+- **Structured Logging**: stdlib loggers routed through structlog `ProcessorFormatter` — JSON in production, not dead config
+- **Rate Limiting**: Redis sliding window (60 req/min) with LRU-eviction in-memory fallback, per-IP blocking
 
 ### Agent Safety
 
-- **Prompt Injection Guard**: 25+ regex patterns detecting role override, system prompt injection, SQL injection
+- **Prompt Injection Guard**: 25+ regex patterns detecting role override, system prompt injection, SQL injection (wired into fraud, inventory, marketing agents)
 - **Shell Injection Prevention**: Whitelist-based tool executor — blocks `subprocess`, `os.system`, `eval`, `exec`
 - **Hallucination Detector**: Validates unsupported claims, fabricated numbers, confidence levels
 - **Output Validator**: Ensures confidence scores, decision validity, required fields, JSON structure
 - **Hard Limits**: PO caps ($1,000), price-change limits (20%), confidence thresholds (0.95)
-- **No Hardcoded Secrets**: All API keys loaded from environment variables (Phase 1 audit fix)
+- **No Hardcoded Secrets**: All API keys loaded from environment variables, PBKDF2 hashing
 
 ### CI Security
 
@@ -618,6 +622,7 @@ For a store doing **$200K/year** in revenue:
 - **Bandit**: Python SAST scanning (B101, B311, B324 skipped per config)
 - **pip-audit**: Dependency vulnerability auditing
 - **mypy**: Static type checking (strict mode, added to main CI pipeline)
+- **Pre-commit Hooks**: Ruff, Bandit, ESLint, TypeScript check on every commit
 - **Weekly Scheduled Scans**: Automated security pipeline every Monday
 
 ---
@@ -628,12 +633,12 @@ For a store doing **$200K/year** in revenue:
 - **Connection Pooling**: PostgreSQL (20 connections + 10 overflow), Redis (20 max connections)
 - **Semantic LLM Cache**: Cosine-similarity cache (threshold 0.92) with bounded 200-entry index — eliminates redundant LLM calls for similar queries
 - **Circuit Breakers**: Per-service circuit breakers (5 failures → 60s open) prevent cascade failures
-- **Task Queue**: In-memory queue (2 workers, max 100 depth) for background pipeline execution
+- **Task Queue**: Redis-backed task queue with in-memory fallback for background pipeline execution; cross-worker task sharing (Phase 3)
 - **Browser Pool**: Shared Playwright browser instances for competitor scraping (avoids process-per-request)
 - **SQL-Side Search**: Approval search, audit export, and filtering pushed to PostgreSQL (no O(n) Python scans)
 - **Streaming Export**: Audit log export uses `StreamingResponse` + `db.stream().partitions(500)` for constant-memory CSV/JSON
 - **Static Page Generation**: Next.js SSG for dashboard pages — instant load, zero server rendering
-- **WebSocket**: Real-time event stream for dashboard updates (authenticated, rate-limited, 500 global connections)
+- **WebSocket**: Real-time event stream for dashboard updates (authenticated, rate-limited, 500 global connections, Redis PubSub for cross-worker broadcast)
 - **Lazy Loading**: Command palette and heavy components loaded via `next/dynamic` — reduced initial bundle
 
 ---
@@ -672,11 +677,11 @@ pytest tests/ -m "e2e"               # End-to-end tests
 Every push runs:
 1. **Lint & Type Check** — Ruff check + format verification + mypy type checking
 2. **Migration Drift** — Alembic vs models divergence check
-3. **Unit Tests** — pytest with PostgreSQL + Redis services (261+ tests, 65% coverage threshold)
+3. **Unit Tests** — pytest with PostgreSQL + Redis services (741+ tests, 65% coverage threshold)
 4. **E2E Tests** — Full pipeline integration
 5. **Security Scan** — pip-audit + Bandit SAST
 6. **Docker Build** — Multi-stage build + Trivy CRITICAL severity scan
-7. **Frontend CI** — TypeScript check + Vitest (81 tests) + Next.js build + coverage thresholds (60/45/50/65)
+7. **Frontend CI** — TypeScript check + Vitest + Next.js build + coverage thresholds (60/45/50/65)
 8. **Performance Benchmarks** — Agent latency tests
 
 ---
@@ -747,16 +752,41 @@ docker compose -f docker-compose.agents.yml up -d
 
 ## Roadmap
 
-### Completed (Phases 1-5)
+### Completed — Foundation (Phases 1-6)
 
 - [x] Security audit + vulnerability remediation (auth bypass, prompt injection, shell injection, hardcoded keys)
 - [x] Runtime infrastructure (Redis task queue, Redis PubSub, graceful shutdown)
 - [x] Code quality (thread-safe AgentFactory, dead code removal, metrics wiring)
-- [x] Test suite overhaul (2762-line monolith → 7 focused modules, 261 tests)
+- [x] Test suite overhaul (2762-line monolith → 7+ focused modules, 741+ tests)
 - [x] Frontend performance (lazy loading, dependency pruning, loading states)
 - [x] Semantic LLM cache (cosine similarity, bounded index, graceful degradation)
 - [x] API performance (SQL-side search, streaming audit export)
 - [x] Production hardening (mypy in CI, cross-browser Playwright, rolling deploy, offsite backup, DR policy)
+
+### Completed — FAANG Audit Remediation (Phases 1-3)
+
+The codebase underwent a FAANG-level production audit scoring 4.8/10. Three focused remediation phases brought it to production readiness:
+
+**Phase 1 — Security Hardening** (`e696a16`)
+- PBKDF2 API key hashing with constant-time comparison
+- Webhook HMAC signature verification for Shopify
+- BFF allowlist for frontend API calls
+- Session secret rotation on deploy
+- Always-on rate limiting (no bypass in any environment)
+
+**Phase 2 — Data Integrity** (`6d16bf5`, `8f36469`)
+- Alembic migration portability (batch-mode FK for SQLite compatibility)
+- ORM metadata alignment with migration chain (`alembic check` clean)
+- Auth middleware fixed: accepts configured `API_KEY` alongside RBAC, returns 503 on DB errors (never silent bypass)
+- Audit export streaming with `.scalars().partitions()` for correct ORM row handling
+- Test harness stabilized: async fixtures, e2e event-loop, honest contract tests
+
+**Phase 3 — Runtime Reliability & Honest Telemetry** (`52c65a0`)
+- Rate limiter: LRU eviction replaces full-clear bug (no more unrestricted traffic bursts on store overflow)
+- Schema management: `Base.metadata.create_all` gated to SQLite/dev only — never runs on Alembic-managed Postgres
+- Structured logging: stdlib loggers routed through structlog `ProcessorFormatter` — JSON in production, not dead config
+- LLM tracing: `trace_llm_call` reads token usage from model response (not kwargs) — no more silent `None` spans
+- +12 regression tests covering all fixes
 
 ### Near-term (1-3 months)
 

@@ -1,11 +1,12 @@
 import os
+
 os.environ["ENV"] = "testing"
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite://"
 os.environ["API_KEY"] = "test-key"
 os.environ["DEEPSEEK_API_KEY"] = "sk-test-key"
 
-from unittest.mock import AsyncMock
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 
@@ -130,8 +131,9 @@ class TestCache:
 
     @pytest.mark.asyncio
     async def test_get_with_retry_success(self):
-        from ecommerce_ops.memory.cache import RedisCache
         import json
+
+        from ecommerce_ops.memory.cache import RedisCache
         rc = RedisCache()
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=json.dumps({"data": "test"}))
@@ -162,8 +164,8 @@ class TestCache:
 
     @pytest.mark.asyncio
     async def test_get_circuit_breaker_open(self):
-        from ecommerce_ops.memory.cache import RedisCache
         from ecommerce_ops.infra.circuit_breaker import CircuitBreakerOpenError
+        from ecommerce_ops.memory.cache import RedisCache
         rc = RedisCache()
         with patch.object(rc._circuit_breaker, "call", new_callable=AsyncMock, side_effect=CircuitBreakerOpenError("open")):
             result = await rc.get("key")
@@ -171,8 +173,8 @@ class TestCache:
 
     @pytest.mark.asyncio
     async def test_set_circuit_breaker_open(self):
-        from ecommerce_ops.memory.cache import RedisCache
         from ecommerce_ops.infra.circuit_breaker import CircuitBreakerOpenError
+        from ecommerce_ops.memory.cache import RedisCache
         rc = RedisCache()
         with patch.object(rc._circuit_breaker, "call", new_callable=AsyncMock, side_effect=CircuitBreakerOpenError("open")):
             result = await rc.set("key", "value")
@@ -216,8 +218,9 @@ class TestAgentMemory:
 
     @pytest.mark.asyncio
     async def test_get_recent_memories_success(self):
-        from ecommerce_ops.memory.agent_memory import get_recent_memories
         import json
+
+        from ecommerce_ops.memory.agent_memory import get_recent_memories
         with patch("ecommerce_ops.memory.agent_memory.cache") as mock_cache:
             mock_client = AsyncMock()
             mock_client.lrange = AsyncMock(return_value=[json.dumps({"action_type": "TEST"})])

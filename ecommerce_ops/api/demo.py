@@ -3,9 +3,9 @@ Demo and ROI API Routes
 Endpoints for demo environment and ROI calculations.
 """
 import logging
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ecommerce_ops.demo.roi_calculator import ROICalculator

@@ -4,18 +4,15 @@ Generates AI-powered customer support responses.
 """
 
 import logging
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from ecommerce_ops.agents.customer_support.models import (
     KnowledgeArticle,
     ResponseSuggestion,
-    ResponseTemplate,
     SentimentType,
     SupportTicket,
     TicketCategory,
     TicketPriority,
-    TicketStatus,
 )
 
 logger = logging.getLogger("ecommerce_ops.agents.customer_support.response")

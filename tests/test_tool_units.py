@@ -1,13 +1,13 @@
 import os
+
 os.environ["ENV"] = "testing"
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite://"
 os.environ["API_KEY"] = "test-key"
 os.environ["DEEPSEEK_API_KEY"] = "sk-test-key"
 
-from unittest.mock import AsyncMock
-from unittest.mock import MagicMock
 import asyncio
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 
@@ -270,7 +270,7 @@ class TestRetry:
 
 class TestToolRegistrySimple:
     def test_register_and_get(self):
-        from ecommerce_ops.tools.registry import ToolRegistry, Tool
+        from ecommerce_ops.tools.registry import Tool, ToolRegistry
         reg = ToolRegistry()
         reg._tools.clear()
 
@@ -290,7 +290,7 @@ class TestToolRegistrySimple:
         assert reg.get("nonexistent") is None
 
     def test_list_tools(self):
-        from ecommerce_ops.tools.registry import ToolRegistry, Tool
+        from ecommerce_ops.tools.registry import Tool, ToolRegistry
         reg = ToolRegistry()
         reg._tools.clear()
 
@@ -307,7 +307,7 @@ class TestToolRegistrySimple:
 
     @pytest.mark.asyncio
     async def test_run_tool(self):
-        from ecommerce_ops.tools.registry import ToolRegistry, Tool
+        from ecommerce_ops.tools.registry import Tool, ToolRegistry
         reg = ToolRegistry()
         reg._tools.clear()
 

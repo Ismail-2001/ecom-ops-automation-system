@@ -3,7 +3,7 @@ LLM-Powered Inventory Management Agent
 Uses LLM for demand forecasting, reorder optimization, and stock analysis.
 """
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field

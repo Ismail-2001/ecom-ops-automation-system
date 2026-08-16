@@ -3,7 +3,7 @@ LLM-Powered Marketing Automation Agent
 Uses LLM for campaign creation, audience segmentation, and content optimization.
 """
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field

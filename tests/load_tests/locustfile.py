@@ -7,11 +7,10 @@ Usage:
   Headless:     locust -f tests/load_tests/locustfile.py --host=http://localhost:8000 --headless -u 100 -r 10 -t 60s
 """
 
-import json
 import random
 import uuid
-from locust import HttpUser, task, between, tag, events
 
+from locust import HttpUser, between, tag, task
 
 API_KEY = "opsiq-dev-key-2024"
 HEADERS = {

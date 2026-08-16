@@ -5,8 +5,7 @@ Production-grade Langfuse integration for tracing and evaluation.
 
 import logging
 import os
-from contextlib import contextmanager
-from typing import Any, Dict, Generator, Optional
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 

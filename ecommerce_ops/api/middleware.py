@@ -1,21 +1,24 @@
-import uuid
-import time
 import json
 import logging
+import time
+import uuid
 from typing import Callable
+
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from ecommerce_ops.config import settings, Environment
-from ecommerce_ops.infra.rate_limiter import check_rate_limit
-from ecommerce_ops.memory.cache import cache, _get_ttl
-from ecommerce_ops.security.hardening import (
-    SecurityHeadersMiddleware,
-    InputSanitizationMiddleware,
-)
 from ecommerce_ops.api.metrics import (
-    METRIC_HTTP_REQUESTS, METRIC_HTTP_DURATION, METRIC_RATE_LIMIT_REJECTED,
+    METRIC_HTTP_DURATION,
+    METRIC_HTTP_REQUESTS,
+    METRIC_RATE_LIMIT_REJECTED,
+)
+from ecommerce_ops.config import Environment, settings
+from ecommerce_ops.infra.rate_limiter import check_rate_limit
+from ecommerce_ops.memory.cache import _get_ttl, cache
+from ecommerce_ops.security.hardening import (
+    InputSanitizationMiddleware,
+    SecurityHeadersMiddleware,
 )
 
 logger = logging.getLogger("ecommerce_ops.api.middleware")

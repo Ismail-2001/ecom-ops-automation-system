@@ -1,8 +1,9 @@
-import uuid
 import logging
 from datetime import datetime, timedelta
+
 from sqlalchemy import select
-from ecommerce_ops.models.db import ApprovalAction, AuditEntry, AgentStatus, StoreSettings, async_session_factory
+
+from ecommerce_ops.models.db import ApprovalAction, AuditEntry, async_session_factory
 
 logger = logging.getLogger("ecommerce_ops.seed")
 
@@ -54,7 +55,7 @@ async def seed_data_if_empty():
                     "reversal_window_hours": 24
                 }
             ),
-            
+
             # 2. Critical Risk Fraud Hold (Requires 'APPROVE' typing)
             ApprovalAction(
                 id="a1b2c3d4-0002-4000-8000-000000000002",

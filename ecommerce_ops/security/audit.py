@@ -3,13 +3,12 @@ Audit Logging (PostgreSQL-backed)
 Comprehensive audit logging for security events with persistent storage.
 """
 
-import json
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 
 from ecommerce_ops.models.db import SecurityAuditLog, async_session_factory
 from ecommerce_ops.security.models import SecurityEvent

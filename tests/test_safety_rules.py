@@ -1,6 +1,7 @@
 import pytest
-from ecommerce_ops.safety.safety_rules import evaluate_action_safety
+
 from ecommerce_ops.models.db import StoreSettings
+from ecommerce_ops.safety.safety_rules import evaluate_action_safety
 
 
 @pytest.fixture

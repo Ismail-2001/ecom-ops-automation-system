@@ -3,8 +3,8 @@
 Exports traces via OTLP to Grafana Tempo and metrics via Prometheus.
 """
 
-import os
 import logging
+import os
 
 logger = logging.getLogger("ecommerce_ops.otel")
 
@@ -24,19 +24,19 @@ def init_tracing():
 
     try:
         from opentelemetry import trace
-        from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.export import BatchSpanProcessor
-        from opentelemetry.sdk.resources import Resource, SERVICE_NAME
-        from opentelemetry.sdk.metrics import MeterProvider
-        from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+        from opentelemetry.baggage.propagation import W3CBaggagePropagator
         from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
         from opentelemetry.exporter.prometheus import PrometheusMetricReader
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
         from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
         from opentelemetry.propagate import set_global_textmap
         from opentelemetry.propagators.composite import CompositePropagator
+        from opentelemetry.sdk.metrics import MeterProvider
+        from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+        from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
         from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
-        from opentelemetry.baggage.propagation import W3CBaggagePropagator
 
         # Set W3C Trace Context + Baggage propagators
         set_global_textmap(CompositePropagator([
@@ -93,9 +93,9 @@ def init_tracing():
 
 def _get_sampler():
     from opentelemetry.sdk.trace.sampling import (
-        TraceIdRatioBased,
-        ParentBasedTraceIdRatio,
         ALWAYS_ON,
+        ParentBasedTraceIdRatio,
+        TraceIdRatioBased,
     )
 
     ratio = float(OTEL_TRACES_SAMPLER_ARG)

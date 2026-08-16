@@ -1,7 +1,9 @@
-import pytest
-import os
 import json
-from unittest.mock import MagicMock, patch, AsyncMock
+import os
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
 from ecommerce_ops.agents.pricing import PricingAgent
 from ecommerce_ops.tools.registry import ToolRegistry
 
@@ -9,9 +11,9 @@ os.environ["DEEPSEEK_API_KEY"] = "sk-dummy-key"
 
 @pytest.fixture
 def mock_state():
-    with open("tests/fixtures/shopify_data.json", "r") as f:
+    with open("tests/fixtures/shopify_data.json") as f:
         data = json.load(f)
-    
+
     return {
         "inventory_data": data["inventory"],
         "decisions": [],

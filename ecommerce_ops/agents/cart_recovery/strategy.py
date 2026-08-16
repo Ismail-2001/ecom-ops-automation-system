@@ -4,15 +4,11 @@ Analyzes cart data and selects optimal recovery strategy.
 """
 
 import logging
-from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from ecommerce_ops.agents.cart_recovery.models import (
     AbandonedCart,
-    CartItem,
     CartRiskLevel,
-    CartStatus,
-    CustomerProfile,
     RecoveryStrategy,
 )
 
@@ -178,7 +174,7 @@ class RecoveryStrategyEngine:
 
         strategies = {}
         total_potential = 0.0
-        risk_distribution = {level: 0 for level in CartRiskLevel}
+        risk_distribution = dict.fromkeys(CartRiskLevel, 0)
 
         for cart in carts:
             recommendation = self.get_strategy_recommendation(cart)

@@ -1,18 +1,15 @@
 """Tests for Supervisor Graph and Reflection Agent."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-import uuid
-from datetime import datetime
+from unittest.mock import AsyncMock, patch
 
+import pytest
+
+from ecommerce_ops.agents.reflection import ReflectionAgent
 from ecommerce_ops.graph.state import (
     AgentDecision,
     ExecutionPlan,
-    OverallState,
     ReflectionFeedback,
 )
-from ecommerce_ops.agents.reflection import ReflectionAgent
-
 
 # ── State Model Tests ─────────────────────────────────────
 

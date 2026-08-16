@@ -1,15 +1,12 @@
 """Tests for Agent Factory — LLM + rule-based with fallback."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from ecommerce_ops.agents.factory import AgentFactory, UnifiedAgent
 from ecommerce_ops.agents.fraud import FraudAgent
 from ecommerce_ops.agents.fraud_llm import FraudDetectionAgentLLM
-from ecommerce_ops.agents.inventory import InventoryAgent
-from ecommerce_ops.agents.inventory_llm import InventoryManagementAgentLLM
-from ecommerce_ops.agents.marketing import MarketingAgent
-from ecommerce_ops.agents.marketing_llm import MarketingAutomationAgentLLM
 
 
 @pytest.fixture

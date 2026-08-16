@@ -1,15 +1,15 @@
 import os
+
 os.environ["ENV"] = "testing"
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite://"
 os.environ["API_KEY"] = "test-key"
 os.environ["DEEPSEEK_API_KEY"] = "sk-test-key"
 
-from ecommerce_ops.graph.state import AgentDecision
-from unittest.mock import AsyncMock
-from unittest.mock import MagicMock
-from ecommerce_ops.graph.state import ReflectionFeedback
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
+
+from ecommerce_ops.graph.state import AgentDecision, ReflectionFeedback
 
 
 class TestBaseAgent:
@@ -161,7 +161,7 @@ class TestFraudAgent:
             assert agent.agent_name == "FraudAgent"
 
     def test_assess_risk_suspicious_order(self):
-        from ecommerce_ops.agents.fraud import FraudAgent, FRAUD_RULES
+        from ecommerce_ops.agents.fraud import FraudAgent
         agent = FraudAgent.__new__(FraudAgent)
         order = {"id": "o_suspicious"}
         score, factors = agent._assess_risk(order)
@@ -477,7 +477,7 @@ class TestReviewsAgent:
 
     @pytest.mark.asyncio
     async def test_analyze_review_llm_success(self):
-        from ecommerce_ops.agents.reviews import ReviewsAgent, ReviewAnalysisOutput
+        from ecommerce_ops.agents.reviews import ReviewAnalysisOutput, ReviewsAgent
         agent = ReviewsAgent.__new__(ReviewsAgent)
         llm_result = ReviewAnalysisOutput(
             sentiment="Positive", themes=["Quality"], response="Thank you!",
@@ -494,7 +494,7 @@ class TestReviewsAgent:
 
     @pytest.mark.asyncio
     async def test_analyze_review_llm_sentiment_override_high_rating(self):
-        from ecommerce_ops.agents.reviews import ReviewsAgent, ReviewAnalysisOutput
+        from ecommerce_ops.agents.reviews import ReviewAnalysisOutput, ReviewsAgent
         agent = ReviewsAgent.__new__(ReviewsAgent)
         llm_result = ReviewAnalysisOutput(
             sentiment="Neutral", themes=["General"], response="Thanks",
@@ -511,7 +511,7 @@ class TestReviewsAgent:
 
     @pytest.mark.asyncio
     async def test_analyze_review_llm_sentiment_override_low_rating(self):
-        from ecommerce_ops.agents.reviews import ReviewsAgent, ReviewAnalysisOutput
+        from ecommerce_ops.agents.reviews import ReviewAnalysisOutput, ReviewsAgent
         agent = ReviewsAgent.__new__(ReviewsAgent)
         llm_result = ReviewAnalysisOutput(
             sentiment="Positive", themes=["General"], response="Thanks",
@@ -528,8 +528,9 @@ class TestReviewsAgent:
 
     @pytest.mark.asyncio
     async def test_analyze_review_llm_failure(self):
-        from ecommerce_ops.agents.reviews import ReviewsAgent
         from openai import APIError
+
+        from ecommerce_ops.agents.reviews import ReviewsAgent
         agent = ReviewsAgent.__new__(ReviewsAgent)
         breaker = MagicMock()
         breaker.call = AsyncMock(side_effect=APIError(message="LLM down", request=MagicMock(), body=None))

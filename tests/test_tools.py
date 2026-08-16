@@ -1,8 +1,8 @@
 """Tests for Competitor Scraper and Tool Registry."""
 
-import asyncio
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from ecommerce_ops.connectors.competitor_scraper import _extract_prices, scrape_competitor_price
 from ecommerce_ops.tools.registry import Tool, ToolRegistry
@@ -56,7 +56,7 @@ def test_extract_prices_empty_string():
 @pytest.mark.asyncio
 async def test_scrape_competitor_price_timeout():
     with patch("ecommerce_ops.connectors.competitor_scraper._fetch_price", new_callable=AsyncMock) as mock:
-        mock.side_effect = asyncio.TimeoutError()
+        mock.side_effect = TimeoutError()
         result = await scrape_competitor_price("SKU-1")
         assert result is None
 

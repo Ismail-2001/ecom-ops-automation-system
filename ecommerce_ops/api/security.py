@@ -5,7 +5,7 @@ Endpoints for RBAC, API keys, and security management.
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -13,7 +13,6 @@ from pydantic import BaseModel
 from ecommerce_ops.security.audit import audit_logger
 from ecommerce_ops.security.auth import require_admin, require_auth
 from ecommerce_ops.security.models import (
-    APIKey,
     Permission,
     Role,
     User,

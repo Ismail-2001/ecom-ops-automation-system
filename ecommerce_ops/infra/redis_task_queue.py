@@ -320,7 +320,7 @@ class RedisTaskQueue:
                         timeout=task.timeout_seconds,
                     )
                     await self.complete_task(task.id, result)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     await self.fail_task(task.id, f"Task timed out after {task.timeout_seconds}s")
                 except Exception as e:
                     await self.fail_task(task.id, str(e))

@@ -1,6 +1,8 @@
-from typing import Dict, Any
-from ecommerce_ops.agents._base import BaseAgent
+from typing import Any, Dict
+
 import structlog
+
+from ecommerce_ops.agents._base import BaseAgent
 
 logger = structlog.get_logger(__name__)
 

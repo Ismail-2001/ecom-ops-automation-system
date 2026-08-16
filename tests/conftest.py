@@ -3,11 +3,11 @@
 import os
 import uuid
 from datetime import datetime, timedelta
-from typing import AsyncGenerator, Any
+from typing import Any, AsyncGenerator
 
 import pytest
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # Set test environment before any imports
 os.environ["ENV"] = "testing"
@@ -19,8 +19,7 @@ os.environ["REDIS_URL"] = "redis://localhost:6379/0"
 _TEST_DB_URL = "sqlite+aiosqlite://"
 os.environ["DATABASE_URL"] = _TEST_DB_URL
 
-from ecommerce_ops.models.db import Base, ApprovalAction, AuditEntry, AgentStatus, StoreSettings
-from ecommerce_ops.config import settings
+from ecommerce_ops.models.db import AgentStatus, ApprovalAction, AuditEntry, Base, StoreSettings
 
 # Register tools that tests depend on
 try:
@@ -42,6 +41,7 @@ except Exception:
 def _create_all_tables():
     """Create all tables once for the entire test session on the app's engine."""
     import asyncio
+
     from ecommerce_ops.models.db import engine
 
     async def _setup():
@@ -187,7 +187,8 @@ def mock_review_state() -> dict[str, Any]:
 @pytest.fixture
 def http_client():
     """Create a test client for the FastAPI app."""
-    from httpx import AsyncClient, ASGITransport
+    from httpx import ASGITransport, AsyncClient
+
     from ecommerce_ops.api.app import app
 
     transport = ASGITransport(app=app)
