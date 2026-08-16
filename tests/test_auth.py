@@ -55,16 +55,29 @@ async def test_health_without_auth(client):
 
 
 @pytest.mark.asyncio
-async def test_public_endpoints_without_auth(client):
-    """All GET endpoints should work without auth (read-only)."""
+async def test_protected_endpoints_require_auth(client):
+    """Content APIs must reject anonymous requests (default-deny)."""
     endpoints = [
         "/api/approvals",
         "/api/agents/status",
         "/api/analytics",
         "/api/audit",
         "/api/settings",
-        "/metrics",
     ]
     for ep in endpoints:
         resp = await client.get(ep)
-        assert resp.status_code in (200, 404, 503), f"{ep} returned {resp.status_code}"
+        assert resp.status_code == 401, f"{ep} returned {resp.status_code}"
+
+    resp = await client.get("/api/audit/export?format=json")
+    assert resp.status_code == 401
+
+    resp = await client.post("/api/run")
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_public_paths_stay_open(client):
+    """Infrastructure endpoints remain reachable without auth."""
+    for ep in ["/health", "/live", "/metrics"]:
+        resp = await client.get(ep)
+        assert resp.status_code in (200, 503), f"{ep} returned {resp.status_code}"

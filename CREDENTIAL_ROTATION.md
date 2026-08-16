@@ -8,8 +8,11 @@ The following credentials are **exposed in `.env`** and must be rotated:
 |---------|-------------|---------------|
 | **Google API** | `GOOGLE_API_KEY` | https://console.cloud.google.com/apis/credentials → Regenerate key |
 | **Shopify** | `SHOPIFY_API_KEY`, `SHOPIFY_PASSWORD`, `SHOPIFY_ACCESS_TOKEN`, `SHOPIFY_CLIENT_SECRET` | Shopify Admin → Settings → Apps → Develop apps → Regenerate |
+| **DeepSeek / LLM** | `DEEPSEEK_API_KEY` | https://platform.deepseek.com/api_keys → Revoke old → Create new |
 | **Resend** | `RESEND_API_KEY` | https://resend.com/api-keys → Revoke old → Create new |
+| **Slack** | `SLACK_BOT_TOKEN` | https://api.slack.com/apps → OAuth & Permissions → Reinstall/Regenerate bot token |
 | **OpsIQ API** | `API_KEY` | Generate: `openssl rand -hex 32` |
+| **Frontend sessions** | `SESSION_SECRET` | Generate: `openssl rand -base64 32` |
 
 ## Rotation Steps
 
@@ -111,6 +114,24 @@ docker compose up -d postgres
    git reflog expire --expire=now --all && git gc --prune=now --aggressive
    ```
 
+5. **Run the secret scan gate** (matches CI):
+   ```bash
+   gitleaks git --exit-code=1 --redact
+   ```
+   The CI pipeline refuses to merge if a new secret is committed. Known
+   non-secret placeholders are pinned in the root `.gitleaksignore`; never add
+   a real secret there as a shortcut — rotate it instead.
+
+## Prevent Future Leaks
+
+- CI runs **Gitleaks over full git history** on every push/PR and fails on any
+  NEW secret (`.github/workflows/ci.yml` security job, `.github/workflows/security.yml`).
+- Rotate immediately if a key is ever committed, even if it was removed later
+  — git history retains the original value.
+- Real secrets belong only in the untracked `.env` (see `.gitignore`) or a
+  secrets manager. Never put them in `.env.docker`, `.env.production`, source
+  code, compose files, or workflow files.
+
 ## Production Secrets Management
 
 For production, use one of:
@@ -121,8 +142,9 @@ For production, use one of:
 - **Kubernetes Secrets**: If running on K8s
 
 Never put real secrets in:
-- `.env` (committed to git)
-- `.env.docker` (committed to git)
+- `.env` (untracked; locally generated from `.env.example`)
+- `.env.docker` (tracked as placeholders only — fill real values via env)
+- `.env.production` (tracked as placeholders only)
 - Source code files
 - Docker Compose files
 - CI/CD pipeline files

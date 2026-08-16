@@ -42,7 +42,22 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         "/redoc",
     }
 
+    # Paths that authenticate inside the handler (no bearer precondition):
+    #  - /api/auth/login     verifies the API key from the request body
+    #  - /shopify/install    OAuth install URL generation
+    #  - /shopify/callback   OAuth callback (HMAC + single-use state)
+    #  - /ws/queue           WebSocket handshake (ticket/API key validated in ws.py)
+    SELF_AUTH_PATHS: ClassVar[Set[str]] = {
+        "/api/auth/login",
+        "/shopify/install",
+        "/shopify/callback",
+        "/ws/queue",
+    }
+
+    # Shopify webhooks are authenticated via the X-Shopify-Hmac-SHA256 header
+    # inside the handler, so they must never be gated by a bearer token.
     API_KEY_PATHS: ClassVar[Set[str]] = {
+        "/shopify/webhooks",
         "/api/shopify/webhooks",
     }
 
@@ -69,7 +84,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         request_id = str(time.time_ns())
         request.state.request_id = request_id
 
-        if self._is_public_path(request.url.path):
+        if self._is_anon_safe(request.url.path) or request.method == "OPTIONS":
             response = await call_next(request)
             self._log_request(request, response, start_time)
             return response
@@ -79,14 +94,16 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
         user = None
         api_key_id = None
+        authenticated = False
 
         if api_key:
             try:
                 if self._matches_configured_key(api_key):
-                    pass
+                    authenticated = True
                 else:
                     api_key_obj = await role_manager.validate_api_key(api_key)
                     if api_key_obj:
+                        authenticated = True
                         user = await role_manager.get_user(api_key_obj.user_id)
                         api_key_id = api_key_obj.id
                     else:
@@ -104,10 +121,11 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             token = auth_header[7:]
             try:
                 if self._matches_configured_key(token):
-                    pass
+                    authenticated = True
                 else:
                     api_key_obj = await role_manager.validate_api_key(token)
                     if api_key_obj:
+                        authenticated = True
                         user = await role_manager.get_user(api_key_obj.user_id)
                         api_key_id = api_key_obj.id
                     else:
@@ -126,10 +144,25 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         request.state.api_key_id = api_key_id
         request.state.user_id = user.id if user else None
 
+        if not authenticated:
+            response = JSONResponse(
+                status_code=401,
+                content={"detail": "Authentication required"},
+            )
+            self._log_request(request, response, start_time)
+            return response
+
         response = await call_next(request)
         self._log_request(request, response, start_time)
 
         return response
+
+    def _is_anon_safe(self, path: str) -> bool:
+        return (
+            self._is_public_path(path)
+            or path in self.SELF_AUTH_PATHS
+            or any(path == p or path.startswith(p + "/") for p in self.API_KEY_PATHS)
+        )
 
     def _is_public_path(self, path: str) -> bool:
         return (

@@ -12,6 +12,7 @@
 [![Docker](https://img.shields.io/badge/Docker-24-2496ED.svg)](https://docker.com)
 [![CI/CD](https://img.shields.io/badge/GitHub%20Actions-CI%2FCD-2088FF.svg)](.github/workflows)
 [![Security](https://img.shields.io/badge/Security-Audit%20Passed-22c55e.svg)](AUDIT_REPORT.md)
+[![Credentials](https://img.shields.io/badge/Credentials-Rotation%20Guide-EF4444.svg)](CREDENTIAL_ROTATION.md)
 
 **7 AI Agents. 1 Dashboard. Human-in-the-loop by default.**
 

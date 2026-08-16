@@ -4,10 +4,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from ecommerce_ops.models.db import ApprovalAction, AuditEntry, StoreSettings
 from ecommerce_ops.pipeline.builder import build_payload_and_evidence
 from ecommerce_ops.pipeline.runner import (
     DECISION_TYPE_MAP,
     execute_shop_action,
+    run_pipeline_task,
     update_agent_streak,
 )
 
@@ -139,6 +141,106 @@ class TestExecuteShopAction:
         mock_client.return_value.update_product.assert_awaited_once_with(
             "100", {"variants": [{"id": "200", "price": "9.99"}]}
         )
+
+
+class TestRunPipelineTaskAutoApproval:
+    """Auto-approval must actually execute, respect AUTO_APPROVE_CONFIDENCE_SCORE,
+    and mark failed actions instead of fabricating an 'executed' status."""
+
+    @staticmethod
+    def _make_session(settings):
+        execute_result = MagicMock()
+        execute_result.scalar_one.return_value = settings
+        execute_result.scalar_one_or_none.return_value = None
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=execute_result)
+        session.commit = AsyncMock()
+        session.add = MagicMock()
+        session_mgr = MagicMock()
+        session_mgr.__aenter__ = AsyncMock(return_value=session)
+        session_mgr.__aexit__ = AsyncMock(return_value=False)
+        return session, MagicMock(return_value=session_mgr)
+
+    @staticmethod
+    def _decision(confidence):
+        return SimpleNamespace(
+            agent_id="PricingAgent",
+            action_type="UPDATE_PRICE",
+            action_data={"sku": "SKU-1", "old_price": 10.0, "new_price": 10.5},
+            reasoning="elasticity analysis",
+            confidence_score=confidence,
+        )
+
+    @staticmethod
+    def _added_objects(session):
+        added = [c.args[0] for c in session.add.call_args_list]
+        return (
+            [a for a in added if isinstance(a, ApprovalAction)],
+            [a for a in added if isinstance(a, AuditEntry)],
+        )
+
+    def _settings(self):
+        return StoreSettings(
+            id=1, shadow_mode=False, fraud_threshold=70,
+            po_limit=1000.0, pricing_limit=5.0, reviews_rating_threshold=4,
+        )
+
+    @pytest.mark.asyncio
+    async def _run(self, confidence, factory, execute_return):
+        import contextlib
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(patch("ecommerce_ops.pipeline.runner.async_session_factory", factory))
+            stack.enter_context(patch("ecommerce_ops.pipeline.runner.fetch_shopify_data",
+                                      new_callable=AsyncMock, return_value=None))
+            stack.enter_context(patch("ecommerce_ops.pipeline.runner.langfuse_client", MagicMock()))
+            stack.enter_context(patch("ecommerce_ops.pipeline.runner.ws_manager.broadcast",
+                                      new_callable=AsyncMock))
+            stack.enter_context(patch("ecommerce_ops.pipeline.runner.notify_hitl_request",
+                                      new_callable=AsyncMock))
+            stack.enter_context(patch("ecommerce_ops.pipeline.runner.notify_pipeline_failed",
+                                      new_callable=AsyncMock))
+            stack.enter_context(patch("ecommerce_ops.pipeline.runner.evaluation_framework.evaluate_decision",
+                                      return_value=MagicMock(overall_score=0.9, passed=True, feedback="ok")))
+            supervisor = stack.enter_context(patch("ecommerce_ops.pipeline.runner.Supervisor"))
+            mock_exec = stack.enter_context(
+                patch("ecommerce_ops.pipeline.runner.execute_shop_action", new_callable=AsyncMock)
+            )
+            supervisor.return_value.run = AsyncMock(
+                return_value={"decisions": [self._decision(confidence)], "hitl_queue": []}
+            )
+            mock_exec.return_value = execute_return
+            await run_pipeline_task("run-1", self._settings())
+            return mock_exec
+
+    @pytest.mark.asyncio
+    async def test_high_confidence_executes_action(self):
+        session, factory = self._make_session(self._settings())
+        mock_exec = await self._run(0.96, factory, (True, "done"))
+        actions, entries = self._added_objects(session)
+        assert len(actions) == 1
+        assert actions[0].status == "executed"
+        assert actions[0].operator_notes is None
+        assert mock_exec.await_count == 1
+        assert entries[0].decision == "auto-approved"
+        assert entries[0].details["execution_status"] == "executed"
+
+    @pytest.mark.asyncio
+    async def test_high_confidence_failure_marks_failed(self):
+        session, factory = self._make_session(self._settings())
+        await self._run(0.96, factory, (False, "Shopify not configured"))
+        actions, entries = self._added_objects(session)
+        assert actions[0].status == "failed"
+        assert "Shopify not configured" in actions[0].operator_notes
+        assert entries[0].decision == "auto-approval-failed"
+
+    @pytest.mark.asyncio
+    async def test_low_confidence_held_for_review(self):
+        session, factory = self._make_session(self._settings())
+        mock_exec = await self._run(0.5, factory, (True, "done"))
+        actions, entries = self._added_objects(session)
+        assert actions[0].status == "pending"
+        assert entries == []
+        mock_exec.assert_not_called()
 
 
 class TestUpdateAgentStreak:
