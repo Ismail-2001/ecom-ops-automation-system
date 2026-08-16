@@ -50,7 +50,7 @@ METRIC_AGENT_CONFIDENCE_AVG = Gauge(
 METRIC_HITL_QUEUE_DEPTH = Gauge(
     "hitl_queue_depth", "Current HITL queue depth"
 )
-METRIC_FINANCIAL_IMPACT = Counter(
+METRIC_FINANCIAL_IMPACT = Gauge(
     "financial_impact_total_dollars", "Total financial impact in dollars", ["agent", "action_type"]
 )
 METRIC_LLM_TOKENS_INPUT = Counter(

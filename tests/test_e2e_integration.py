@@ -67,7 +67,12 @@ def transport():
 
 @pytest.fixture
 def client(transport):
-    return AsyncClient(transport=transport, base_url="http://test", follow_redirects=True)
+    return AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        follow_redirects=True,
+        headers={"Authorization": "Bearer opsiq-dev-key-2024"},
+    )
 
 
 AUTH_HEADERS = {"Authorization": "Bearer opsiq-dev-key-2024"}

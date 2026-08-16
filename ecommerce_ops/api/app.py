@@ -80,12 +80,19 @@ async def _init_task_queue() -> Optional["RedisTaskQueue"]:
         if redis_client is None:
             logger.warning("Redis unavailable, using in-memory task queue")
             return None
+        from ecommerce_ops.connectors.shopify.handlers.order_handlers import (
+            SHOPIFY_TASK_NAMES,
+            process_shopify_event,
+        )
+
         rq = RedisTaskQueue(
             redis_client,
             num_workers=app_settings.TASK_QUEUE_WORKERS,
             max_queue_size=app_settings.TASK_QUEUE_MAX_SIZE,
         )
         rq.register_handler("pipeline", _pipeline_task_handler)
+        for task_name in SHOPIFY_TASK_NAMES:
+            rq.register_handler(task_name, process_shopify_event)
         await rq.start()
         logger.info("RedisTaskQueue started (cross-worker task sharing enabled)")
         return rq

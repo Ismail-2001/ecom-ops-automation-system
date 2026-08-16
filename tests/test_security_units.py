@@ -388,7 +388,8 @@ class TestAuth:
         mock_response.status_code = 200
         call_next = AsyncMock(return_value=mock_response)
         result = await mw.dispatch(mock_request, call_next)
-        assert result == mock_response
+        assert result.status_code == 401
+        call_next.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_middleware_dispatch_valid_api_key(self):

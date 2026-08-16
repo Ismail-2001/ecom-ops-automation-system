@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ecommerce_ops.api.metrics import (
+    METRIC_DECISIONS_AUTO_APPROVED,
     METRIC_DECISIONS_CREATED,
     METRIC_FINANCIAL_IMPACT,
     METRIC_PIPELINE_RUNS,
@@ -446,28 +447,48 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                         [payload.get("sku", "")] if payload.get("sku") else []
                     )
 
-                status = "pending"
-                if not requires_hitl and not settings.shadow_mode:
-                    status = "executed"
-
                 action_id = str(uuid.uuid4())
-                session.add(
-                    ApprovalAction(
-                        id=action_id,
-                        agent=d.agent_id,
-                        action_type=mapped_type,
-                        status=status,
-                        risk_level=risk_level,
-                        confidence_score=d.confidence_score,
-                        created_at=datetime.utcnow(),
-                        expires_at=datetime.utcnow() + timedelta(days=2),
-                        requires_hitl=requires_hitl,
-                        shadow_mode=settings.shadow_mode,
-                        payload=payload,
-                        evidence=evidence,
-                        impact=impact,
-                    )
+
+                # Auto-approval requires BOTH: safety rules permit it AND the
+                # decision confidence clears the configured threshold. Otherwise
+                # the action is held for human review.
+                auto_attempt = (
+                    not requires_hitl
+                    and not settings.shadow_mode
+                    and d.confidence_score >= app_settings.AUTO_APPROVE_CONFIDENCE_SCORE
                 )
+
+                action = ApprovalAction(
+                    id=action_id,
+                    agent=d.agent_id,
+                    action_type=mapped_type,
+                    status="executing" if auto_attempt else "pending",
+                    risk_level=risk_level,
+                    confidence_score=d.confidence_score,
+                    created_at=datetime.utcnow(),
+                    expires_at=datetime.utcnow() + timedelta(days=2),
+                    requires_hitl=requires_hitl,
+                    shadow_mode=settings.shadow_mode,
+                    payload=payload,
+                    evidence=evidence,
+                    impact=impact,
+                )
+
+                executed_ok = False
+                execution_msg = None
+                if auto_attempt:
+                    executed_ok, execution_msg = await execute_shop_action(action)
+                    action.status = "executed" if executed_ok else "failed"
+                    if not executed_ok:
+                        action.operator_notes = (
+                            f"Auto-execution failed: {execution_msg}"
+                        )
+                    else:
+                        METRIC_DECISIONS_AUTO_APPROVED.labels(
+                            agent=d.agent_id
+                        ).inc()
+
+                session.add(action)
 
                 METRIC_DECISIONS_CREATED.labels(
                     agent=d.agent_id, action_type=mapped_type
@@ -476,29 +497,38 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                     agent=d.agent_id, action_type=mapped_type
                 ).inc(financial_impact)
 
-                if status == "executed":
+                if auto_attempt:
                     session.add(
                         AuditEntry(
                             action_id=action_id,
                             timestamp=datetime.utcnow(),
                             agent=d.agent_id,
                             action_type=mapped_type,
-                            decision="auto-approved",
+                            decision=(
+                                "auto-approved"
+                                if executed_ok
+                                else "auto-approval-failed"
+                            ),
                             operator=None,
                             confidence_score=d.confidence_score,
                             financial_impact=financial_impact,
                             details={
-                                "notes": "Auto-approved by safety system",
+                                "notes": (
+                                    "Auto-executed by safety system"
+                                    if executed_ok
+                                    else f"Auto-execution failed: {execution_msg}"
+                                ),
+                                "execution_status": action.status,
                                 "payload": payload,
                             },
                         )
                     )
                     await update_agent_streak(
-                        d.agent_id, True, d.confidence_score, session
+                        d.agent_id, executed_ok, d.confidence_score, session
                     )
 
                 new_actions_count += 1
-                if requires_hitl or settings.shadow_mode:
+                if action.status == "pending":
                     await notify_hitl_request(
                         agent=d.agent_id,
                         action_id=action_id,

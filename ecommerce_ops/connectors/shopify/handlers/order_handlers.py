@@ -3,53 +3,148 @@ Shopify Webhook Event Handlers
 Handles real-time webhook events from Shopify.
 
 Every verified webhook payload is persisted to the ``shopify_webhook_events``
-table (durable inbox) before any downstream processing, giving at-least-once
-delivery and replayability. Handlers degrade gracefully: persistence and
-queue-enqueue failures are logged, never raised.
+table (durable inbox) with ``processed=False`` before any downstream
+processing, giving at-least-once delivery and replayability. The row is only
+flipped to ``processed=True`` after the downstream task has actually run.
+Failures are logged, never raised, during ingestion; downstream task failures
+are recorded on the row and re-raised so the queue can retry.
 """
 
 import logging
+import uuid
 from typing import Any, Dict, Optional
 
+from sqlalchemy import select
+
 from ecommerce_ops.connectors.shopify.webhooks import WebhookEvent
-from ecommerce_ops.models import ShopifyWebhookEvent, async_session_factory
+from ecommerce_ops.models import (
+    ShopifyWebhookEvent,
+    StoreSettings,
+    async_session_factory,
+)
+from ecommerce_ops.pipeline.runner import run_pipeline_task
 
 logger = logging.getLogger("ecommerce_ops.connectors.shopify.handlers")
 
+# Task names enqueued by the webhook handlers. Every one of these MUST have a
+# registered queue handler, otherwise Redis-backed tasks would be failed
+# immediately with "No handler for task".
+SHOPIFY_TASK_NAMES = (
+    "shopify.order_created",
+    "shopify.order_updated",
+    "shopify.order_fulfilled",
+    "shopify.order_cancelled",
+    "shopify.product_created",
+    "shopify.product_updated",
+    "shopify.product_deleted",
+    "shopify.customer_created",
+    "shopify.customer_updated",
+    "shopify.inventory_low",
+    "shopify.inventory_changed",
+)
 
-async def _persist_event(event: WebhookEvent, error: Optional[str] = None) -> None:
-    """Persist a verified webhook payload to the durable inbox."""
+
+async def _persist_event(event: WebhookEvent, error: Optional[str] = None) -> Optional[int]:
+    """Persist a verified webhook payload to the durable inbox.
+
+    Returns the new inbox row id so downstream processing can flip the
+    ``processed`` flag only after the work has actually completed.
+    """
     try:
         payload = event.body if isinstance(event.body, dict) else {"data": event.body}
         async with async_session_factory() as session:
-            session.add(
-                ShopifyWebhookEvent(
-                    topic=event.topic,
-                    shop_domain=event.shop_domain,
-                    api_version=event.api_version,
-                    event_id=str(payload.get("id", "")) or None,
-                    processed=error is None,
-                    error=error,
-                    payload=payload,
-                )
+            row = ShopifyWebhookEvent(
+                topic=event.topic,
+                shop_domain=event.shop_domain,
+                api_version=event.api_version,
+                event_id=str(payload.get("id", "")) or None,
+                processed=False,
+                error=error,
+                payload=payload,
             )
+            session.add(row)
             await session.commit()
+            await session.refresh(row)
         logger.info("Persisted webhook event topic=%s shop=%s", event.topic, event.shop_domain)
+        return row.id
     except Exception:
         logger.exception("Failed to persist webhook event topic=%s shop=%s", event.topic, event.shop_domain)
+        return None
+
+
+async def _mark_processed(event_row_id: Optional[int], error: Optional[str] = None) -> None:
+    """Flip the durable inbox row to processed only after downstream work."""
+    if not event_row_id:
+        return
+    try:
+        async with async_session_factory() as session:
+            row = await session.get(ShopifyWebhookEvent, event_row_id)
+            if row:
+                row.processed = error is None
+                row.error = error
+                await session.commit()
+    except Exception:
+        logger.exception("Failed to update processed flag for webhook event %s", event_row_id)
+
+
+async def _run_pipeline_for_event(run_id: str) -> None:
+    """Run the agent pipeline so the event feeds the autonomous decision loop."""
+    async with async_session_factory() as session:
+        res = await session.execute(select(StoreSettings).where(StoreSettings.id == 1))
+        db_settings = res.scalar_one_or_none()
+        if not db_settings:
+            db_settings = StoreSettings(
+                id=1, shadow_mode=True, fraud_threshold=70,
+                po_limit=1000.0, pricing_limit=5.0, reviews_rating_threshold=4,
+            )
+            session.add(db_settings)
+            await session.commit()
+    await run_pipeline_task(run_id, db_settings)
+
+
+async def process_shopify_event(payload: Dict[str, Any]) -> None:
+    """Queue handler for every ``shopify.*`` task name.
+
+    Runs the actual downstream agent work, then flips the durable inbox row to
+    ``processed``. On failure the row keeps ``processed=False`` (with the error)
+    and the exception is re-raised so the queue marks the task failed and may
+    retry it.
+    """
+    event_id = payload.get("webhook_event_id")
+    topic = payload.get("webhook_topic", "unknown")
+    shop_domain = payload.get("shop_domain", "unknown")
+    error = None
+    try:
+        logger.info(
+            "Processing Shopify event topic=%s shop=%s", topic, shop_domain
+        )
+        await _run_pipeline_for_event(str(uuid.uuid4()))
+    except Exception as e:
+        error = str(e)
+        logger.exception(
+            "Shopify event topic=%s shop=%s processing failed: %s",
+            topic,
+            shop_domain,
+            e,
+        )
+    finally:
+        await _mark_processed(event_id, error=error)
+    if error:
+        raise RuntimeError(f"Shopify event {topic} failed to process: {error}")
 
 
 async def _enqueue_agent_work(
     event: WebhookEvent,
     task_name: str,
     payload: Dict[str, Any],
+    event_row_id: Optional[int] = None,
 ) -> None:
     """Best-effort enqueue of downstream agent work.
 
     Uses the Redis-backed queue when available (cross-worker). Falls back to
-    the in-memory queue with a logging coroutine so the event is not silently
-    dropped. Failures are logged, never raised, so a queue outage does not
-    take down webhook ingestion.
+    the in-memory queue with the real processing handler so the event is not
+    silently dropped. Failures are logged, never raised, so a queue outage does
+    not take down webhook ingestion.
     """
     try:
         from ecommerce_ops.api.app import redis_task_queue, task_queue
@@ -58,6 +153,7 @@ async def _enqueue_agent_work(
             **payload,
             "shop_domain": event.shop_domain,
             "webhook_topic": event.topic,
+            "webhook_event_id": event_row_id,
         }
         if redis_task_queue is not None:
             from ecommerce_ops.infra.redis_task_queue import TaskPriority
@@ -65,10 +161,7 @@ async def _enqueue_agent_work(
             await redis_task_queue.enqueue(task_name, enqueue_payload, priority=TaskPriority.NORMAL)
             logger.info("Enqueued %s via Redis queue for shop=%s", task_name, event.shop_domain)
         else:
-            async def _process_in_memory() -> None:
-                logger.info("Processing %s for shop=%s (in-memory): %s", task_name, event.shop_domain, payload)
-
-            await task_queue.enqueue(task_name, _process_in_memory)
+            await task_queue.enqueue(task_name, process_shopify_event, payload=enqueue_payload)
             logger.info("Enqueued %s via in-memory queue for shop=%s", task_name, event.shop_domain)
     except Exception:
         logger.exception("Failed to enqueue %s for shop=%s", task_name, event.shop_domain)
@@ -76,8 +169,8 @@ async def _enqueue_agent_work(
 
 async def _handle(event: WebhookEvent, task_name: str, payload: Dict[str, Any], error: Optional[str] = None) -> None:
     """Common pipeline: persist then enqueue."""
-    await _persist_event(event, error=error)
-    await _enqueue_agent_work(event, task_name, payload)
+    event_row_id = await _persist_event(event, error=error)
+    await _enqueue_agent_work(event, task_name, payload, event_row_id)
 
 
 async def handle_order_created(event: WebhookEvent) -> None:

@@ -20,9 +20,11 @@ logger = logging.getLogger("ecommerce_ops.agents.inventory_llm")
 class InventoryAnalysisOutput(BaseModel):
     """Structured output for inventory analysis."""
     product_id: str = Field(description="Product ID")
+    sku: str = Field(description="Product SKU")
     current_stock: int = Field(description="Current stock level")
     recommended_action: str = Field(description="Action: maintain, reorder, clearance, discontinue")
     reorder_quantity: int = Field(description="Recommended reorder quantity")
+    confidence: float = Field(description="Confidence from 0.0 to 1.0")
     urgency: str = Field(description="Urgency: low, medium, high, critical")
     reasoning: str = Field(description="Detailed reasoning")
     demand_forecast: Dict[str, Any] = Field(description="Demand forecast data")
@@ -52,6 +54,8 @@ Decision Framework:
 Output Format:
 - recommended_action: One of the actions above
 - reorder_quantity: Units to order (if reorder recommended)
+- sku: The product SKU being analyzed
+- confidence: 0.0 to 1.0
 - urgency: When action is needed
 - demand_forecast: Expected sales for next 30/60/90 days
 - cost_impact: Financial impact of recommended action
@@ -114,7 +118,7 @@ class InventoryManagementAgentLLM(BaseAgent):
             # Validate output
             output_check = guardrail_manager.validate_agent_output(
                 analysis,
-                required_fields=["product_id", "current_stock", "recommended_action", "urgency", "reasoning"],
+                required_fields=["product_id", "sku", "current_stock", "recommended_action", "confidence", "urgency", "reasoning"],
                 valid_decisions=["maintain", "reorder", "clearance", "discontinue"],
             )
             if not output_check.passed:
@@ -157,19 +161,11 @@ Provide your inventory analysis with recommended action, reorder quantity, and u
             if json_match:
                 result = json.loads(json_match.group())
                 result["product_id"] = product_data.get("product_id", "unknown")
+                result["sku"] = product_data.get("sku", "")
                 result["current_stock"] = product_data.get("current_stock", 0)
                 return result
 
-            return {
-                "product_id": product_data.get("product_id", "unknown"),
-                "current_stock": product_data.get("current_stock", 0),
-                "recommended_action": "reorder",
-                "reorder_quantity": 100,
-                "urgency": "medium",
-                "reasoning": response[:500],
-                "demand_forecast": {"30_days": 100, "60_days": 200, "90_days": 300},
-                "cost_impact": 0,
-            }
+            return self._rule_based_fallback(product_data)
 
         except Exception as e:
             logger.error(f"Failed to parse response: {e}")

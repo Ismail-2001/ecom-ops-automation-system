@@ -16,7 +16,11 @@ from ecommerce_ops.api.app import app
 @pytest.fixture
 def client():
     transport = ASGITransport(app=app)
-    return AsyncClient(transport=transport, base_url="http://test")
+    return AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"Authorization": "Bearer opsiq-dev-key-2024"},
+    )
 
 
 @pytest.mark.asyncio

@@ -183,13 +183,17 @@ def test_adapt_fraud_input_empty(factory):
 def test_adapt_fraud_input_single(factory):
     order = {"id": "o1", "order_total": 100}
     result = factory._adapt_fraud_input({"active_orders": [order]})
-    assert result == order
+    assert result["id"] == "o1"
+    assert result["total"] == 100.0
+    assert result["item_count"] == 0
 
 
-def test_adapt_fraud_input_multiple(factory):
-    orders = [{"id": "o1"}, {"id": "o2"}]
+def test_adapt_fraud_input_multiple_selects_highest_value(factory):
+    orders = [{"id": "o1", "order_total": 50}, {"id": "o2", "order_total": 900}]
     result = factory._adapt_fraud_input({"active_orders": orders})
-    assert result == orders
+    assert result is not None
+    assert result["id"] == "o2"
+    assert result["total"] == 900.0
 
 
 def test_adapt_inventory_input_empty(factory):
@@ -198,9 +202,17 @@ def test_adapt_inventory_input_empty(factory):
 
 
 def test_adapt_inventory_input_single(factory):
-    item = {"sku": "X", "stock": 10}
+    item = {"sku": "X", "stock": 10, "price": 5.0, "variant_id": "v1"}
     result = factory._adapt_inventory_input({"inventory_data": [item]})
-    assert result == item
+    assert result is not None
+    assert result["sku"] == "X"
+    assert result["current_stock"] == 10
+    assert result["product_id"] == "v1"
+
+
+def test_adapt_inventory_input_skips_non_dict_items(factory):
+    result = factory._adapt_inventory_input({"inventory_data": ["junk"]})
+    assert result is None
 
 
 def test_adapt_marketing_input_no_low_stock(factory):
@@ -246,13 +258,59 @@ def test_adapt_inventory_output_reorder(factory):
         "recommended_action": "reorder",
         "reasoning": "Low stock",
         "product_id": "P1",
+        "sku": "SKU-1",
         "reorder_quantity": 100,
+        "confidence": 0.95,
         "urgency": "high",
-        "demand_forecast": {},
+        "demand_forecast": {"30_days": 60},
         "cost_impact": 500,
     })
     assert result is not None
     assert result["action_type"] == "DRAFT_PO"
+    assert result["confidence"] == 0.95
+    assert result["requires_approval"] is False
+    assert result["data"]["sku"] == "SKU-1"
+    assert result["data"]["quantity_to_order"] == 100
+
+
+def test_adapt_inventory_output_low_confidence_requires_approval(factory):
+    result = factory._adapt_inventory_output({
+        "recommended_action": "reorder",
+        "sku": "SKU-1",
+        "reorder_quantity": 50,
+        "confidence": 0.7,
+    })
+    assert result is not None
+    assert result["requires_approval"] is True
+
+
+def test_adapt_inventory_output_missing_sku_falls_back(factory):
+    result = factory._adapt_inventory_output({
+        "recommended_action": "reorder",
+        "reorder_quantity": 50,
+        "confidence": 0.9,
+    })
+    assert result is None
+
+
+def test_adapt_inventory_output_zero_reorder_quantity_falls_back(factory):
+    result = factory._adapt_inventory_output({
+        "recommended_action": "reorder",
+        "sku": "SKU-1",
+        "reorder_quantity": 0,
+        "confidence": 0.9,
+    })
+    assert result is None
+
+
+def test_adapt_inventory_output_non_reorder_falls_back(factory):
+    result = factory._adapt_inventory_output({
+        "recommended_action": "clearance",
+        "sku": "SKU-1",
+        "reorder_quantity": 100,
+        "confidence": 0.9,
+    })
+    assert result is None
 
 
 def test_adapt_marketing_output(factory):

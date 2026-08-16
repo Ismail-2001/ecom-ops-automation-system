@@ -105,16 +105,51 @@ class AgentFactory:
     # ── Input Adapters (state → LLM agent format) ──────────
 
     def _adapt_fraud_input(self, state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Select the single highest-value active order for fraud analysis.
+
+        The LLM agent analyzes one order per call, so a list must never be
+        passed as ``order_data``. Choosing the highest-value order ensures the
+        riskiest order is always analyzed; the rule-based agent still handles
+        the full order set in fallback.
+        """
         orders = state.get("active_orders", [])
         if not orders:
             return None
-        return orders[0] if len(orders) == 1 else orders
+        order = max(orders, key=lambda o: float(o.get("order_total") or 0))
+        if not isinstance(order, dict):
+            return None
+        line_items = order.get("line_items") or []
+        return {
+            "id": order.get("id", ""),
+            "customer_email": order.get("customer_email", ""),
+            "total": float(order.get("order_total") or 0),
+            "item_count": len(line_items),
+            "line_items": line_items,
+        }
 
     def _adapt_inventory_input(self, state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        items = state.get("inventory_data", [])
+        """Map inventory state to a single product dict for the LLM agent.
+
+        Real stock from the state is surfaced as ``current_stock`` so the LLM
+        never sees an injected ``0``. The most urgent (lowest-stock) item is
+        analyzed first; the rule-based agent covers the full catalog in fallback.
+        """
+        items = [i for i in state.get("inventory_data", []) if isinstance(i, dict) and i.get("sku")]
         if not items:
             return None
-        return items[0] if len(items) == 1 else items
+        item = min(items, key=lambda i: float(i.get("stock") or 0))
+        stock = item.get("stock")
+        if stock is None:
+            stock = item.get("current_stock")
+        return {
+            "product_id": str(item.get("variant_id") or item.get("product_id") or item.get("sku")),
+            "sku": item.get("sku"),
+            "name": item.get("name") or item.get("sku"),
+            "current_stock": int(stock or 0),
+            "price": float(item.get("price") or 0),
+            "unit_cost": float(item.get("unit_cost") or item.get("price") or 0),
+            "daily_sales": float(item.get("daily_sales") or 0),
+        }
 
     def _adapt_marketing_input(self, state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         items = state.get("inventory_data", [])
@@ -147,22 +182,35 @@ class AgentFactory:
         }
 
     def _adapt_inventory_output(self, llm_result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Adapt inventory LLM result into a decision; never fabricate values.
+
+        Confidence comes from the LLM (with approval derived from it), and a
+        DRAFT_PO is only produced when all execution-critical values (sku,
+        positive reorder quantity) are actually present. Otherwise None is
+        returned so the pipeline falls back to the rule-based agent instead of
+        inventing a purchase order.
+        """
         if not llm_result:
             return None
-        action = llm_result.get("recommended_action", "maintain")
-        if action == "maintain":
+        if llm_result.get("recommended_action") != "reorder":
             return None
+        sku = llm_result.get("sku")
+        reorder_quantity = llm_result.get("reorder_quantity")
+        if not sku or not reorder_quantity or reorder_quantity <= 0:
+            return None
+        confidence = float(llm_result.get("confidence") or 0)
         return {
             "action_type": "DRAFT_PO",
-            "reasoning": llm_result.get("reasoning", ""),
-            "confidence": 0.85,
-            "requires_approval": False,
+            "reasoning": llm_result.get("reasoning") or "",
+            "confidence": confidence,
+            "requires_approval": confidence < 0.9,
             "data": {
-                "product_id": llm_result.get("product_id", ""),
-                "reorder_quantity": llm_result.get("reorder_quantity", 0),
-                "urgency": llm_result.get("urgency", "medium"),
-                "demand_forecast": llm_result.get("demand_forecast", {}),
-                "cost_impact": llm_result.get("cost_impact", 0),
+                "sku": sku,
+                "quantity_to_order": int(reorder_quantity),
+                "product_id": llm_result.get("product_id") or "",
+                "urgency": llm_result.get("urgency") or "medium",
+                "demand_forecast": llm_result.get("demand_forecast") or {},
+                "cost_impact": float(llm_result.get("cost_impact") or 0),
             },
         }
 
