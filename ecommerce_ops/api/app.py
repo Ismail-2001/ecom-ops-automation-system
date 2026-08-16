@@ -50,7 +50,7 @@ configure_logger()
 logger = logging.getLogger("ecommerce_ops.api")
 
 
-task_queue = TaskQueue(num_workers=2, max_queue_size=100)
+task_queue = TaskQueue(num_workers=app_settings.TASK_QUEUE_WORKERS, max_queue_size=app_settings.TASK_QUEUE_MAX_SIZE)
 redis_task_queue: Optional["RedisTaskQueue"] = None
 SERVER_START_TIME = time.time()
 
@@ -80,7 +80,11 @@ async def _init_task_queue() -> Optional["RedisTaskQueue"]:
         if redis_client is None:
             logger.warning("Redis unavailable, using in-memory task queue")
             return None
-        rq = RedisTaskQueue(redis_client, num_workers=2, max_queue_size=100)
+        rq = RedisTaskQueue(
+            redis_client,
+            num_workers=app_settings.TASK_QUEUE_WORKERS,
+            max_queue_size=app_settings.TASK_QUEUE_MAX_SIZE,
+        )
         rq.register_handler("pipeline", _pipeline_task_handler)
         await rq.start()
         logger.info("RedisTaskQueue started (cross-worker task sharing enabled)")

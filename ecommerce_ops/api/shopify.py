@@ -4,9 +4,6 @@ OAuth flow, webhooks, and sync endpoints.
 """
 
 import logging
-import secrets
-import time
-from typing import Dict
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -14,6 +11,7 @@ from pydantic import BaseModel
 from ecommerce_ops.connectors.shopify.client import ShopifyClient
 from ecommerce_ops.connectors.shopify.handlers.order_handlers import WEBHOOK_HANDLERS
 from ecommerce_ops.connectors.shopify.oauth import shopify_oauth
+from ecommerce_ops.connectors.shopify.oauth_state import oauth_state_store
 from ecommerce_ops.connectors.shopify.sync import ShopifySyncService
 from ecommerce_ops.connectors.shopify.webhooks import webhook_router
 from ecommerce_ops.models import async_session_factory
@@ -21,10 +19,6 @@ from ecommerce_ops.models import async_session_factory
 logger = logging.getLogger("ecommerce_ops.api.shopify")
 
 router = APIRouter(prefix="/shopify", tags=["shopify"])
-
-# In-memory state store (production: use Redis)
-_oauth_states: Dict[str, float] = {}
-_oauth_states_max_age = 600  # 10 minutes
 
 
 class InstallRequest(BaseModel):
@@ -52,8 +46,7 @@ class SyncResponse(BaseModel):
 @router.post("/install")
 async def install_shopify(req: InstallRequest):
     """Start Shopify OAuth installation flow."""
-    state = secrets.token_urlsafe(32)
-    _oauth_states[state] = time.time()
+    state = await oauth_state_store.create(req.shop_domain)
 
     url = shopify_oauth.get_install_url(req.shop_domain, state)
     logger.info("Generated install URL for %s", req.shop_domain)
@@ -69,14 +62,12 @@ async def oauth_callback(
     timestamp: str = Query(...),
 ):
     """Handle OAuth callback from Shopify."""
-    # Verify state
-    if state not in _oauth_states:
+    # Verify and consume single-use state token (bound to shop)
+    bound_shop: str | None = await oauth_state_store.consume(state)
+    if bound_shop is None:
         raise HTTPException(status_code=400, detail="Invalid or expired state")
-
-    # Check timestamp freshness
-    state_time = _oauth_states.pop(state)
-    if time.time() - state_time > _oauth_states_max_age:
-        raise HTTPException(status_code=400, detail="State expired")
+    if bound_shop != shop:
+        raise HTTPException(status_code=400, detail="State does not match shop")
 
     # Verify HMAC
     params = {

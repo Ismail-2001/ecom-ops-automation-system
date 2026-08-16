@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getBackendUrl, readSessionFromRequest } from "@/lib/server-helpers"
+import { applyTraceContext } from "@/lib/trace-context"
 
 export const runtime = "nodejs"
 
@@ -80,6 +81,8 @@ async function proxy(request: NextRequest) {
   headers.delete("host")
   headers.delete("connection")
   headers.delete("cookie")
+  // Ensure standard W3C trace context reaches the backend (browsers don't send it)
+  applyTraceContext(headers)
 
   const init: RequestInit = {
     method: request.method,

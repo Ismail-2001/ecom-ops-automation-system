@@ -607,6 +607,25 @@ For a store doing **$200K/year** in revenue:
 - **Structured Logging**: stdlib loggers routed through structlog `ProcessorFormatter` — JSON in production, not dead config
 - **Rate Limiting**: Redis sliding window (60 req/min) with LRU-eviction in-memory fallback, per-IP blocking
 
+### API Key Rotation
+
+Rotate API keys periodically or on suspected exposure:
+
+1. **Issue a replacement** (the old key stays valid; there is no outage window):
+   ```bash
+   curl -X POST "$API_URL/security/api-keys/rotate" \
+     -H "Authorization: Bearer $ADMIN_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"key_id": "REPLACE_WITH_KEY_ID"}'
+   ```
+2. The response contains the **new key exactly once** (`key` field) plus `"previous_key_revoked": true`. Store it securely.
+3. Update any downstream consumers that used the old key to the new value.
+4. Confirm the old key no longer authenticates; it is immediately deactivated server-side.
+
+- Rotation is atomic: the replacement is created and the old key revoked in the same transaction, so a credential always exists.
+- Keys are stored as salted PBKDF2-SHA256 hashes; raw keys are never persisted and can never be re-read after creation. Legacy unsalted SHA-256 hashes from pre-migration rows are still accepted until the key is rotated.
+- Enforce rotation with the CI/cron reminders and 90-day key expiry (`expires_days` on creation).
+
 ### Agent Safety
 
 - **Prompt Injection Guard**: 25+ regex patterns detecting role override, system prompt injection, SQL injection (wired into fraud, inventory, marketing agents)
