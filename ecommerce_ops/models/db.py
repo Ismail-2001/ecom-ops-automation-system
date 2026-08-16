@@ -1,26 +1,23 @@
 import logging
-from datetime import datetime, timezone
-from typing import AsyncGenerator, List, Optional
+from datetime import UTC, datetime
+from typing import AsyncGenerator
 
 from sqlalchemy import (
-    Column,
-    String,
-    Integer,
-    Float,
-    Boolean,
-    DateTime,
     JSON,
-    Text,
-    Index,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
     ForeignKey,
+    Index,
+    Integer,
+    String,
     select,
-    text,
-    func,
 )
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
-from ecommerce_ops.config import settings, Environment
+from ecommerce_ops.config import Environment, settings
 
 logger = logging.getLogger("ecommerce_ops.db")
 
@@ -54,7 +51,7 @@ Base = declarative_base()
 
 
 def utcnow():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class ApprovalAction(Base):
@@ -80,6 +77,12 @@ class ApprovalAction(Base):
     rejection_reason = Column(String, nullable=True)
     operator_notes = Column(String, nullable=True)
 
+    __table_args__ = (
+        Index("ix_approval_actions_agent_status", "agent", "status"),
+        Index("ix_approval_actions_agent_risk_status", "agent", "risk_level", "status"),
+        Index("ix_approval_actions_created_at", "created_at"),
+    )
+
 
 class AuditEntry(Base):
     __tablename__ = "audit_entries"
@@ -95,6 +98,11 @@ class AuditEntry(Base):
     financial_impact = Column(Float, nullable=True)
     details = Column(JSON, nullable=True)
 
+    __table_args__ = (
+        Index("ix_audit_entries_agent_action_type", "agent", "action_type"),
+        Index("ix_audit_entries_agent_decision", "agent", "decision"),
+    )
+
 
 class AgentStatus(Base):
     __tablename__ = "agent_status"
@@ -102,7 +110,7 @@ class AgentStatus(Base):
     agent_id = Column(String, primary_key=True)
     status = Column(String, default="active", nullable=False)
     streak = Column(Integer, default=0, nullable=False)
-    autonomy_level = Column(String, default="supervised", nullable=False)
+    autonomy_level = Column(String, default="supervised", nullable=False, index=True)
     total_decisions = Column(Integer, default=0, nullable=False)
     total_approvals = Column(Integer, default=0, nullable=False)
     total_rejections = Column(Integer, default=0, nullable=False)

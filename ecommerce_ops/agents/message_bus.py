@@ -4,7 +4,6 @@ Enables agents to share insights, coordinate actions, and collaborate.
 """
 import asyncio
 import logging
-import time
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -101,7 +100,11 @@ class AgentMessageBus:
                     logger.error(f"Error delivering to topic {message.topic}: {e}")
 
         # Handle response waiting
-        if message.correlation_id and message.correlation_id in self._pending_responses:
+        if (
+            message.correlation_id
+            and message.message_type == "response"
+            and message.correlation_id in self._pending_responses
+        ):
             future = self._pending_responses[message.correlation_id]
             if not future.done():
                 future.set_result(message)
@@ -131,7 +134,7 @@ class AgentMessageBus:
     async def request(self, sender: str, recipient: str, payload: Dict[str, Any], timeout: float = 30.0) -> Optional[AgentMessage]:
         """Send a request and wait for response."""
         correlation_id = str(uuid.uuid4())
-        future = asyncio.get_event_loop().create_future()
+        future = asyncio.get_running_loop().create_future()
         self._pending_responses[correlation_id] = future
 
         message = AgentMessage(
@@ -150,7 +153,7 @@ class AgentMessageBus:
         try:
             response = await asyncio.wait_for(future, timeout=timeout)
             return response
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(f"Request from {sender} to {recipient} timed out after {timeout}s")
             return None
         finally:
