@@ -9,25 +9,43 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import Column, DateTime, Float, Index, String, Text, text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import (
+    JSON,
+    Column,
+    DateTime,
+    Float,
+    Index,
+    String,
+    Text,
+    Uuid,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ecommerce_ops.models import Base
 
 logger = logging.getLogger("ecommerce_ops.memory.vector.persistent")
 
+# Default embedding dimension matching the vector provider (see memory/vector/embeddings.py).
+EMBEDDING_DIMENSIONS = 1536
+
 
 class VectorMemory(Base):
     """Persistent vector memory entry in PostgreSQL with pgvector."""
     __tablename__ = "vector_memories"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     content = Column(Text, nullable=False)
     memory_type = Column(String(50), nullable=False, index=True)
     importance = Column(Float, default=0.5, nullable=False)
-    embedding = Column(Text, nullable=False)  # JSON-serialized list
-    metadata_json = Column(JSONB, default={})
+    embedding = Column(Text, nullable=False)  # JSON-serialized list (portable fallback)
+    embedding_vec = Column(
+        Vector(EMBEDDING_DIMENSIONS).with_variant(Text(), "sqlite"),
+        nullable=True,
+    )
+    metadata_json = Column(JSONB().with_variant(JSON(), "sqlite"), default={})
     session_id = Column(String(100), index=True, nullable=True)
     agent_id = Column(String(100), index=True, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -39,6 +57,12 @@ class VectorMemory(Base):
         Index("idx_vector_memories_importance", "importance"),
         Index("idx_vector_memories_created", "created_at"),
         Index("idx_vector_memories_agent", "agent_id"),
+        Index(
+            "ix_vector_memories_embedding_vec",
+            "embedding_vec",
+            postgresql_using="ivfflat",
+            postgresql_ops={"embedding_vec": "vector_cosine_ops"},
+        ),
     )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -100,6 +124,7 @@ class PersistentVectorStore:
                 memory_type=memory_type,
                 importance=importance,
                 embedding=json.dumps(embedding),
+                embedding_vec=embedding if self._pgvector_available else None,
                 metadata_json=metadata or {},
                 session_id=session_id,
                 agent_id=agent_id,
@@ -122,7 +147,6 @@ class PersistentVectorStore:
         async with self.session_factory() as session:
             conditions = []
             params: dict = {
-                "query_embedding": json.dumps(query_embedding),
                 "min_similarity": min_similarity,
                 "top_k": top_k,
             }
@@ -139,13 +163,22 @@ class PersistentVectorStore:
 
             where_clause = " AND ".join(conditions) if conditions else "1=1"
 
+            if self._pgvector_available:
+                params["query_embedding"] = query_embedding
+                sim_expr = "1 - (embedding_vec <=> :query_embedding)"
+            else:
+                # Fallback for environments without the pgvector extension:
+                # parse the JSON-text embedding column at query time.
+                params["query_embedding"] = json.dumps(query_embedding)
+                sim_expr = "1 - (embedding::jsonb::vector <=> :query_embedding::vector)"
+
             query = text(f"""
                 SELECT id, content, memory_type, importance, metadata_json,
                        session_id, agent_id, created_at, accessed_at, access_count,
-                       1 - (embedding <=> :query_embedding::vector) as similarity
+                       {sim_expr} as similarity
                 FROM vector_memories
                 WHERE {where_clause}
-                  AND 1 - (embedding <=> :query_embedding::vector) >= :min_similarity
+                  AND {sim_expr} >= :min_similarity
                 ORDER BY similarity DESC
                 LIMIT :top_k
             """)

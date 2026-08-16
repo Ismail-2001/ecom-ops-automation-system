@@ -384,6 +384,37 @@ class RoleManager:
                 )
             return None
 
+    async def rotate_api_key(self, key_id: str) -> Optional[APIKey]:
+        """Rotate an API key: issue a replacement and revoke the old one.
+
+        The returned APIKey carries the NEW raw key (shown to the caller once).
+        Returns None if the key to rotate does not exist or is already inactive.
+        """
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(RBACApiKey).where(RBACApiKey.id == key_id)
+            )
+            db_key = result.scalar_one_or_none()
+            if not db_key or not db_key.is_active:
+                return None
+            if db_key.expires_at and datetime.utcnow() > db_key.expires_at:
+                return None
+
+            # Issue replacement first, then revoke the old one so there is
+            # never a window with no valid credential.
+            replacement = await self.create_api_key(
+                user_id=db_key.user_id,
+                name=db_key.name,
+                role=Role(db_key.role),
+                permissions={Permission(p) for p in (db_key.permissions or [])},
+                expires_days=90,
+            )
+            db_key.is_active = False
+            db_key.metadata_json = {**(db_key.metadata_json or {}), "rotated_from": True}
+            await session.commit()
+            logger.info("Rotated API key %s -> %s for user %s", key_id, replacement.id, db_key.user_id)
+            return replacement
+
     async def revoke_api_key(self, key_id: str) -> bool:
         async with async_session_factory() as session:
             result = await session.execute(

@@ -282,6 +282,41 @@ class TestRoleManager:
         assert _verify_api_key_hash("test_key", result) is True
         assert _verify_api_key_hash("wrong_key", result) is False
 
+    @pytest.mark.asyncio
+    async def test_rotate_api_key_revokes_old_and_issues_new(self):
+        from ecommerce_ops.security.models import Role
+        from ecommerce_ops.security.role_manager import RoleManager
+        rm = RoleManager()
+        user = await rm.create_user(email="rotate@example.com", role=Role.ADMIN)
+        original = await rm.create_api_key(
+            user_id=user.id, name="rotate-me", role=Role.ADMIN
+        )
+        rotated = await rm.rotate_api_key(original.id)
+        assert rotated is not None
+        assert rotated.id != original.id
+        assert rotated.key != original.key
+
+        keys = await rm.list_api_keys(user_id=user.id)
+        active = [k for k in keys if k.is_active]
+        assert len(active) == 1
+        assert active[0].id == rotated.id
+
+    @pytest.mark.asyncio
+    async def test_rotate_api_key_missing_returns_none(self):
+        from ecommerce_ops.security.role_manager import RoleManager
+        rm = RoleManager()
+        assert await rm.rotate_api_key("does-not-exist") is None
+
+    @pytest.mark.asyncio
+    async def test_rotate_api_key_already_inactive_returns_none(self):
+        from ecommerce_ops.security.models import Role
+        from ecommerce_ops.security.role_manager import RoleManager
+        rm = RoleManager()
+        user = await rm.create_user(email="rotate2@example.com", role=Role.VIEWER)
+        key = await rm.create_api_key(user_id=user.id, name="already-inactive", role=Role.VIEWER)
+        assert await rm.revoke_api_key(key.id) is True
+        assert await rm.rotate_api_key(key.id) is None
+
 
 class TestAuth:
     def test_middleware_public_paths(self):

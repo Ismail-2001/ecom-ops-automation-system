@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     REDIS_MAX_CONNECTIONS: int = 20
     REDIS_SOCKET_TIMEOUT: int = 5
     REDIS_SOCKET_CONNECT_TIMEOUT: int = 5
+
+    # Task Queue
+    TASK_QUEUE_WORKERS: int = 2
+    TASK_QUEUE_MAX_SIZE: int = 100
     
     # Safety Thresholds
     GLOBAL_PO_LIMIT: float = 1000.0

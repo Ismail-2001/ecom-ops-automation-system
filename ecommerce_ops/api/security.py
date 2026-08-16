@@ -45,6 +45,10 @@ class APIKeyCreateRequest(BaseModel):
     permissions: Optional[List[Permission]] = None
 
 
+class APIKeyRotateRequest(BaseModel):
+    key_id: str
+
+
 class PermissionCheckRequest(BaseModel):
     permissions: List[Permission]
 
@@ -241,6 +245,38 @@ async def list_api_keys(
             for k in keys
         ],
         "total": len(keys),
+    }
+
+
+@router.post("/api-keys/rotate")
+async def rotate_api_key(
+    req: APIKeyRotateRequest,
+    admin: User = Depends(require_admin),
+):
+    """Rotate an API key: issues a new key and revokes the old one."""
+    api_key = await role_manager.rotate_api_key(req.key_id)
+
+    if not api_key:
+        raise HTTPException(status_code=404, detail="API key not found or already revoked")
+
+    await audit_logger.log_event(
+        event_type="api_key_management",
+        action="rotate_api_key",
+        resource="api_key",
+        resource_id=api_key.id,
+        user_id=admin.id,
+        success=True,
+        details={"previous_key_id": req.key_id, "name": api_key.name, "role": api_key.role.value},
+    )
+
+    return {
+        "id": api_key.id,
+        "key": api_key.key,  # Only shown once!
+        "name": api_key.name,
+        "role": api_key.role.value,
+        "expires_at": api_key.expires_at.isoformat() if api_key.expires_at else None,
+        "created_at": api_key.created_at.isoformat(),
+        "previous_key_revoked": True,
     }
 
 

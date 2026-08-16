@@ -3,11 +3,12 @@
 import asyncio
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from alembic import context
 from ecommerce_ops.config import settings
+from ecommerce_ops.memory.vector.persistent_store import VectorMemory  # noqa: F401
 from ecommerce_ops.models.db import Base
 
 config = context.config
