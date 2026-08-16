@@ -3,15 +3,15 @@ Rate Limiter
 Redis-backed sliding window with in-memory token bucket fallback.
 """
 
-import time
 import hashlib
 import logging
+import time
 from collections import defaultdict
-from typing import Optional
 
 from redis.exceptions import ConnectionError, TimeoutError
-from ecommerce_ops.memory.cache import cache
+
 from ecommerce_ops.infra.circuit_breaker import CircuitBreakerOpenError
+from ecommerce_ops.memory.cache import cache
 
 logger = logging.getLogger("ecommerce_ops.infra.rate_limiter")
 
@@ -52,6 +52,26 @@ async def check_rate_limit(
         return _memory_check(key, max_requests, window)
 
 
+def _evict_lru():
+    """Bound the in-memory store by evicting only the least-recently-active keys.
+
+    A naive cap that clears *all* entries would let a surge of distinct clients
+    immediately reset every caller's window, driving an unrestricted traffic
+    burst. Evict just the oldest keys until the store is back under the cap so
+    active clients keep their state.
+    """
+    if len(_memory_store) <= MEMORY_MAX_ENTRIES:
+        return
+    by_recency = sorted(
+        _memory_store,
+        key=lambda k: _memory_store[k][-1] if _memory_store[k] else 0,
+    )
+    remove_count = len(_memory_store) - MEMORY_MAX_ENTRIES
+    for key in by_recency[:remove_count]:
+        _memory_store.pop(key, None)
+        _memory_block_until.pop(key, None)
+
+
 def _memory_check(key: str, max_requests: int, window: int) -> tuple[bool, int]:
     """In-memory sliding window rate limiter (per-process)."""
     now = time.time()
@@ -61,11 +81,6 @@ def _memory_check(key: str, max_requests: int, window: int) -> tuple[bool, int]:
     block_until = _memory_block_until.get(key, 0)
     if now < block_until:
         return False, max_requests
-
-    # Evict old entries if store grows too large
-    if len(_memory_store) > MEMORY_MAX_ENTRIES:
-        _memory_store.clear()
-        _memory_block_until.clear()
 
     # Sliding window
     timestamps = _memory_store[key]
@@ -78,4 +93,8 @@ def _memory_check(key: str, max_requests: int, window: int) -> tuple[bool, int]:
         return False, count
 
     _memory_store[key].append(now)
+    # Keep the store bounded, evicting only stale/least-recent keys. Runs after
+    # the append so the entry that pushed us over the cap is what triggers it.
+    if len(_memory_store) > MEMORY_MAX_ENTRIES:
+        _evict_lru()
     return True, count + 1

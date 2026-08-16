@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import UTC, datetime
 from typing import AsyncGenerator
 
@@ -208,10 +209,30 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+def _auto_create_schema() -> bool:
+    """Whether runtime startup should create tables via ORM metadata.
+
+    PostgreSQL schema is managed exclusively by Alembic migrations; calling
+    ``Base.metadata.create_all`` on top of them risks silent schema drift
+    (tables Alembic removed or altered would be recreated from ORM metadata).
+    ``create_all`` therefore only runs for throwaway/unmanaged databases
+    (SQLite) or when ``AUTO_CREATE_SCHEMA`` is explicitly set to a truthy value.
+    """
+    forced = os.getenv("AUTO_CREATE_SCHEMA", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    if forced:
+        return True
+    return is_sqlite
+
+
 # Database initialization helper
 async def init_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    if _auto_create_schema():
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
     async with async_session_factory() as session:
         result = await session.execute(select(StoreSettings).where(StoreSettings.id == 1))
