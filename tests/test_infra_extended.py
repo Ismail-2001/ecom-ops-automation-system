@@ -1,17 +1,16 @@
 """Tests for infra/ (notifications, browser_pool, redis_task_queue) and utils.py."""
-import asyncio
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from ecommerce_ops.utils import retry_async
+import pytest
+
+from ecommerce_ops.infra.browser_pool import BrowserPageSession, BrowserPool
 from ecommerce_ops.infra.notifications import (
-    notify_hitl_request,
-    notify_pipeline_failed,
     notify_agent_graduated,
     notify_daily_summary,
+    notify_hitl_request,
+    notify_pipeline_failed,
 )
-from ecommerce_ops.infra.browser_pool import BrowserPool, BrowserPageSession
-
+from ecommerce_ops.utils import retry_async
 
 # ── utils.py tests ─────────────────────────────────────────
 
@@ -51,9 +50,11 @@ class TestRetryAsync:
         async def always_fail():
             raise ValueError("always")
 
-        with patch("ecommerce_ops.utils.asyncio.sleep", new_callable=AsyncMock):
-            with pytest.raises(ValueError, match="always"):
-                await retry_async(always_fail, max_retries=2, base_delay=0.01)()
+        with (
+            patch("ecommerce_ops.utils.asyncio.sleep", new_callable=AsyncMock),
+            pytest.raises(ValueError, match="always"),
+        ):
+            await retry_async(always_fail, max_retries=2, base_delay=0.01)()
 
     @pytest.mark.asyncio
     async def test_only_catches_specified_exceptions(self):
@@ -127,23 +128,26 @@ class TestBrowserPool:
         assert pool._max_contexts == 5
         assert pool._headless is False
 
-    def test_stop_when_not_started(self):
+    @pytest.mark.asyncio
+    async def test_stop_when_not_started(self):
         pool = BrowserPool()
-        asyncio.get_event_loop().run_until_complete(pool.stop())
+        await pool.stop()
         assert pool._browser is None
 
-    def test_stop_decrements_refcount(self):
+    @pytest.mark.asyncio
+    async def test_stop_decrements_refcount(self):
         pool = BrowserPool()
         pool._ref_count = 2
         pool._closed = False
-        asyncio.get_event_loop().run_until_complete(pool.stop())
+        await pool.stop()
         assert pool._ref_count == 1
 
 
 class TestBrowserPageSession:
-    def test_close_releases_semaphore(self):
+    @pytest.mark.asyncio
+    async def test_close_releases_semaphore(self):
         sem = MagicMock()
         ctx = AsyncMock()
         session = BrowserPageSession(ctx, MagicMock(), sem)
-        asyncio.get_event_loop().run_until_complete(session.close())
+        await session.close()
         sem.release.assert_called_once()

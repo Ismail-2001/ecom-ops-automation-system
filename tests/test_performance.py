@@ -4,18 +4,20 @@ Measures latency, throughput, and concurrency of critical paths.
 """
 
 import asyncio
-import time
 import statistics
+import time
+from contextlib import suppress
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from ecommerce_ops.agents.fraud import FraudAgent
 from ecommerce_ops.agents.inventory import InventoryAgent
-from ecommerce_ops.agents.pricing import PricingAgent
-from ecommerce_ops.agents.reviews import ReviewsAgent
 from ecommerce_ops.agents.marketing import MarketingAgent
+from ecommerce_ops.agents.pricing import PricingAgent
 from ecommerce_ops.agents.reflection import ReflectionAgent
 from ecommerce_ops.graph.state import AgentDecision
+
+pytestmark = [pytest.mark.slow]
 
 
 # ── Fixtures ──────────────────────────────────────────────
@@ -107,10 +109,8 @@ async def test_pricing_agent_latency(inventory_state):
     times = []
     for _ in range(10):
         start = time.monotonic()
-        try:
+        with suppress(Exception):
             await agent.run(inventory_state)
-        except Exception:
-            pass
         elapsed = (time.monotonic() - start) * 1000
         times.append(elapsed)
 

@@ -1,14 +1,14 @@
 import asyncio
 import logging
 from functools import wraps
-from typing import TypeVar, Callable, Any
+from typing import Any, Callable, TypeVar
 
 T = TypeVar("T")
 
 logger = logging.getLogger("ecommerce_ops.utils")
 
 
-async def retry_async(
+def retry_async(
     func: Callable[..., Any],
     max_retries: int = 3,
     base_delay: float = 1.0,

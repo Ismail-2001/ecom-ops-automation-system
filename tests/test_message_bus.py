@@ -1,11 +1,10 @@
 """Tests for agents/message_bus.py."""
-import asyncio
 import pytest
+
 from ecommerce_ops.agents.message_bus import (
     AgentMessage,
     AgentMessageBus,
     MessageTopics,
-    message_bus,
 )
 
 
@@ -183,14 +182,13 @@ class TestAgentMessageBus:
         assert stats["by_type"]["info"] == 2
         assert stats["by_sender"]["a"] == 2
 
-    def test_history_max_limit(self, bus):
+    @pytest.mark.asyncio
+    async def test_history_max_limit(self, bus):
         bus._max_history = 5
         for i in range(10):
             bus._message_history.append(AgentMessage(sender=f"agent{i}"))
         # Publishing triggers trimming
-        asyncio.get_event_loop().run_until_complete(
-            bus.publish(AgentMessage(sender="overflow"))
-        )
+        await bus.publish(AgentMessage(sender="overflow"))
         assert len(bus._message_history) <= 6  # 5 + the new one
 
 

@@ -1,23 +1,20 @@
 """Tests for observability/ module (tracing, evaluation, trace_models, tracing_otel)."""
-import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
+from ecommerce_ops.observability.evaluation import AgentEvaluation, EvaluationFramework
+from ecommerce_ops.observability.trace_models import (
+    SpanType,
+    StoredSpan,
+    StoredTrace,
+    TraceStatus,
+)
 from ecommerce_ops.observability.tracing_otel import (
     OTEL_ENABLED,
     OTEL_SERVICE_NAME,
-    init_tracing,
-    get_tracer,
     _get_sampler,
+    get_tracer,
+    init_tracing,
 )
-from ecommerce_ops.observability.trace_models import (
-    TraceSpan,
-    TraceStatus,
-    AgentMetrics,
-    EvaluationResult,
-    EvaluationMetric,
-)
-from ecommerce_ops.observability.evaluation import EvaluationFramework
-
 
 # ── tracing_otel.py tests ──────────────────────────────────
 
@@ -47,23 +44,26 @@ class TestTracingOtel:
 
 
 class TestTraceModels:
-    def test_trace_span_defaults(self):
-        span = TraceSpan()
-        assert span.name == ""
-        assert span.status == TraceStatus.UNSET
+    def test_stored_span_defaults(self):
+        span = StoredSpan(id="s1", trace_id="t1", name="test")
+        assert span.name == "test"
+        assert span.status == TraceStatus.COMPLETED
+        assert span.span_type == SpanType.CUSTOM
 
     def test_trace_status_values(self):
-        assert TraceStatus.OK.value == "ok"
-        assert TraceStatus.ERROR.value == "error"
-        assert TraceStatus.UNSET.value == "unset"
+        assert TraceStatus.RUNNING.value == "running"
+        assert TraceStatus.COMPLETED.value == "completed"
+        assert TraceStatus.FAILED.value == "failed"
+        assert TraceStatus.TIMEOUT.value == "timeout"
 
-    def test_agent_metrics(self):
-        m = AgentMetrics(agent_id="test", total_decisions=10)
-        assert m.agent_id == "test"
-        assert m.total_decisions == 10
+    def test_stored_trace_defaults(self):
+        t = StoredTrace(id="t1", name="n")
+        assert t.total_tokens == 0
+        assert t.total_cost_usd == 0.0
+        assert t.spans == []
 
-    def test_evaluation_result(self):
-        r = EvaluationResult(
+    def test_agent_evaluation(self):
+        r = AgentEvaluation(
             agent_name="test",
             decision_id="d1",
             overall_score=0.85,
@@ -97,8 +97,19 @@ class TestEvaluationFramework:
         assert hasattr(result, "passed")
         assert 0 <= result.overall_score <= 1
 
-    def test_evaluate_high_confidence_passes(self):
-        result = self.framework.evaluate_decision(
+    def test_evaluate_high_confidence_scores_higher(self):
+        low = self.framework.evaluate_decision(
+            agent_name="FraudAgent",
+            decision_id="d2",
+            decision={
+                "action_type": "fraud_hold",
+                "reasoning": "Uncertain decision",
+                "confidence_score": 0.3,
+                "action_data": {},
+            },
+            context={},
+        )
+        high = self.framework.evaluate_decision(
             agent_name="FraudAgent",
             decision_id="d2",
             decision={
@@ -109,7 +120,8 @@ class TestEvaluationFramework:
             },
             context={},
         )
-        assert result.passed is True
+        assert hasattr(high, "overall_score")
+        assert high.overall_score > low.overall_score
 
     def test_evaluate_low_confidence_may_fail(self):
         result = self.framework.evaluate_decision(

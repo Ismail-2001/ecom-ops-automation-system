@@ -103,19 +103,19 @@ def upgrade() -> None:
 
     # Foreign key on audit_entries.action_id was present in ORM metadata but
     # omitted from 0001 — add it so a metadata diff against the DB is clean.
-    op.create_foreign_key(
-        "audit_entries_action_id_fkey",
-        "audit_entries",
-        "approval_actions",
-        ["action_id"],
-        ["id"],
-    )
+    # Batch mode keeps the migration portable to SQLite (no ALTER support).
+    with op.batch_alter_table("audit_entries") as batch_op:
+        batch_op.create_foreign_key(
+            "audit_entries_action_id_fkey",
+            "approval_actions",
+            ["action_id"],
+            ["id"],
+        )
 
 
 def downgrade() -> None:
-    op.drop_constraint(
-        "audit_entries_action_id_fkey", "audit_entries", type_="foreignkey"
-    )
+    with op.batch_alter_table("audit_entries") as batch_op:
+        batch_op.drop_constraint("audit_entries_action_id_fkey", type_="foreignkey")
     op.drop_index("idx_security_audit_risk", table_name="security_audit_log")
     op.drop_index("idx_security_audit_type_time", table_name="security_audit_log")
     op.drop_index("ix_security_audit_log_timestamp", table_name="security_audit_log")
