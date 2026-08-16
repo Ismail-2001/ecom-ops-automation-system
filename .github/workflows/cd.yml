@@ -74,9 +74,9 @@ jobs:
             for i in $(seq 1 10); do
               sleep 3
               STATUS=$(docker inspect --format='{{.State.Health.Status}}' opsiq-api 2>/dev/null || echo "unknown")
-              HTTP=$(curl -sf http://localhost:8000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "unreachable")
+              HTTP=$(curl -sf http://localhost:8000/ready 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "unreachable")
               echo "  Attempt $i/10: container=$STATUS http=$HTTP"
-              if [ "$HTTP" = "healthy" ] || [ "$HTTP" = "ready" ]; then
+              if [ "$HTTP" = "ready" ]; then
                 HEALTHY=true
                 break
               fi

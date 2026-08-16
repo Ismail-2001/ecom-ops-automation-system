@@ -496,6 +496,53 @@ groups:
           summary: Low memory available
 ```
 
+## Deployment Strategies
+
+### Stop/Start with Auto-Rollback (current CI)
+
+The `.github/workflows/cd.yml` workflow deploys on tag push by stopping the old
+`api` container, running `alembic upgrade head`, and starting the new image.
+If the readiness probe (`/ready`, DB-checking) does not return `200` within
+30 seconds, the workflow restores the previous image and fails — so a broken
+release never stays live.
+
+This is the default and simplest strategy. It causes a brief downtime window
+during the stop/start swap.
+
+### Rolling Update (minimal downtime)
+
+For near-zero-downtime updates, use a rolling recreate instead of stop/start:
+
+```bash
+docker compose up -d --no-deps --build --scale api=2 api
+```
+
+The `/ready` probe (DB-aware) gates traffic, and uvicorn's
+`--timeout-graceful-shutdown 30` (set in `Dockerfile` and
+`docker-compose.yml`) gives in-flight requests 30s to finish before the old
+replica is torn down. Verify health before shrinking back:
+
+```bash
+curl -sf http://localhost:8000/ready && docker compose up -d --no-deps --scale api=1 api
+```
+
+### Blue-Green / Zero-Downtime
+
+True zero-downtime blue-green requires a load balancer (e.g. Nginx upstream or
+an ALB) fronting two full stacks, swapping traffic only after `/ready` passes on
+the new stack. OpsIQ containers are stateless and image-pinned, so this is
+straightforward once a second stack or dynamic upstream is provisioned — but it
+is **not** what the default CI workflow does today.
+
+### Guidelines
+
+- Always run `alembic upgrade head` before starting the new image (the compose
+  `api` command already does this).
+- Only route traffic once `/ready` returns `200`; `/live` only proves the
+  process is up, not that the DB is reachable.
+- Use `--timeout-graceful-shutdown` on uvicorn so WebSocket hangs and queued
+  tasks are drained by the lifespan shutdown handler.
+
 ## Security Checklist
 
 ### Pre-Deployment

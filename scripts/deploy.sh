@@ -12,7 +12,7 @@ COMPOSE_FILE="docker-compose.yml"
 BACKUP_FILE="docker-compose.backup.yml"
 ACTION="${1:-up}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-HEALTH_URL="${HEALTH_URL:-http://localhost:8000/health}"
+HEALTH_URL="${HEALTH_URL:-http://localhost:8000/ready}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-120}"
 
 RED='\033[0;31m'

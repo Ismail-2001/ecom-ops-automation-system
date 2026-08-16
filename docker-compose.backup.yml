@@ -2,7 +2,7 @@
 # Usage: docker compose -f docker-compose.yml -f docker-compose.backup.yml up -d
 
 services:
-  # ── PostgreSQL Backup (daily at 3 AM) ─────────────────────
+  # ── PostgreSQL Backup (hourly by default, matches DR policy RPO of 1h) ──
   postgres-backup:
     image: prodrigestivill/postgres-backup-local:16
     container_name: opsiq-postgres-backup
@@ -12,15 +12,13 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-ecommerce_ops}
-      SCHEDULE: "@daily"
-      BACKUP_KEEP_DAYS: 7
-      BACKUP_KEEP_WEEKS: 4
-      BACKUP_KEEP_MONTHS: 6
+      SCHEDULE: "${BACKUP_SCHEDULE:-0 * * * *}"
+      BACKUP_KEEP_DAYS: ${POSTGRES_BACKUP_KEEP_DAYS:-7}
+      BACKUP_KEEP_WEEKS: ${POSTGRES_BACKUP_KEEP_WEEKS:-4}
+      BACKUP_KEEP_MONTHS: ${POSTGRES_BACKUP_KEEP_MONTHS:-6}
       HEALTHCHECK_PORT: 8081
     volumes:
       - postgres_backups:/backups
-    networks:
-      - backend
     depends_on:
       postgres:
         condition: service_healthy
@@ -44,8 +42,6 @@ services:
     volumes:
       - redis_data:/data:ro
       - redis_backups:/backup
-    networks:
-      - backend
     restart: unless-stopped
     deploy:
       resources:

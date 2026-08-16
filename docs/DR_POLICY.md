@@ -4,7 +4,7 @@
 
 | Service        | RTO (Recovery Time) | RPO (Data Loss) | Strategy                        |
 |----------------|---------------------|------------------|---------------------------------|
-| API Server     | 5 minutes           | 0 (zero-downtime)| Blue-green deploy + auto-rollback |
+| API Server     | 5 minutes           | 0 (on restart)   | Image-pinned restart + auto-rollback on failed /ready probe |
 | PostgreSQL     | 15 minutes          | 1 hour           | WAL archiving + hourly pg_dump  |
 | Redis Cache    | 5 minutes           | 0 (ephemeral)    | Rebuild from DB on cold start   |
 | Frontend       | 2 minutes           | 0 (static)       | CDN + instant rollback          |
