@@ -154,19 +154,7 @@ async def approve_approval(
     action.reviewed_by = operator
     action.reviewed_at = datetime.utcnow()
     action.operator_notes = body.notes
-    action.status = "executing"
-    await db.commit()
-    await ws_manager.broadcast(
-        {
-            "type": "action_updated",
-            "payload": {"id": action.id, "status": "executing", "agent": action.agent},
-        }
-    )
-
-    success, exec_msg = await execute_shop_action(action)
-    action.status = "executed" if success else "failed"
-    if not success:
-        action.operator_notes = f"{action.operator_notes or ''} [Error: {exec_msg}]".strip()
+    action.status = "approved"
 
     financial_impact = (action.impact or {}).get("financial_impact", 0.0)
     audit_entry = AuditEntry(
@@ -180,11 +168,31 @@ async def approve_approval(
         financial_impact=financial_impact,
         details={
             "notes": action.operator_notes,
-            "execution_status": action.status,
+            "execution_status": "approved",
             "payload": action.payload,
         },
     )
     db.add(audit_entry)
+    await db.commit()
+
+    await ws_manager.broadcast(
+        {
+            "type": "action_updated",
+            "payload": {"id": action.id, "status": "approved", "agent": action.agent},
+        }
+    )
+
+    action.status = "executing"
+    await db.commit()
+
+    success, exec_msg = await execute_shop_action(action)
+    action.status = "executed" if success else "failed"
+    if not success:
+        action.operator_notes = f"{action.operator_notes or ''} [Error: {exec_msg}]".strip()
+
+    audit_entry.details["execution_status"] = action.status
+    audit_entry.details["execution_message"] = exec_msg if not success else None
+
     await update_agent_streak(action.agent, success, action.confidence_score, db)
     await db.commit()
 
@@ -284,25 +292,26 @@ async def batch_approvals(
             action.reviewed_by = operator
             action.reviewed_at = datetime.utcnow()
             action.operator_notes = body.notes
-            action.status = "executing"
+            action.status = "approved"
+
+            financial_impact = (action.impact or {}).get("financial_impact", 0.0)
+            audit_entry = AuditEntry(
+                action_id=action.id,
+                timestamp=datetime.utcnow(),
+                agent=action.agent,
+                action_type=action.action_type,
+                decision="shadow" if action.shadow_mode else "approved",
+                operator=operator,
+                confidence_score=action.confidence_score,
+                financial_impact=financial_impact,
+                details={"notes": body.notes, "execution_status": "approved", "batch": True},
+            )
+            db.add(audit_entry)
             await db.flush()
 
             success, _ = await execute_shop_action(action)
             action.status = "executed" if success else "failed"
-            financial_impact = (action.impact or {}).get("financial_impact", 0.0)
-            db.add(
-                AuditEntry(
-                    action_id=action.id,
-                    timestamp=datetime.utcnow(),
-                    agent=action.agent,
-                    action_type=action.action_type,
-                    decision="shadow" if action.shadow_mode else "approved",
-                    operator=operator,
-                    confidence_score=action.confidence_score,
-                    financial_impact=financial_impact,
-                    details={"notes": body.notes, "execution_status": action.status, "batch": True},
-                )
-            )
+            audit_entry.details["execution_status"] = action.status
             await update_agent_streak(action.agent, True, action.confidence_score, db)
 
         elif body.action == "reject":

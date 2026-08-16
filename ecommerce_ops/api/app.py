@@ -30,6 +30,7 @@ from ecommerce_ops.api.security import router as security_router
 from ecommerce_ops.api.shopify import router as shopify_router
 from ecommerce_ops.api.versioning import APIVersionMiddleware, create_v1_router
 from ecommerce_ops.api.ws import WS_TICKET_TTL_SECONDS, ws_manager, ws_ticket_store
+from ecommerce_ops.config import Environment
 from ecommerce_ops.config import settings as app_settings
 from ecommerce_ops.infra.browser_pool import browser_pool
 from ecommerce_ops.infra.redis_task_queue import RedisTaskQueue, TaskPriority
@@ -198,9 +199,9 @@ OpsIQ is an autonomous multi-agent system that manages ecommerce operations incl
 - Input sanitization and security headers
     """,
     version="0.2.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    docs_url="/docs" if app_settings.ENV == Environment.DEVELOPMENT else None,
+    redoc_url="/redoc" if app_settings.ENV == Environment.DEVELOPMENT else None,
+    openapi_url="/openapi.json" if app_settings.ENV == Environment.DEVELOPMENT else None,
     openapi_tags=[
         {"name": "Health", "description": "Health checks and readiness probes"},
         {"name": "Pipeline", "description": "Pipeline trigger and task management"},

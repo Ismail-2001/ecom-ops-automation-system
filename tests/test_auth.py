@@ -78,6 +78,19 @@ async def test_protected_endpoints_require_auth(client):
 @pytest.mark.asyncio
 async def test_public_paths_stay_open(client):
     """Infrastructure endpoints remain reachable without auth."""
-    for ep in ["/health", "/live", "/metrics"]:
+    for ep in ["/health", "/live", "/ready"]:
         resp = await client.get(ep)
         assert resp.status_code in (200, 503), f"{ep} returned {resp.status_code}"
+
+
+@pytest.mark.asyncio
+async def test_metrics_requires_auth_outside_dev(client):
+    """/metrics is auth-gated outside development to hide internal metrics."""
+    without_auth = await client.get("/metrics")
+    assert without_auth.status_code == 401
+
+    with_auth = await client.get(
+        "/metrics",
+        headers={"Authorization": f"Bearer {API_KEY}"},
+    )
+    assert with_auth.status_code == 200

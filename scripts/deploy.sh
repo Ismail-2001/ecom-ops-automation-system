@@ -37,9 +37,21 @@ preflight() {
         [[ -f "$f" ]] || fail "Missing required file: $f"
     done
 
-    if [[ ! -f "$PROJECT_DIR/nginx/certs/server.crt" ]]; then
-        warn "TLS certs not found — HTTPS will be disabled"
-        warn "Run: bash scripts/generate-tls-certs.sh"
+    # Grafana admin password must be explicitly set — never defaulted (see .env.production).
+    grafana_pw=""
+    if [[ -f "$PROJECT_DIR/.env" ]]; then
+        grafana_pw="$(grep -E '^GRAFANA_ADMIN_PASSWORD=' "$PROJECT_DIR/.env" | head -1 | cut -d= -f2-)"
+    fi
+    if [[ -z "$grafana_pw" ]]; then
+        warn "GRAFANA_ADMIN_PASSWORD is not set — Grafana will be inaccessible."
+        warn "Add GRAFANA_ADMIN_PASSWORD=... to .env (see .env.production) and redeploy."
+    elif [[ "$grafana_pw" == "CHANGE_ME_GRAFANA_PASSWORD" ]]; then
+        fail "GRAFANA_ADMIN_PASSWORD still set to the placeholder value in .env"
+    fi
+
+    if [[ ! -f "$PROJECT_DIR/nginx/certs/server.crt" ]] || [[ ! -f "$PROJECT_DIR/nginx/certs/server.key" ]]; then
+        fail "TLS certificates not found — nginx refuses to start without TLS."
+        fail "Run: bash scripts/generate-tls-certs.sh (or mount real certs into nginx/certs/)"
     fi
 
     if [[ ! -f "$PROJECT_DIR/$BACKUP_FILE" ]]; then

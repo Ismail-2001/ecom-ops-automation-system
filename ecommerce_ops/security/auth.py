@@ -13,6 +13,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
 
+from ecommerce_ops.config import Environment
 from ecommerce_ops.config import settings as app_settings
 from ecommerce_ops.security.models import (
     AccessContext,
@@ -36,6 +37,12 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         "/health",
         "/live",
         "/ready",
+    }
+
+    # Paths public only in development (docs + raw metrics). In testing and
+    # production these require the operator API key (docs are also disabled at
+    # the FastAPI layer). Prometheus authenticates via its scrape token.
+    DEV_ONLY_PUBLIC_PATHS: ClassVar[Set[str]] = {
         "/metrics",
         "/docs",
         "/openapi.json",
@@ -165,9 +172,15 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         )
 
     def _is_public_path(self, path: str) -> bool:
+        if path in self.PUBLIC_PATHS:
+            return True
+        if (
+            path in self.DEV_ONLY_PUBLIC_PATHS
+            and app_settings.ENV == Environment.DEVELOPMENT
+        ):
+            return True
         return (
-            path in self.PUBLIC_PATHS
-            or path.startswith("/static/")
+            path.startswith("/static/")
             or path.endswith((".js", ".css", ".ico"))
         )
 

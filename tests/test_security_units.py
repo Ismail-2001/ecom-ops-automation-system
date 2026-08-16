@@ -324,8 +324,22 @@ class TestAuth:
         mw = AuthenticationMiddleware(app=MagicMock())
         assert mw._is_public_path("/") is True
         assert mw._is_public_path("/health") is True
-        assert mw._is_public_path("/docs") is True
-        assert mw._is_public_path("/openapi.json") is True
+
+    def test_middleware_docs_and_metrics_public_only_in_dev(self):
+        from ecommerce_ops.config import Environment, settings as app_settings
+        from ecommerce_ops.security.auth import AuthenticationMiddleware
+        mw = AuthenticationMiddleware(app=MagicMock())
+        with patch.object(app_settings, "ENV", Environment.PRODUCTION):
+            # Docs/schema/metrics must never be anonymous in production.
+            assert mw._is_public_path("/docs") is False
+            assert mw._is_public_path("/openapi.json") is False
+            assert mw._is_public_path("/redoc") is False
+            assert mw._is_public_path("/metrics") is False
+        with patch.object(app_settings, "ENV", Environment.DEVELOPMENT):
+            assert mw._is_public_path("/docs") is True
+            assert mw._is_public_path("/openapi.json") is True
+            assert mw._is_public_path("/redoc") is True
+            assert mw._is_public_path("/metrics") is True
 
     def test_middleware_static_paths(self):
         from ecommerce_ops.security.auth import AuthenticationMiddleware

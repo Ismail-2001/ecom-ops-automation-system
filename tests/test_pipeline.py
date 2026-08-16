@@ -39,12 +39,26 @@ class TestBuildPayloadAndEvidence:
         payload, _ = build_payload_and_evidence(d, [])
         assert payload["order_id"] == "ORD-UNKNOWN"
 
+    def test_fraud_agent_does_not_fabricate_customer_identity(self):
+        d = _make_decision("FraudAgent", {"order_id": "ORD-9", "risk_score": 85})
+        payload, _ = build_payload_and_evidence(d, [])
+        assert payload["customer_name"] == "unknown"
+        assert payload["customer_email"] is None
+        assert payload["order_total"] is None
+
     def test_inventory_agent_payload(self):
-        d = _make_decision("InventoryAgent", {"sku": "SKU-1", "quantity_to_order": 100})
+        d = _make_decision("InventoryAgent", {"sku": "SKU-1", "quantity_to_order": 100, "unit_cost": 15.0})
         payload, _evidence = build_payload_and_evidence(d, [])
         assert payload["sku"] == "SKU-1"
         assert payload["reorder_quantity"] == 100
         assert payload["total_po_value"] == 1500.0
+
+    def test_inventory_agent_omits_fabricated_po_value_when_cost_unknown(self):
+        d = _make_decision("InventoryAgent", {"sku": "SKU-1", "quantity_to_order": 100})
+        payload, _ = build_payload_and_evidence(d, [])
+        assert payload["total_po_value"] is None
+        assert payload["current_stock"] is None
+        assert payload["supplier_name"] is None
 
     def test_inventory_agent_default_qty(self):
         d = _make_decision("InventoryAgent", {})
@@ -69,14 +83,20 @@ class TestBuildPayloadAndEvidence:
     def test_reviews_agent_no_reviews(self):
         d = _make_decision("ReviewsAgent", {})
         payload, _ = build_payload_and_evidence(d, [])
-        assert payload["rating"] == 3
+        assert payload["rating"] is None
 
     def test_marketing_agent_fallback(self):
-        d = _make_decision("MarketingAgent", {"sku": "SKU-3", "draft_copy": "Buy now!"})
+        d = _make_decision("MarketingAgent", {"sku": "SKU-3", "draft_copy": "Buy now!", "discount_percent": 15.0})
         payload, evidence = build_payload_and_evidence(d, [])
         assert payload["campaign_name"] == "Campaign for SKU-3"
         assert payload["discount_percent"] == 15.0
         assert len(evidence) == 2
+
+    def test_marketing_agent_omits_fabricated_discount_when_unknown(self):
+        d = _make_decision("MarketingAgent", {"sku": "SKU-3"})
+        payload, _ = build_payload_and_evidence(d, [])
+        assert payload["discount_percent"] is None
+        assert payload["estimated_reach"] is None
 
     def test_unknown_agent_uses_marketing_fallback(self):
         d = _make_decision("UnknownAgent", {"sku": "SKU-X"})

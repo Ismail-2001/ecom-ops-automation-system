@@ -1175,21 +1175,26 @@ class TestWebSocket:
 
 class TestDocs:
     @pytest.mark.asyncio
-    async def test_openapi_json(self):
+    async def test_openapi_json_disabled_outside_dev(self):
+        # docs/redoc/openapi are disabled outside development.
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
             r = await c.get("/openapi.json")
-        assert r.status_code == 200
-        body = r.json()
-        assert "openapi" in body
-        assert "paths" in body
+        assert r.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_docs_page(self):
+    async def test_docs_page_disabled_outside_dev(self):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
             r = await c.get("/docs")
-        assert r.status_code == 200
+        assert r.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_redoc_page_disabled_outside_dev(self):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            r = await c.get("/redoc")
+        assert r.status_code == 404
 
 
 # ---------------------------------------------------------------------------
