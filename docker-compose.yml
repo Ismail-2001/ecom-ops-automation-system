@@ -85,9 +85,9 @@ services:
         condition: service_healthy
     command: >
       sh -c "alembic upgrade head &&
-             python -m uvicorn ecommerce_ops.api.app:app --host 0.0.0.0 --port 8000 --workers 4"
+             python -m uvicorn ecommerce_ops.api.app:app --host 0.0.0.0 --port 8000 --workers 4 --timeout-graceful-shutdown 30"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/live'); exit(0) if r.status==200 else exit(1)"]
+      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/ready'); r.read(); exit(0) if r.status==200 else exit(1)"]
       interval: 15s
       timeout: 5s
       start_period: 30s
@@ -175,7 +175,7 @@ services:
       - ./monitoring/alertmanager.yml.tmpl:/etc/alertmanager/alertmanager.yml.tmpl:ro
       - ./monitoring/alertmanager-entrypoint.sh:/alertmanager-entrypoint.sh:ro
       - alertmanager_data:/alertmanager
-    entrypoint: ["/bin/sh", "-c", "envsubst < /etc/alertmanager/alertmanager.yml.tmpl > /etc/alertmanager/alertmanager.yml && exec /bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yml --storage.path=/alertmanager"]
+    entrypoint: ["/bin/sh", "/alertmanager-entrypoint.sh"]
     ports:
       - "9093:9093"
 

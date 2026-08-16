@@ -98,11 +98,12 @@ USER app
 
 EXPOSE 8000
 
-# Health check — lightweight, no external deps needed
+# Health check — checks DB-aware readiness probe
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
     CMD python -c "\
 import urllib.request; \
-r = urllib.request.urlopen('http://localhost:8000/live'); \
+r = urllib.request.urlopen('http://localhost:8000/ready'); \
+r.read(); \
 exit(0) if r.status == 200 else exit(1)"
 
 # Production CMD — uvicorn with graceful shutdown
@@ -115,4 +116,5 @@ CMD ["uvicorn", "ecommerce_ops.api.app:app", \
      "--log-level", "info", \
      "--access-log", \
      "--proxy-headers", \
-     "--forwarded-allow-ips", "*"]
+     "--forwarded-allow-ips", "*", \
+     "--timeout-graceful-shutdown", "30"]
