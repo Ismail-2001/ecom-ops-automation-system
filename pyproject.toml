@@ -70,7 +70,7 @@ exclude_dirs = ["tests", "alembic"]
 skips = ["B101", "B311", "B324"]
 
 [tool.coverage.run]
-omit = ["tests/*", "alembic/*", "ecommerce_ops/ecommerce_ops/*"]
+omit = ["tests/*", "alembic/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -2,9 +2,7 @@
 target-version = "py312"
 line-length = 100
 
-exclude = [
-    "ecommerce_ops/ecommerce_ops",  # nested duplicate — not part of the package
-]
+exclude = []
 
 [lint]
 select = [
