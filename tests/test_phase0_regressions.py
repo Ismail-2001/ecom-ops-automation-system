@@ -120,7 +120,7 @@ async def test_pipeline_fails_closed_when_shopify_unavailable_in_production():
     with (
         patch.object(runner_mod.app_settings, "ENV", Environment.PRODUCTION),
         patch.object(runner_mod, "fetch_shopify_data", AsyncMock(return_value=None)),
-        patch.object(runner_mod, "_check_existing_pipeline_run", AsyncMock(return_value=False)),
+        patch.object(runner_mod, "_try_register_pipeline_run", AsyncMock(return_value=MagicMock())),
         pytest.raises(RuntimeError, match="fail-open to mock data is disabled"),
     ):
         await runner_mod.run_pipeline_task("run-ph0-2", db_settings)
@@ -153,7 +153,7 @@ async def test_pipeline_uses_mock_outside_production():
     with (
         patch.object(runner_mod.app_settings, "ENV", Environment.DEVELOPMENT),
         patch.object(runner_mod, "fetch_shopify_data", AsyncMock(return_value=None)),
-        patch.object(runner_mod, "_check_existing_pipeline_run", AsyncMock(return_value=False)),
+        patch.object(runner_mod, "_try_register_pipeline_run", AsyncMock(return_value=MagicMock())),
         patch.object(runner_mod, "async_session_factory", MagicMock(return_value=session_mgr)),
         patch.object(runner_mod, "Supervisor", supervisor),
         patch.object(runner_mod, "langfuse_client", MagicMock()),

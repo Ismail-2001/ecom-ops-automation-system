@@ -27,6 +27,8 @@ from ecommerce_ops.models import (
 )
 from ecommerce_ops.pipeline.runner import execute_shop_action, update_agent_streak
 
+logger = logging.getLogger("ecommerce_ops.api.core_routes")
+
 router = APIRouter()
 
 SERVER_START_TIME = time.time()
@@ -378,65 +380,73 @@ async def batch_approvals(
             action.status = "expired"
             continue
 
-        if body.action == "approve":
-            if action.risk_level in ("high", "critical"):
-                continue
-            action.reviewed_by = operator
-            action.reviewed_at = datetime.utcnow()
-            action.operator_notes = body.notes
-            action.status = "approved"
+        try:
+            if body.action == "approve":
+                if action.risk_level in ("high", "critical"):
+                    continue
+                action.reviewed_by = operator
+                action.reviewed_at = datetime.utcnow()
+                action.operator_notes = body.notes
+                action.status = "approved"
 
-            financial_impact = (action.impact or {}).get("financial_impact", 0.0)
-            audit_entry = AuditEntry(
-                action_id=action.id,
-                timestamp=datetime.utcnow(),
-                agent=action.agent,
-                action_type=action.action_type,
-                decision="shadow" if action.shadow_mode else "approved",
-                operator=operator,
-                confidence_score=action.confidence_score,
-                financial_impact=financial_impact,
-                details={"notes": body.notes, "execution_status": "approved", "batch": True},
-            )
-            db.add(audit_entry)
-            await db.flush()
-
-            success, _ = await execute_shop_action(action)
-            action.status = "executed" if success else "failed"
-            audit_entry.details["execution_status"] = action.status
-            await update_agent_streak(action.agent, success, action.confidence_score, db)
-            _score_hitl_outcome(action, "approved", db, success)
-
-        elif body.action == "reject":
-            action.reviewed_by = operator
-            action.reviewed_at = datetime.utcnow()
-            action.rejection_reason = body.reason or "Batch rejected"
-            action.operator_notes = body.notes
-            action.status = "rejected"
-            financial_impact = (action.impact or {}).get("financial_impact", 0.0)
-            db.add(
-                AuditEntry(
+                financial_impact = (action.impact or {}).get("financial_impact", 0.0)
+                audit_entry = AuditEntry(
                     action_id=action.id,
                     timestamp=datetime.utcnow(),
                     agent=action.agent,
                     action_type=action.action_type,
-                    decision="rejected",
+                    decision="shadow" if action.shadow_mode else "approved",
                     operator=operator,
                     confidence_score=action.confidence_score,
                     financial_impact=financial_impact,
-                    details={"reason": body.reason, "notes": body.notes, "batch": True},
+                    details={"notes": body.notes, "execution_status": "approved", "batch": True},
                 )
-            )
-            await update_agent_streak(action.agent, False, action.confidence_score, db)
-            _score_hitl_outcome(action, "rejected", db)
+                db.add(audit_entry)
+                await db.flush()
 
-        updated_ids.append(action.id)
-        await ws_manager.broadcast(
-            {
-                "type": "action_updated",
-                "payload": {"id": action.id, "status": action.status, "agent": action.agent},
-            }
-        )
+                success, _ = await execute_shop_action(action)
+                action.status = "executed" if success else "failed"
+                audit_entry.details["execution_status"] = action.status
+                await update_agent_streak(action.agent, success, action.confidence_score, db)
+                _score_hitl_outcome(action, "approved", db, success)
+
+            elif body.action == "reject":
+                action.reviewed_by = operator
+                action.reviewed_at = datetime.utcnow()
+                action.rejection_reason = body.reason or "Batch rejected"
+                action.operator_notes = body.notes
+                action.status = "rejected"
+                financial_impact = (action.impact or {}).get("financial_impact", 0.0)
+                db.add(
+                    AuditEntry(
+                        action_id=action.id,
+                        timestamp=datetime.utcnow(),
+                        agent=action.agent,
+                        action_type=action.action_type,
+                        decision="rejected",
+                        operator=operator,
+                        confidence_score=action.confidence_score,
+                        financial_impact=financial_impact,
+                        details={"reason": body.reason, "notes": body.notes, "batch": True},
+                    )
+                )
+                await update_agent_streak(action.agent, False, action.confidence_score, db)
+                _score_hitl_outcome(action, "rejected", db)
+
+            updated_ids.append(action.id)
+            await ws_manager.broadcast(
+                {
+                    "type": "action_updated",
+                    "payload": {"id": action.id, "status": action.status, "agent": action.agent},
+                }
+            )
+        except Exception as exc:
+            logger.warning(
+                "Batch item %s failed: %s — continuing with remaining items",
+                action.id,
+                exc,
+            )
+            continue
 
     await db.commit()
     return {

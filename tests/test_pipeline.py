@@ -201,12 +201,43 @@ class TestRunPipelineTaskAutoApproval:
 
     @staticmethod
     def _make_session(settings):
-        execute_result = MagicMock()
-        execute_result.scalar_one.return_value = settings
-        execute_result.scalar_one_or_none.return_value = None
+        from ecommerce_ops.models import PipelineRun
+
+        # First call: PipelineRun INSERT (dialect-specific) → rowcount=1
+        insert_result = MagicMock()
+        insert_result.rowcount = 1
+
+        # Second call: PipelineRun SELECT → returns PipelineRun object
+        pipeline_run_obj = MagicMock(spec=PipelineRun)
+        pipeline_run_obj.run_id = "run-1"
+
+        select_pr_result = MagicMock()
+        select_pr_result.scalar_one.return_value = pipeline_run_obj
+
+        # Third call: PipelineRun UPDATE (data_source)
+        update_ds_result = MagicMock()
+        update_ds_result.rowcount = 1
+
+        # Fourth call: StoreSettings SELECT
+        settings_result = MagicMock()
+        settings_result.scalar_one.return_value = settings
+
+        # Fifth call: PipelineRun UPDATE (final stats)
+        update_final_result = MagicMock()
+        update_final_result.rowcount = 1
+
         session = MagicMock()
-        session.execute = AsyncMock(return_value=execute_result)
+        session.execute = AsyncMock(
+            side_effect=[
+                insert_result,
+                select_pr_result,
+                update_ds_result,
+                settings_result,
+                update_final_result,
+            ]
+        )
         session.commit = AsyncMock()
+        session.flush = AsyncMock()
         session.add = MagicMock()
         session_mgr = MagicMock()
         session_mgr.__aenter__ = AsyncMock(return_value=session)

@@ -26,6 +26,8 @@ from ecommerce_ops.models import (
     AgentStatus,
     ApprovalAction,
     AuditEntry,
+    OutboxMessage,
+    PipelineRun,
     StoreSettings,
     async_session_factory,
 )
@@ -47,29 +49,39 @@ def _get_pipeline_lock(run_id: str) -> asyncio.Lock:
     return _pipeline_locks[run_id]
 
 
-async def _check_existing_pipeline_run(run_id: str) -> bool:
-    """Check if a pipeline run with this run_id has already completed.
+async def _try_register_pipeline_run(
+    run_id: str, session: AsyncSession
+) -> PipelineRun | None:
+    """Attempt to register a pipeline run idempotently.
 
-    Returns True if run already exists (completed or failed), False otherwise.
-    Uses existing ApprovalAction table to detect prior runs.
-    Gracefully handles test mocks by returning False on any error.
+    Uses ``INSERT … ON CONFLICT DO NOTHING`` against the ``pipeline_runs``
+    table.  Returns the new ``PipelineRun`` row if this call owns the run,
+    or ``None`` if the ``run_id`` was already registered (another worker or
+    a prior invocation beat us).
     """
     try:
-        async with async_session_factory() as session:
-            from sqlalchemy import func
+        from ecommerce_ops.models.db import is_sqlite
 
-            result = await session.execute(
-                select(func.count(ApprovalAction.id)).where(
-                    ApprovalAction.created_at > datetime.utcnow() - timedelta(hours=1)
-                )
-            )
-            count = result.scalar() or 0
-            # Heuristic: if there are many recent actions, a run likely happened
-            # This is a lightweight check; production should use a dedicated PipelineRun table
-            return count > 50
+        if is_sqlite:
+            from sqlalchemy.dialects.sqlite import insert as dialect_insert
+        else:
+            from sqlalchemy.dialects.postgresql import insert as dialect_insert
+
+        stmt = (
+            dialect_insert(PipelineRun)
+            .values(run_id=run_id, status="running", started_at=datetime.utcnow())
+            .on_conflict_do_nothing(index_elements=[PipelineRun.run_id])
+        )
+        result = await session.execute(stmt)
+        if result.rowcount == 0:
+            return None
+        # Fetch the row we just inserted to get the ORM object
+        row = await session.execute(
+            select(PipelineRun).where(PipelineRun.run_id == run_id)
+        )
+        return row.scalar_one()
     except Exception:
-        # In tests, the session may be mocked; don't block on check failures
-        return False
+        return None
 
 
 logger = logging.getLogger("ecommerce_ops.pipeline.runner")
@@ -386,11 +398,13 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
         logger.warning("Pipeline run %s already in progress, rejecting", run_id)
         raise RuntimeError(f"Pipeline run {run_id} is already in progress")
 
-    # Optional DB-based check for completed runs (best-effort heuristic)
-    already_ran = await _check_existing_pipeline_run(run_id)
-    if already_ran:
-        logger.warning("Pipeline run %s appears to have already completed, rejecting", run_id)
-        raise RuntimeError(f"Pipeline run {run_id} has already completed")
+    # Idempotency: register run in PipelineRun table (C4)
+    async with async_session_factory() as session:
+        pipeline_run = await _try_register_pipeline_run(run_id, session)
+        if pipeline_run is None:
+            logger.warning("Pipeline run %s already registered, rejecting", run_id)
+            raise RuntimeError(f"Pipeline run {run_id} has already completed")
+        await session.commit()
 
     async with lock:
         logger.info("Starting pipeline run %s", run_id)
@@ -511,6 +525,15 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
         data_source = "mock"
         logger.info("Using mock data (Shopify not configured)")
 
+    # Update PipelineRun with data source
+    async with async_session_factory() as session:
+        await session.execute(
+            update(PipelineRun)
+            .where(PipelineRun.run_id == run_id)
+            .values(data_source=data_source)
+        )
+        await session.commit()
+
     initial_state = {
         "inventory_data": inventory_data,
         "active_orders": active_orders,
@@ -629,11 +652,24 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                 executed_ok = False
                 execution_msg = None
                 if auto_attempt:
+                    # C5: Write outbox message before live Shopify call
+                    outbox = OutboxMessage(
+                        action_id=action_id,
+                        status="pending",
+                        payload=payload,
+                    )
+                    session.add(outbox)
+                    await session.flush()
+
                     executed_ok, execution_msg = await execute_shop_action(action)
                     action.status = "executed" if executed_ok else "failed"
                     if not executed_ok:
                         action.operator_notes = f"Auto-execution failed: {execution_msg}"
+                        outbox.status = "failed"
+                        outbox.error = execution_msg
                     else:
+                        outbox.status = "sent"
+                        outbox.sent_at = datetime.utcnow()
                         METRIC_DECISIONS_AUTO_APPROVED.labels(agent=d.agent_id).inc()
 
                 session.add(action)
@@ -727,9 +763,44 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
             )
             METRIC_PIPELINE_RUNS.labels(status="success").inc()
 
+            # C4: Update PipelineRun with final stats
+            await session.execute(
+                update(PipelineRun)
+                .where(PipelineRun.run_id == run_id)
+                .values(
+                    status="completed",
+                    decisions_count=len(decisions_list),
+                    actions_count=new_actions_count,
+                    evaluation_avg_score=round(avg_score, 3),
+                    evaluation_pass_rate=round(
+                        passed_count / len(evaluation_results), 3
+                    )
+                    if evaluation_results
+                    else 0,
+                    finished_at=datetime.utcnow(),
+                )
+            )
+            await session.commit()
+
     except Exception as e:
         logger.exception("Pipeline run %s failed: %s", run_id, e)
         METRIC_PIPELINE_RUNS.labels(status="failure").inc()
+
+        # C4: Mark PipelineRun as failed
+        try:
+            async with async_session_factory() as session:
+                await session.execute(
+                    update(PipelineRun)
+                    .where(PipelineRun.run_id == run_id)
+                    .values(
+                        status="failed",
+                        error=str(e)[:500],
+                        finished_at=datetime.utcnow(),
+                    )
+                )
+                await session.commit()
+        except Exception:
+            logger.exception("Failed to update PipelineRun status for %s", run_id)
 
         # Track failure in Langfuse
         if trace:

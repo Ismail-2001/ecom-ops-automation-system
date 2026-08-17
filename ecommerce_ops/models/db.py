@@ -156,6 +156,7 @@ class RBACApiKey(Base):
 
     id = Column(String, primary_key=True)
     key_hash = Column(String, unique=True, nullable=False, index=True)
+    key_hash_fast = Column(String, unique=True, nullable=True, index=True)
     key_prefix = Column(String, nullable=False)
     name = Column(String, nullable=False)
     user_id = Column(String, ForeignKey("rbac_users.id"), nullable=False, index=True)
@@ -217,6 +218,62 @@ class SecurityAuditLog(Base):
         Index("idx_security_audit_type_time", "event_type", "timestamp"),
         Index("idx_security_audit_risk", "risk_level", "timestamp"),
     )
+
+
+# ── Pipeline Run Tracking (C4) ─────────────────────────────
+
+
+class PipelineRun(Base):
+    """Idempotency table for pipeline runs.
+
+    Each ``run_id`` is unique — an INSERT … ON CONFLICT DO NOTHING at the
+    start of ``run_pipeline_task`` prevents duplicate/overlapping runs.
+    The row is updated as the run progresses so downstream consumers can
+    query run status without polling Redis or application logs.
+    """
+
+    __tablename__ = "pipeline_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(String, unique=True, nullable=False, index=True)
+    status = Column(String, nullable=False, default="pending", index=True)
+    data_source = Column(String, nullable=True)
+    decisions_count = Column(Integer, nullable=False, default=0)
+    actions_count = Column(Integer, nullable=False, default=0)
+    evaluation_avg_score = Column(Float, nullable=True)
+    evaluation_pass_rate = Column(Float, nullable=True)
+    error = Column(String, nullable=True)
+    started_at = Column(DateTime, default=utcnow, nullable=False)
+    finished_at = Column(DateTime, nullable=True)
+
+    __table_args__ = ()
+
+
+# ── Outbox Pattern (C5) ────────────────────────────────────
+
+
+class OutboxMessage(Base):
+    """Transactional outbox for pipeline action dispatch.
+
+    Before a live Shopify call is attempted, the action is written here with
+    status ``pending``. After the call succeeds the row moves to ``sent``.
+    A background poller can retry ``pending`` rows that were never committed,
+    guaranteeing at-least-once delivery without duplicating Shopify API calls
+    (the PipelineRun table handles idempotency).
+    """
+
+    __tablename__ = "outbox_messages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    action_id = Column(String, ForeignKey("approval_actions.id"), nullable=False, index=True)
+    status = Column(String, nullable=False, default="pending", index=True)
+    payload = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    sent_at = Column(DateTime, nullable=True)
+    error = Column(String, nullable=True)
+    retry_count = Column(Integer, nullable=False, default=0)
+
+    __table_args__ = ()
 
 
 # Async Generator for DB sessions

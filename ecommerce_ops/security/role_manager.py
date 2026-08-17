@@ -30,6 +30,17 @@ logger = logging.getLogger("ecommerce_ops.security.role_manager")
 PBKDF2_ITERATIONS = 600_000
 
 
+def _fast_hash_api_key(key: str) -> str:
+    """Fast sha256 hash for O(1) key lookup (C10).
+
+    This is used as a pre-filter: the slow PBKDF2 verification only runs
+    on keys whose fast hash matches.  The fast hash is not stored as the
+    primary hash (PBKDF2 remains the canonical secure hash), but it allows
+    us to avoid scanning every row in ``rbac_api_keys`` on every request.
+    """
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
 def _hash_api_key(key: str) -> str:
     """Hash an API key using salted PBKDF2-SHA256 for secure storage."""
     salt = secrets.token_bytes(16)
@@ -333,6 +344,7 @@ class RoleManager:
             db_key = RBACApiKey(
                 id=key_id,
                 key_hash=key_hash,
+                key_hash_fast=_fast_hash_api_key(raw_key),
                 key_prefix=key_prefix,
                 name=name,
                 user_id=user_id,
@@ -356,33 +368,39 @@ class RoleManager:
             )
 
     async def validate_api_key(self, key: str) -> Optional[APIKey]:
+        fast_hash = _fast_hash_api_key(key)
         async with async_session_factory() as session:
+            # C10: O(1) lookup via sha256 fast hash pre-filter
             result = await session.execute(
-                select(RBACApiKey).where(RBACApiKey.is_active == True)
-            )
-            for db_key in result.scalars().all():
-                if not _verify_api_key_hash(key, db_key.key_hash):
-                    continue
-                if db_key.expires_at and datetime.utcnow() > db_key.expires_at:
-                    return None
-
-                db_key.last_used = datetime.utcnow()
-                db_key.usage_count = (db_key.usage_count or 0) + 1
-                await session.commit()
-
-                return APIKey(
-                    id=db_key.id,
-                    key=key,
-                    name=db_key.name,
-                    user_id=db_key.user_id,
-                    role=Role(db_key.role),
-                    permissions={Permission(p) for p in (db_key.permissions or [])},
-                    is_active=db_key.is_active,
-                    expires_at=db_key.expires_at,
-                    last_used=db_key.last_used,
-                    usage_count=db_key.usage_count,
+                select(RBACApiKey).where(
+                    RBACApiKey.is_active,
+                    RBACApiKey.key_hash_fast == fast_hash,
                 )
-            return None
+            )
+            db_key = result.scalar_one_or_none()
+            if db_key is None:
+                return None
+            if not _verify_api_key_hash(key, db_key.key_hash):
+                return None
+            if db_key.expires_at and datetime.utcnow() > db_key.expires_at:
+                return None
+
+            db_key.last_used = datetime.utcnow()
+            db_key.usage_count = (db_key.usage_count or 0) + 1
+            await session.commit()
+
+            return APIKey(
+                id=db_key.id,
+                key=key,
+                name=db_key.name,
+                user_id=db_key.user_id,
+                role=Role(db_key.role),
+                permissions={Permission(p) for p in (db_key.permissions or [])},
+                is_active=db_key.is_active,
+                expires_at=db_key.expires_at,
+                last_used=db_key.last_used,
+                usage_count=db_key.usage_count,
+            )
 
     async def rotate_api_key(self, key_id: str) -> Optional[APIKey]:
         """Rotate an API key: issue a replacement and revoke the old one.
