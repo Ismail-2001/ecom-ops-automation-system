@@ -38,6 +38,7 @@ class InventoryAgent(BaseAgent):
                         f"daily velocity {daily_velocity:.2f}, "
                         f"predicted stockout in {days_left:.1f} days. "
                         f"Proposing order of {qty_to_order} units (30-day supply)."
+                        + (f" Memory: {memory}" if memory else "")
                     ),
                     data={
                         "sku": sku,

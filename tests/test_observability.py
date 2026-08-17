@@ -136,3 +136,45 @@ class TestEvaluationFramework:
             context={},
         )
         assert result.overall_score < 0.8
+
+    def test_evaluate_outcome_rejected_scores_zero(self):
+        result = self.framework.evaluate_outcome(
+            agent_name="PricingAgent",
+            decision_id="d4",
+            decision={"action_type": "price_change"},
+            hitl_verdict="rejected",
+        )
+        assert result.overall_score == 0.0
+        assert result.passed is False
+
+    def test_evaluate_outcome_approved_executed_scores_one(self):
+        result = self.framework.evaluate_outcome(
+            agent_name="PricingAgent",
+            decision_id="d5",
+            decision={"action_type": "price_change"},
+            hitl_verdict="approved",
+            execution_success=True,
+        )
+        assert result.overall_score == 1.0
+        assert result.passed is True
+
+    def test_evaluate_outcome_approved_failed_scores_half(self):
+        result = self.framework.evaluate_outcome(
+            agent_name="PricingAgent",
+            decision_id="d6",
+            decision={"action_type": "price_change"},
+            hitl_verdict="approved",
+            execution_success=False,
+        )
+        assert result.overall_score == 0.5
+        assert result.passed is False
+
+    def test_evaluate_outcome_expired_scores_low(self):
+        result = self.framework.evaluate_outcome(
+            agent_name="PricingAgent",
+            decision_id="d7",
+            decision={"action_type": "price_change"},
+            hitl_verdict="expired",
+        )
+        assert result.overall_score == 0.2
+        assert result.passed is False

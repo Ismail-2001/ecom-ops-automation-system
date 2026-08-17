@@ -1,12 +1,13 @@
 """Core API routes that exist on both legacy /api/* and v1 /api/v1/* namespaces."""
 
+import logging
 import time
 from datetime import datetime, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import String, cast, desc, func, or_, select, update
+from sqlalchemy import String, case, cast, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ecommerce_ops.api.auth import verify_auth, verify_auth_optional
@@ -124,6 +125,45 @@ async def sweep_stale_executing(db: AsyncSession, stale_after_minutes: int = 60)
     if stale:
         await db.commit()
     return count
+
+
+def _score_hitl_outcome(
+    action: ApprovalAction,
+    verdict: str,
+    db: AsyncSession,
+    execution_success: Optional[bool] = None,
+) -> None:
+    """Record a ground-truth HITL outcome score in memory (M8).
+
+    The pipeline's ``EvaluationFramework.evaluate_decision`` uses self-reported
+    heuristics (confidence boost, reasoning length); it never sees what the
+    operator actually decided. This captures the real outcome so agent quality
+    is measured against the ground-truth verdict instead of vanity metrics.
+    Best-effort — failures are logged, never raised.
+    """
+    try:
+        from ecommerce_ops.observability.evaluation import evaluation_framework
+
+        evaluation = evaluation_framework.evaluate_outcome(
+            agent_name=action.agent,
+            decision_id=action.id,
+            decision={"action_type": action.action_type},
+            hitl_verdict=verdict,
+            execution_success=execution_success,
+            trace_id=None,
+        )
+        _LOGGER = logging.getLogger("ecommerce_ops.api.core_routes")
+        _LOGGER.debug(
+            "HITL outcome for %s (%s): score=%.2f passed=%s",
+            action.id,
+            verdict,
+            evaluation.overall_score,
+            evaluation.passed,
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        logging.getLogger("ecommerce_ops.api.core_routes").warning(
+            "Failed to record HITL outcome for %s: %s", action.id, exc
+        )
 
 
 @router.get("/approvals")
@@ -244,6 +284,7 @@ async def approve_approval(
     audit_entry.details["execution_message"] = exec_msg if not success else None
 
     await update_agent_streak(action.agent, success, action.confidence_score, db)
+    _score_hitl_outcome(action, "approved", db, success)
     await db.commit()
 
     await ws_manager.broadcast(
@@ -299,6 +340,7 @@ async def reject_approval(
     )
     db.add(audit_entry)
     await update_agent_streak(action.agent, False, action.confidence_score, db)
+    _score_hitl_outcome(action, "rejected", db)
     await db.commit()
 
     await ws_manager.broadcast(
@@ -363,6 +405,7 @@ async def batch_approvals(
             action.status = "executed" if success else "failed"
             audit_entry.details["execution_status"] = action.status
             await update_agent_streak(action.agent, success, action.confidence_score, db)
+            _score_hitl_outcome(action, "approved", db, success)
 
         elif body.action == "reject":
             action.reviewed_by = operator
@@ -385,6 +428,7 @@ async def batch_approvals(
                 )
             )
             await update_agent_streak(action.agent, False, action.confidence_score, db)
+            _score_hitl_outcome(action, "rejected", db)
 
         updated_ids.append(action.id)
         await ws_manager.broadcast(
@@ -513,14 +557,14 @@ async def get_analytics(db: AsyncSession = Depends(get_db_session)):
     ).scalar() or 0.0
 
     agents = (await db.execute(select(AgentStatus))).scalars().all()
-    pending = (
-        await db.execute(
-            select(ApprovalAction).where(ApprovalAction.status == "pending")
-        )
-    ).scalars().all()
     risk_dist = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-    for a in pending:
-        risk_dist[a.risk_level] = risk_dist.get(a.risk_level, 0) + 1
+    risk_rows = await db.execute(
+        select(ApprovalAction.risk_level, func.count(ApprovalAction.id))
+        .where(ApprovalAction.status == "pending")
+        .group_by(ApprovalAction.risk_level)
+    )
+    for level, cnt in risk_rows.all():
+        risk_dist[level] = cnt
 
     now = datetime.utcnow()
     day_start_7d = datetime(now.year, now.month, now.day) - timedelta(days=6)
@@ -578,31 +622,46 @@ async def get_analytics(db: AsyncSession = Depends(get_db_session)):
 
     decision_time_dist = {"under_1m": 0, "1m_5m": 0, "5m_30m": 0, "over_30m": 0}
 
-    reviewed_actions = (
-        await db.execute(
-            select(ApprovalAction).where(ApprovalAction.reviewed_at.isnot(None))
-        )
-    ).scalars().all()
-    decision_minutes: List[float] = []
-    for act in reviewed_actions:
-        if act.created_at and act.reviewed_at:
-            dt_sec = (act.reviewed_at - act.created_at).total_seconds()
-            minutes = dt_sec / 60.0
-            decision_minutes.append(minutes)
-            if minutes < 1:
-                decision_time_dist["under_1m"] += 1
-            elif minutes < 5:
-                decision_time_dist["1m_5m"] += 1
-            elif minutes < 30:
-                decision_time_dist["5m_30m"] += 1
-            else:
-                decision_time_dist["over_30m"] += 1
+    # Decision-time buckets computed in SQL (no full-table row loading, M16).
+    # The epoch difference is dialect-portable: strftime on SQLite,
+    # extract(epoch) on PostgreSQL.
+    bind = db.get_bind()
+    dialect = getattr(bind, "dialect", None)
+    dialect_name = dialect.name if dialect else "sqlite"
 
-    avg_decision_minutes = (
-        round(sum(decision_minutes) / len(decision_minutes), 2)
-        if decision_minutes
-        else 0.0
+    if dialect_name == "postgresql":
+        epoch_diff = (
+            func.extract("epoch", ApprovalAction.reviewed_at)
+            - func.extract("epoch", ApprovalAction.created_at)
+        )
+    else:
+        epoch_diff = (
+            func.strftime("%s", ApprovalAction.reviewed_at)
+            - func.strftime("%s", ApprovalAction.created_at)
+        )
+
+    bucket_expr = case(
+        (epoch_diff < 60, "under_1m"),
+        (epoch_diff < 300, "1m_5m"),
+        (epoch_diff < 1800, "5m_30m"),
+        else_="over_30m",
     )
+    decision_time_rows = await db.execute(
+        select(bucket_expr.label("bucket"), func.count(ApprovalAction.id))
+        .where(ApprovalAction.reviewed_at.isnot(None))
+        .group_by(bucket_expr)
+    )
+    for bucket, cnt in decision_time_rows.all():
+        if bucket in decision_time_dist:
+            decision_time_dist[bucket] = cnt
+
+    # Average decision time via SQL aggregate (avoid loading every row).
+    avg_sec = (
+        await db.execute(
+            select(func.avg(epoch_diff)).where(ApprovalAction.reviewed_at.isnot(None))
+        )
+    ).scalar()
+    avg_decision_minutes = round(float(avg_sec) / 60.0, 2) if avg_sec is not None else 0.0
 
     return {
         "summary": {

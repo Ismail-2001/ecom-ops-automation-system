@@ -181,11 +181,41 @@ DECISION_TYPE_MAP = {
     "DRAFT_MARKETING_CAMPAIGN": "marketing_campaign",
 }
 
+# Capability binding for live mutations (M7): only the agent(s) authorized for
+# an action type may execute it against Shopify. This is the last line of
+# defense against a misbehaving or compromised agent issuing an action of a
+# type it has no permission to perform. LLM agents use the snake_case keys
+# from the tool-permission matrix; rule-based agents use their PascalCase
+# names. The check is enforced in execute_shop_action before any live call.
+ACTION_TYPE_AGENT_ALLOWLIST: dict[str, set[str]] = {
+    "fraud_hold": {"FraudAgent", "fraud_detection"},
+    "purchase_order": {"InventoryAgent", "inventory_management"},
+    "price_change": {"PricingAgent", "PriceOptimizationAgent", "price_optimization"},
+    "review_response": {"ReviewsAgent", "review_moderation"},
+    "marketing_campaign": {"MarketingAgent", "marketing_automation"},
+}
+
 
 async def execute_shop_action(action: ApprovalAction) -> tuple[bool, str]:
     if action.shadow_mode:
         logger.info("[SHADOW] Simulating %s for %s", action.action_type, action.id)
         return True, "Shadow mode simulation"
+
+    # Permission gate (M7): the initiating agent must be allowed to perform
+    # this action type. Unknown action types and unlisted agents are refused
+    # before any live Shopify call.
+    allowed_agents = ACTION_TYPE_AGENT_ALLOWLIST.get(action.action_type)
+    if allowed_agents is not None and action.agent not in allowed_agents:
+        logger.warning(
+            "[LIVE] Permission denied: agent %s cannot execute action_type %s (action %s)",
+            action.agent,
+            action.action_type,
+            action.id,
+        )
+        return False, (
+            f"agent {action.agent!r} does not have permission to execute "
+            f"action_type {action.action_type!r}"
+        )
 
     # Live execution requires Shopify credentials; without them a real action
     # cannot be performed, so report an honest failure instead of a fabricated

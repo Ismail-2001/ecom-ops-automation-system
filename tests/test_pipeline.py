@@ -132,6 +132,7 @@ class TestExecuteShopAction:
     async def test_live_mode_requires_credentials(self):
         action = MagicMock()
         action.shadow_mode = False
+        action.agent = "PricingAgent"
         action.action_type = "price_change"
         action.id = "test-id"
         with patch("ecommerce_ops.pipeline.runner.app_settings.SHOPIFY_SHOP_DOMAIN", ""), \
@@ -144,6 +145,7 @@ class TestExecuteShopAction:
     async def test_live_mode_price_change_success(self):
         action = MagicMock()
         action.shadow_mode = False
+        action.agent = "PricingAgent"
         action.action_type = "price_change"
         action.id = "test-id"
         action.payload = {"sku": "SKU1", "proposed_price": 9.99}
@@ -161,6 +163,36 @@ class TestExecuteShopAction:
         mock_client.return_value.update_product.assert_awaited_once_with(
             "100", {"variants": [{"id": "200", "price": "9.99"}]}
         )
+
+    @pytest.mark.asyncio
+    async def test_live_mode_denies_unlisted_agent(self):
+        action = MagicMock()
+        action.shadow_mode = False
+        action.agent = "UnknownAgent"
+        action.action_type = "price_change"
+        action.id = "test-id"
+        with patch("ecommerce_ops.pipeline.runner.app_settings.SHOPIFY_SHOP_DOMAIN", "test-shop.myshopify.com"), \
+             patch("ecommerce_ops.pipeline.runner.app_settings.SHOPIFY_ACCESS_TOKEN", "test-token"), \
+             patch("ecommerce_ops.connectors.shopify.client.ShopifyClient") as mock_client:
+            success, msg = await execute_shop_action(action)
+        assert success is False
+        assert "does not have permission" in msg
+        mock_client.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_live_mode_denies_agent_outside_allowlist(self):
+        action = MagicMock()
+        action.shadow_mode = False
+        action.agent = "ReviewsAgent"
+        action.action_type = "price_change"
+        action.id = "test-id"
+        with patch("ecommerce_ops.pipeline.runner.app_settings.SHOPIFY_SHOP_DOMAIN", "test-shop.myshopify.com"), \
+             patch("ecommerce_ops.pipeline.runner.app_settings.SHOPIFY_ACCESS_TOKEN", "test-token"), \
+             patch("ecommerce_ops.connectors.shopify.client.ShopifyClient") as mock_client:
+            success, msg = await execute_shop_action(action)
+        assert success is False
+        assert "does not have permission" in msg
+        mock_client.assert_not_called()
 
 
 class TestRunPipelineTaskAutoApproval:

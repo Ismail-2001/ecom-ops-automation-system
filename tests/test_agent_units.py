@@ -773,7 +773,7 @@ class TestReflectionAgent:
         assert result.confidence_score == 1.0
 
     @pytest.mark.asyncio
-    async def test_correct_decision_hitsl_removes_approval(self):
+    async def test_correct_decision_never_removes_hitl_gate(self):
         from ecommerce_ops.agents.reflection import ReflectionAgent
         agent = ReflectionAgent()
         decision = AgentDecision(
@@ -786,7 +786,7 @@ class TestReflectionAgent:
             issues=["High confidence decision sent to HITL"],
         )
         result = await agent.correct_decision(decision, fb)
-        assert result.requires_approval is False
+        assert result.requires_approval is True
 
     @pytest.mark.asyncio
     async def test_correct_decision_auto_approved_adds_approval(self):

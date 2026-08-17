@@ -61,8 +61,9 @@ class ReflectionAgent:
             corrected.confidence_score = feedback.adjusted_confidence
 
         for issue in feedback.issues:
-            if "sent to HITL" in issue:
-                corrected.requires_approval = False
+            # Reflection may only escalate risk (auto-approved -> HITL). It must
+            # NEVER flip a HITL decision to auto-approve: that would let a
+            # heuristic sub-agent bypass the human-in-the-loop gate (M2).
             if "auto-approved" in issue:
                 corrected.requires_approval = True
 

@@ -230,6 +230,74 @@ class EvaluationFramework:
             feedback=self._generate_feedback(metrics, overall_score),
         )
 
+    def evaluate_outcome(
+        self,
+        agent_name: str,
+        decision_id: str,
+        decision: Dict[str, Any],
+        hitl_verdict: str,
+        execution_success: Optional[bool] = None,
+        trace_id: Optional[str] = None,
+    ) -> AgentEvaluation:
+        """Evaluate a decision against the actual HITL outcome (M8).
+
+        This replaces the self-reported vanity metrics with ground-truth
+        scores derived from the operator's verdict and execution results:
+
+        - "approved" + executed  -> 1.0 (correct, corroborated)
+        - "approved" + failed    -> 0.5 (operator agreed, execution failed)
+        - "rejected"             -> 0.0 (operator disagreed with the agent)
+        - "expired"              -> 0.2 (no operator decision, action lapsed)
+        """
+        if hitl_verdict == "rejected":
+            overall = 0.0
+            passed = False
+            feedback = "Operator rejected the decision — agent outcome did not match ground truth"
+        elif hitl_verdict == "expired":
+            overall = 0.2
+            passed = False
+            feedback = "Decision expired without operator action"
+        elif hitl_verdict == "approved" and execution_success is False:
+            overall = 0.5
+            passed = False
+            feedback = "Operator approved but execution failed"
+        elif hitl_verdict in ("approved", "shadow", "auto-approved"):
+            overall = 1.0
+            passed = True
+            feedback = "Decision corroborated by operator (or shadow auto-approval)"
+        else:
+            overall = 0.0
+            passed = False
+            feedback = "Unknown outcome"
+
+        metrics = [
+            EvaluationResult(
+                metric_name="hitl_outcome_accuracy",
+                dimension=EvaluationDimension.ACCURACY,
+                value=overall,
+                confidence=1.0,
+                reasoning=f"Ground-truth HITL verdict: {hitl_verdict}",
+            ),
+            EvaluationResult(
+                metric_name="outcome_safety",
+                dimension=EvaluationDimension.SAFETY,
+                value=1.0 if overall >= 0.5 else 0.0,
+                confidence=1.0,
+                reasoning="Outcome score below threshold implies unsafe/incorrect agent behavior",
+            ),
+        ]
+
+        return AgentEvaluation(
+            agent_name=agent_name,
+            decision_id=decision_id,
+            trace_id=trace_id,
+            metrics=metrics,
+            overall_score=overall,
+            passed=passed,
+            feedback=feedback,
+            metadata={"hitl_verdict": hitl_verdict, "execution_success": execution_success},
+        )
+
     def evaluate_batch(
         self,
         evaluations: List[Dict[str, Any]],
