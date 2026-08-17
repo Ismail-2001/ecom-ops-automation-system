@@ -62,7 +62,9 @@ class Settings(BaseSettings):
     GLOBAL_PO_LIMIT: float = 1000.0
     GLOBAL_PRICE_CHANGE_LIMIT_PERCENT: float = 20.0
     SHADOW_MODE: bool = True
-    AUTO_APPROVE_THRESHOLD_DECISIONS: int = 50
+    # Auto-approval: decisions with confidence >= AUTO_APPROVE_CONFIDENCE_SCORE
+    # are auto-approved when shadow_mode is off. Agent autonomy graduation
+    # (streak >= 50) is handled by update_agent_streak in the pipeline runner.
     AUTO_APPROVE_CONFIDENCE_SCORE: float = 0.95
 
     # Rate Limiting

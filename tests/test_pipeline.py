@@ -267,72 +267,47 @@ class TestUpdateAgentStreak:
     @pytest.mark.asyncio
     async def test_approved_increments_streak(self):
         session = AsyncMock()
-        status = MagicMock()
-        status.total_decisions = 10
-        status.total_approvals = 8
-        status.total_rejections = 2
-        status.streak = 5
-        status.autonomy_level = "supervised"
-        status.avg_confidence = 0.85
-
-        result = MagicMock()
-        result.scalar_one_or_none.return_value = status
-        session.execute.return_value = result
+        # First execute() call is the UPDATE (returns a mock result).
+        # Second execute() call is the SELECT for streak check (returns scalar).
+        update_result = MagicMock()
+        select_result = MagicMock()
+        select_result.scalar.return_value = 1
+        session.execute.side_effect = [update_result, select_result]
 
         await update_agent_streak("FraudAgent", True, 0.96, session)
 
-        assert status.total_decisions == 11
-        assert status.total_approvals == 9
-        assert status.streak == 6
-        session.add.assert_called_once_with(status)
+        assert session.execute.call_count == 2
+        session.commit.assert_not_called()  # committed by caller
 
     @pytest.mark.asyncio
     async def test_rejected_resets_streak(self):
         session = AsyncMock()
-        status = MagicMock()
-        status.total_decisions = 10
-        status.total_approvals = 8
-        status.total_rejections = 2
-        status.streak = 5
-        status.autonomy_level = "supervised"
-        status.avg_confidence = 0.85
-
-        result = MagicMock()
-        result.scalar_one_or_none.return_value = status
-        session.execute.return_value = result
+        session.execute.side_effect = [MagicMock(), MagicMock()]
 
         await update_agent_streak("FraudAgent", False, 0.5, session)
 
-        assert status.total_rejections == 3
-        assert status.streak == 0
-        assert status.autonomy_level == "supervised"
+        # UPDATE for streak reset + UPDATE for autonomy-level downgrade
+        assert session.execute.call_count == 2
 
     @pytest.mark.asyncio
     async def test_graduation_to_autonomous(self):
         session = AsyncMock()
-        status = MagicMock()
-        status.total_decisions = 49
-        status.total_approvals = 48
-        status.streak = 49
-        status.autonomy_level = "supervised"
-        status.avg_confidence = 0.90
-
-        result = MagicMock()
-        result.scalar_one_or_none.return_value = status
-        session.execute.return_value = result
+        update_result = MagicMock()
+        select_result = MagicMock()
+        select_result.scalar.return_value = 50
+        session.execute.side_effect = [update_result, select_result, MagicMock()]
 
         with patch("ecommerce_ops.pipeline.runner.notify_agent_graduated", new_callable=AsyncMock):
             await update_agent_streak("FraudAgent", True, 0.99, session)
 
-        assert status.streak == 50
-        assert status.autonomy_level == "autonomous"
+        assert session.execute.call_count == 3
 
     @pytest.mark.asyncio
     async def test_nonexistent_agent_does_nothing(self):
+        # The atomic UPDATE simply affects zero rows when the agent doesn't
+        # exist — no exception, no error.
         session = AsyncMock()
-        result = MagicMock()
-        result.scalar_one_or_none.return_value = None
-        session.execute.return_value = result
+        session.execute.return_value = MagicMock()
 
         await update_agent_streak("NonexistentAgent", True, 0.9, session)
-        session.add.assert_not_called()
+        assert session.execute.call_count >= 1

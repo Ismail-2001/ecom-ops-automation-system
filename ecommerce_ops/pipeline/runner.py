@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ecommerce_ops.api.metrics import (
@@ -277,30 +277,81 @@ async def execute_shop_action(action: ApprovalAction) -> tuple[bool, str]:
 async def update_agent_streak(
     agent_name: str, approved: bool, confidence: float, db: AsyncSession
 ):
-    res = await db.execute(
-        select(AgentStatus)
-        .where(AgentStatus.agent_id == agent_name)
-        .with_for_update()
-    )
-    status = res.scalar_one_or_none()
-    if not status:
-        return
-    status.total_decisions += 1
+    """Atomically update agent streak metrics via a single UPDATE statement.
+
+    Uses SQL-level expressions instead of read-modify-write to avoid lost
+    updates under concurrent approves (M4). SQLite and PostgreSQL both
+    serialise row-level writes within a transaction.
+    """
     if approved:
-        status.total_approvals += 1
-        if confidence >= 0.95:
-            status.streak += 1
-            if status.streak >= 50 and status.autonomy_level != "autonomous":
-                status.autonomy_level = "autonomous"
-                logger.info("Agent %s graduated to AUTONOMOUS!", agent_name)
-                await notify_agent_graduated(agent_name, "autonomous", status.streak)
+        stmt = (
+            update(AgentStatus)
+            .where(AgentStatus.agent_id == agent_name)
+            .values(
+                total_decisions=func.coalesce(
+                    AgentStatus.total_decisions, 0
+                ) + 1,
+                total_approvals=func.coalesce(
+                    AgentStatus.total_approvals, 0
+                ) + 1,
+                streak=func.coalesce(AgentStatus.streak, 0) + 1,
+                avg_confidence=(
+                    func.coalesce(AgentStatus.avg_confidence, 0)
+                    * func.coalesce(AgentStatus.total_decisions, 0)
+                    + confidence
+                )
+                / (func.coalesce(AgentStatus.total_decisions, 0) + 1),
+            )
+            .execution_options(synchronize_session=False)
+        )
     else:
-        status.total_rejections += 1
-        status.streak = 0
-        status.autonomy_level = "supervised"
-    n = status.total_decisions
-    status.avg_confidence = ((status.avg_confidence * (n - 1)) + confidence) / n
-    db.add(status)
+        stmt = (
+            update(AgentStatus)
+            .where(AgentStatus.agent_id == agent_name)
+            .values(
+                total_decisions=func.coalesce(
+                    AgentStatus.total_decisions, 0
+                ) + 1,
+                total_rejections=func.coalesce(
+                    AgentStatus.total_rejections, 0
+                ) + 1,
+                streak=0,
+                avg_confidence=(
+                    func.coalesce(AgentStatus.avg_confidence, 0)
+                    * func.coalesce(AgentStatus.total_decisions, 0)
+                    + confidence
+                )
+                / (func.coalesce(AgentStatus.total_decisions, 0) + 1),
+            )
+            .execution_options(synchronize_session=False)
+        )
+    await db.execute(stmt)
+
+    # Check for autonomy graduation (read the updated value)
+    if approved and confidence >= 0.95:
+        res = await db.execute(
+            select(func.coalesce(AgentStatus.streak, 0))
+            .where(AgentStatus.agent_id == agent_name)
+        )
+        streak = res.scalar() or 0
+        if streak >= 50:
+            await db.execute(
+                update(AgentStatus)
+                .where(AgentStatus.agent_id == agent_name)
+                .where(AgentStatus.autonomy_level != "autonomous")
+                .values(autonomy_level="autonomous")
+                .execution_options(synchronize_session=False)
+            )
+            logger.info("Agent %s graduated to AUTONOMOUS!", agent_name)
+            await notify_agent_graduated(agent_name, "autonomous", streak)
+    elif not approved:
+        await db.execute(
+            update(AgentStatus)
+            .where(AgentStatus.agent_id == agent_name)
+            .where(AgentStatus.autonomy_level != "supervised")
+            .values(autonomy_level="supervised")
+            .execution_options(synchronize_session=False)
+        )
 
 
 async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
@@ -474,9 +525,13 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
             new_actions_count = 0
 
             for d in decisions_list:
-                mapped_type = DECISION_TYPE_MAP.get(
-                    d.action_type, "marketing_campaign"
-                )
+                mapped_type = DECISION_TYPE_MAP.get(d.action_type)
+                if mapped_type is None:
+                    logger.error(
+                        "Unknown action_type '%s' for agent '%s' — refusing to create action",
+                        d.action_type, d.agent_id,
+                    )
+                    continue  # skip, don't silently default to marketing_campaign
                 requires_hitl, risk_level, financial_impact = evaluate_action_safety(
                     d.agent_id, mapped_type, d.action_data, d.confidence_score, settings
                 )

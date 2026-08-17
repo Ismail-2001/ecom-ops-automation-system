@@ -1,5 +1,6 @@
 import logging
 import os
+import uuid
 from datetime import UTC, datetime
 from typing import AsyncGenerator
 
@@ -13,7 +14,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
-    select,
+    insert,
 )
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
@@ -256,40 +257,42 @@ async def init_db():
             await conn.run_sync(Base.metadata.create_all)
 
     async with async_session_factory() as session:
-        result = await session.execute(select(StoreSettings).where(StoreSettings.id == 1))
-        db_settings = result.scalar_one_or_none()
-        if not db_settings:
-            session.add(StoreSettings(
+        # Idempotent seed inserts using ON CONFLICT DO NOTHING to prevent
+        # IntegrityError crashes when 4 uvicorn workers start simultaneously
+        # on a fresh database (M9).
+        await session.execute(
+            insert(StoreSettings).values(
                 id=1,
                 shadow_mode=settings.SHADOW_MODE,
                 fraud_threshold=70,
                 po_limit=settings.GLOBAL_PO_LIMIT,
                 pricing_limit=settings.GLOBAL_PRICE_CHANGE_LIMIT_PERCENT,
-                reviews_rating_threshold=4
-            ))
-            logger.info("Initialized default store settings")
+                reviews_rating_threshold=4,
+            ).on_conflict_do_nothing(indexes=[StoreSettings.__table__.primary_key])
+        )
 
         agents = ["FraudAgent", "InventoryAgent", "PricingAgent", "ReviewsAgent", "MarketingAgent"]
-        for agent_name in agents:
-            res = await session.execute(select(AgentStatus).where(AgentStatus.agent_id == agent_name))
-            agent_status = res.scalar_one_or_none()
-            if not agent_status:
-                session.add(AgentStatus(
-                    agent_id=agent_name,
-                    status="active",
-                    streak=0,
-                    autonomy_level="shadow" if settings.SHADOW_MODE else "supervised",
-                    total_decisions=0,
-                    total_approvals=0,
-                    total_rejections=0,
-                    avg_confidence=0.0
-                ))
-                logger.info("Initialized agent status for %s", agent_name)
+        agent_values = [
+            {
+                "agent_id": name,
+                "status": "active",
+                "streak": 0,
+                "autonomy_level": "shadow" if settings.SHADOW_MODE else "supervised",
+                "total_decisions": 0,
+                "total_approvals": 0,
+                "total_rejections": 0,
+                "avg_confidence": 0.0,
+            }
+            for name in agents
+        ]
+        await session.execute(
+            insert(AgentStatus).values(agent_values).on_conflict_do_nothing(
+                indexes=[AgentStatus.__table__.primary_key]
+            )
+        )
 
-        result = await session.execute(select(RBACUser).where(RBACUser.role == "super_admin"))
-        if not result.scalar_one_or_none():
-            import uuid
-            admin = RBACUser(
+        await session.execute(
+            insert(RBACUser).values(
                 id=str(uuid.uuid4()),
                 email="admin@example.com",
                 name="Admin",
@@ -297,8 +300,8 @@ async def init_db():
                 is_active=True,
                 permissions=[],
                 metadata_json={"is_default_admin": True},
-            )
-            session.add(admin)
-            logger.info("Seeded default admin user")
+            ).on_conflict_do_nothing(indexes=[RBACUser.__table__.primary_key])
+        )
+        logger.info("Database initialization complete (idempotent)")
 
         await session.commit()
