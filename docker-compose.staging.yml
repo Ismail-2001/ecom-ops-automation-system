@@ -32,14 +32,16 @@ services:
 
   # ── API (staging) ────────────────────────────────────────
   api:
+    image: ${API_IMAGE:-ghcr.io/opsiq/ecom-ops:latest}
     container_name: opsiq-api-staging
     ports:
       - "8100:8000"
     environment:
       ENV: staging
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/ecommerce_ops_staging
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/ecommerce_ops_staging
       REDIS_URL: redis://redis:6379/1
       CORS_ORIGINS: http://localhost:3300,http://localhost:9080
+      TRUSTED_PROXIES: 172.16.0.0/12,192.168.0.0/16,10.0.0.0/8
 
   # ── Dashboard (staging) ──────────────────────────────────
   dashboard:
