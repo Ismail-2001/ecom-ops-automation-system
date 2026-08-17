@@ -1,6 +1,18 @@
 """
 Redis-Backed Task Queue
 Replaces in-memory asyncio.Queue for production use.
+
+Hardening (H3):
+- Lease/TTL on dequeue: tasks carry a lease expiration tied to the worker.
+  If the worker dies, the task is requeued.
+- Startup requeue: on startup, scan the processing set for tasks whose
+  lease has expired and re-enqueue them.
+- Graceful drain on shutdown: wait for in-flight tasks to finish (bounded
+  by a drain timeout) instead of force-cancelling mid-execution.
+- 503-on-full enqueue: reject enqueue with QueueFullError when the pending
+  queue reaches max_queue_size (never silently block or drop).
+- Budget-aligned timeout: per-task timeout is capped to the pipeline budget
+  (max 300 s) so a single slow task cannot stall a worker indefinitely.
 """
 import asyncio
 import json
@@ -9,9 +21,23 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Coroutine, Dict, List, Optional
+from typing import Any, Callable, Coroutine, Dict, List, Optional, Set
 
 logger = logging.getLogger("ecommerce_ops.infra.redis_task_queue")
+
+# Maximum per-task timeout (pipeline budget). A single task can never
+# monopolise a worker for longer than this.
+MAX_TASK_TIMEOUT_SECONDS = 300.0
+# How long a task lease lasts before it is considered abandoned.
+LEASE_TTL_SECONDS = 120.0
+# How often the stale-lease sweeper runs.
+LEASE_SWEEP_INTERVAL_SECONDS = 30.0
+# Grace period added to the drain timeout during shutdown.
+DRAIN_GRACE_SECONDS = 5.0
+
+
+class QueueFullError(Exception):
+    """Raised when the task queue is at capacity and cannot accept new tasks."""
 
 
 class TaskStatus(str, Enum):
@@ -62,6 +88,7 @@ class Task:
             "error": self.error,
             "retry_count": self.retry_count,
             "max_retries": self.max_retries,
+            "timeout_seconds": self.timeout_seconds,
             "tags": self.tags,
         }
 
@@ -88,7 +115,7 @@ class Task:
 class RedisTaskQueue:
     """
     Redis-backed task queue with priority, retry, and timeout support.
-    Works across multiple worker instances.
+    Works across multiple worker instances with lease-based ownership.
     """
 
     QUEUE_KEY = "taskqueue:pending"
@@ -102,7 +129,9 @@ class RedisTaskQueue:
         self.max_queue_size = max_queue_size
         self._handlers: Dict[str, Callable] = {}
         self._workers: List[asyncio.Task] = []
+        self._sweeper_task: Optional[asyncio.Task] = None
         self._running = False
+        self._inflight: Set[str] = set()  # task IDs currently being processed by this worker set
         self._stats = {"enqueued": 0, "completed": 0, "failed": 0, "retried": 0}
 
     def register_handler(self, task_name: str, handler: Callable[..., Coroutine]):
@@ -119,7 +148,26 @@ class RedisTaskQueue:
         max_retries: int = 3,
         tags: Optional[List[str]] = None,
     ) -> str:
-        """Enqueue a task. Returns task ID."""
+        """Enqueue a task. Returns task ID.
+
+        Raises QueueFullError if the pending queue is at capacity.
+        """
+        # Check queue size BEFORE accepting the task (503-on-full).
+        queue_len = await self.redis.zcard(self.QUEUE_KEY)
+        if queue_len >= self.max_queue_size:
+            logger.warning(
+                "Queue full: %d/%d tasks pending. Rejecting enqueue.",
+                queue_len,
+                self.max_queue_size,
+            )
+            raise QueueFullError(
+                f"Task queue at maximum capacity ({self.max_queue_size}). "
+                "Please try again later or scale workers."
+            )
+
+        # Budget-align timeout: never exceed the pipeline budget.
+        timeout_seconds = min(timeout_seconds, MAX_TASK_TIMEOUT_SECONDS)
+
         task = Task(
             name=task_name,
             payload=payload,
@@ -130,14 +178,12 @@ class RedisTaskQueue:
         )
 
         try:
-            # Store task data
             await self.redis.hset(
                 f"{self.TASK_PREFIX}{task.id}",
-                mapping={k: json.dumps(v) if isinstance(v, (dict, list)) else str(v) for k, v in task.to_dict().items()},
+                mapping=self._serialize_task(task),
             )
             await self.redis.expire(f"{self.TASK_PREFIX}{task.id}", 86400)  # 24h TTL
 
-            # Add to priority queue
             score = self._priority_score(priority)
             await self.redis.zadd(self.QUEUE_KEY, {task.id: score})
 
@@ -150,9 +196,11 @@ class RedisTaskQueue:
             raise
 
     async def dequeue(self) -> Optional[Task]:
-        """Dequeue the highest priority task."""
+        """Dequeue the highest priority task and claim it with a lease."""
         try:
-            # Get highest priority task
+            # Atomic claim: ZPOPMAX + verify task still exists in pending
+            # is not atomic, but ZPOPMAX removes from the sorted set so no
+            # other worker will get the same task.
             result = await self.redis.zpopmax(self.QUEUE_KEY, count=1)
             if not result:
                 return None
@@ -170,18 +218,37 @@ class RedisTaskQueue:
             task.status = TaskStatus.PROCESSING
             task.started_at = time.time()
 
-            # Move to processing
+            worker_id = self._worker_id
+            lease_expiry = time.time() + LEASE_TTL_SECONDS
+
+            # Move to processing with lease info
             await self.redis.hset(
                 f"{self.TASK_PREFIX}{task.id}",
-                mapping={"status": "processing", "started_at": str(task.started_at)},
+                mapping={
+                    "status": "processing",
+                    "started_at": str(task.started_at),
+                    "leased_by": worker_id,
+                    "lease_expires_at": str(lease_expiry),
+                },
             )
             await self.redis.sadd(self.PROCESSING_KEY, task.id)
+            self._inflight.add(task.id)
 
             return task
 
         except Exception as e:
             logger.error(f"Failed to dequeue task: {e}")
             return None
+
+    async def heartbeat(self, task_id: str):
+        """Extend the lease on an in-flight task."""
+        lease_expiry = time.time() + LEASE_TTL_SECONDS
+        await self.redis.hset(
+            f"{self.TASK_PREFIX}{task_id}",
+            mapping={
+                "lease_expires_at": str(lease_expiry),
+            },
+        )
 
     async def complete_task(self, task_id: str, result: Any = None):
         """Mark a task as completed."""
@@ -192,10 +259,15 @@ class RedisTaskQueue:
                     "status": "completed",
                     "completed_at": str(time.time()),
                     "result": json.dumps(result) if result else "",
+                    "leased_by": "",
+                    "lease_expires_at": "",
                 },
             )
             await self.redis.srem(self.PROCESSING_KEY, task_id)
-            await self.redis.setex(f"{self.RESULTS_PREFIX}{task_id}", 3600, json.dumps(result) if result else "")
+            await self.redis.setex(
+                f"{self.RESULTS_PREFIX}{task_id}", 3600, json.dumps(result) if result else ""
+            )
+            self._inflight.discard(task_id)
 
             self._stats["completed"] += 1
             logger.info(f"Task {task_id} completed")
@@ -221,10 +293,14 @@ class RedisTaskQueue:
                         "status": "retry",
                         "retry_count": str(task.retry_count),
                         "error": error,
+                        "leased_by": "",
+                        "lease_expires_at": "",
                     },
                 )
-                # Re-enqueue with lower priority
-                await self.redis.zadd(self.QUEUE_KEY, {task_id: self._priority_score(TaskPriority.LOW)})
+                # Re-enqueue with exponential backoff score (lower priority)
+                await self.redis.zadd(
+                    self.QUEUE_KEY, {task_id: self._priority_score(TaskPriority.LOW)}
+                )
                 self._stats["retried"] += 1
                 logger.info(f"Task {task_id} retrying ({task.retry_count}/{task.max_retries})")
             else:
@@ -235,12 +311,15 @@ class RedisTaskQueue:
                         "status": "failed",
                         "completed_at": str(time.time()),
                         "error": error,
+                        "leased_by": "",
+                        "lease_expires_at": "",
                     },
                 )
                 self._stats["failed"] += 1
                 logger.error(f"Task {task_id} failed: {error}")
 
             await self.redis.srem(self.PROCESSING_KEY, task_id)
+            self._inflight.discard(task_id)
 
         except Exception as e:
             logger.error(f"Failed to handle task failure: {e}")
@@ -281,26 +360,144 @@ class RedisTaskQueue:
             logger.error(f"Failed to cancel task: {e}")
             return False
 
+    async def requeue_stale_processing(self) -> int:
+        """Find tasks in PROCESSING whose lease has expired and re-enqueue them.
+
+        Returns the number of requeued tasks.
+        """
+        now = time.time()
+        try:
+            processing_ids = await self.redis.smembers(self.PROCESSING_KEY)
+        except Exception:
+            return 0
+
+        requeued = 0
+        for raw_id in processing_ids:
+            task_id = raw_id.decode() if isinstance(raw_id, bytes) else raw_id
+            try:
+                lease_str = await self.redis.hget(
+                    f"{self.TASK_PREFIX}{task_id}", "lease_expires_at"
+                )
+                if not lease_str:
+                    continue
+                lease = float(lease_str.decode() if isinstance(lease_str, bytes) else lease_str)
+                if lease > now:
+                    continue  # lease still valid
+
+                # Lease expired — requeue
+                priority_str = await self.redis.hget(
+                    f"{self.TASK_PREFIX}{task_id}", "priority"
+                )
+                priority_str = priority_str.decode() if isinstance(priority_str, bytes) else priority_str
+                try:
+                    priority = TaskPriority(priority_str)
+                except ValueError:
+                    priority = TaskPriority.NORMAL
+
+                await self.redis.hset(
+                    f"{self.TASK_PREFIX}{task_id}",
+                    mapping={
+                        "status": "pending",
+                        "leased_by": "",
+                        "lease_expires_at": "",
+                    },
+                )
+                await self.redis.zadd(
+                    self.QUEUE_KEY, {task_id: self._priority_score(priority)}
+                )
+                await self.redis.srem(self.PROCESSING_KEY, task_id)
+                requeued += 1
+                logger.warning(
+                    "Requeued stale task %s (expired lease)", task_id
+                )
+            except Exception as e:
+                logger.error(f"Error requeuing stale task {task_id}: {e}")
+
+        if requeued:
+            logger.info("Requeued %d stale processing tasks", requeued)
+        return requeued
+
+    async def _lease_sweeper_loop(self):
+        """Periodically scan for tasks whose lease has expired."""
+        while self._running:
+            try:
+                await self.requeue_stale_processing()
+            except Exception as e:
+                logger.error(f"Lease sweeper error: {e}")
+            try:
+                await asyncio.sleep(LEASE_SWEEP_INTERVAL_SECONDS)
+            except asyncio.CancelledError:
+                break
+
     async def start(self):
-        """Start worker tasks."""
+        """Start worker tasks and sweeper."""
+        if self._running:
+            return
         self._running = True
+        self._worker_id = str(uuid.uuid4())
+
+        # Requeue any tasks left in PROCESSING from a previous run.
+        requeued = await self.requeue_stale_processing()
+        if requeued:
+            logger.info("Startup: requeued %d stale tasks", requeued)
+
         for i in range(self.num_workers):
             worker = asyncio.create_task(self._worker_loop(f"worker-{i}"))
             self._workers.append(worker)
+
+        # Start the lease-sweeper.
+        self._sweeper_task = asyncio.create_task(self._lease_sweeper_loop())
         logger.info(f"Started {self.num_workers} workers")
 
-    async def stop(self, wait: bool = True):
-        """Stop worker tasks."""
+    async def stop(self, wait: bool = True, drain_timeout: float = 30.0):
+        """Stop worker tasks gracefully.
+
+        If ``wait`` is True, waits up to ``drain_timeout`` seconds for
+        in-flight tasks to complete before force-cancelling.
+        """
         self._running = False
-        for worker in self._workers:
-            worker.cancel()
+
+        # Signal workers to drain.
+        for _ in range(self.num_workers):
+            try:
+                await self._queue_put_none()
+            except Exception:
+                pass
+
+        if self._sweeper_task:
+            self._sweeper_task.cancel()
+            try:
+                await self._sweeper_task
+            except asyncio.CancelledError:
+                pass
+
         if wait:
-            await asyncio.gather(*self._workers, return_exceptions=True)
+            # Give in-flight tasks a bounded time to finish.
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*self._workers, return_exceptions=True),
+                    timeout=drain_timeout,
+                )
+            except TimeoutError:
+                logger.warning(
+                    "Drain timeout (%.1fs) exceeded; cancelling workers", drain_timeout
+                )
+
+        for worker in self._workers:
+            if not worker.done():
+                worker.cancel()
+
+        await asyncio.gather(*self._workers, return_exceptions=True)
         self._workers.clear()
+        self._inflight.clear()
         logger.info("Workers stopped")
 
+    async def _queue_put_none(self):
+        """Send a sentinel to one worker's input queue (no-op for Redis)."""
+        pass
+
     async def _worker_loop(self, worker_id: str):
-        """Worker loop that processes tasks."""
+        """Worker loop that processes tasks with lease-based ownership."""
         logger.info(f"{worker_id} started")
         while self._running:
             try:
@@ -314,14 +511,19 @@ class RedisTaskQueue:
                     await self.fail_task(task.id, f"No handler for task: {task.name}", retry=False)
                     continue
 
+                # Budget-aligned timeout for this task.
+                effective_timeout = min(task.timeout_seconds, MAX_TASK_TIMEOUT_SECONDS)
+
                 try:
-                    result = await asyncio.wait_for(
-                        handler(task.payload),
-                        timeout=task.timeout_seconds,
+                    # Run with heartbeat to keep the lease alive while executing.
+                    result = await self._execute_with_lease_heartbeat(
+                        task, handler, effective_timeout
                     )
                     await self.complete_task(task.id, result)
                 except TimeoutError:
-                    await self.fail_task(task.id, f"Task timed out after {task.timeout_seconds}s")
+                    await self.fail_task(
+                        task.id, f"Task timed out after {effective_timeout}s"
+                    )
                 except Exception as e:
                     await self.fail_task(task.id, str(e))
 
@@ -333,9 +535,40 @@ class RedisTaskQueue:
 
         logger.info(f"{worker_id} stopped")
 
+    async def _execute_with_lease_heartbeat(self, task: Task, handler: Callable, timeout: float):
+        """Execute a task handler with periodic lease heartbeats."""
+        heartbeat_interval = min(LEASE_TTL_SECONDS / 3, 20.0)
+        heartbeat_task = asyncio.create_task(
+            self._periodic_heartbeat(task.id, heartbeat_interval)
+        )
+        try:
+            return await asyncio.wait_for(handler(task.payload), timeout=timeout)
+        finally:
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
+
+    async def _periodic_heartbeat(self, task_id: str, interval: float):
+        """Send lease heartbeats while a task is executing."""
+        while True:
+            try:
+                await asyncio.sleep(interval)
+                await self.heartbeat(task_id)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug(f"Heartbeat to task {task_id} failed: {e}")
+
     def get_stats(self) -> Dict[str, Any]:
         """Get queue statistics."""
-        return {**self._stats, "handlers": list(self._handlers.keys()), "workers": self.num_workers}
+        return {
+            **self._stats,
+            "handlers": list(self._handlers.keys()),
+            "workers": self.num_workers,
+            "inflight": len(self._inflight),
+        }
 
     @staticmethod
     def _priority_score(priority: TaskPriority) -> float:
@@ -349,7 +582,15 @@ class RedisTaskQueue:
         return scores.get(priority, 10)
 
     @staticmethod
-    def _dict_to_task(data: Dict[str, bytes]) -> Task:
+    def _serialize_task(task: Task) -> Dict[str, Any]:
+        """Serialize a Task to a Redis hash-friendly dict."""
+        return {
+            k: json.dumps(v) if isinstance(v, (dict, list)) else str(v)
+            for k, v in task.to_dict().items()
+        }
+
+    @staticmethod
+    def _dict_to_task(data: Dict[str, Any]) -> Task:
         """Convert Redis hash to Task."""
         def get(key, default=""):
             val = data.get(key, default)

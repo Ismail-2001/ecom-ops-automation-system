@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import time
 import uuid
 from typing import Callable
@@ -23,6 +24,28 @@ from ecommerce_ops.security.hardening import (
 
 logger = logging.getLogger("ecommerce_ops.api.middleware")
 
+# Regex patterns for normalizing dynamic path segments so Prometheus
+# label cardinality stays bounded (H7).
+_DYNAMIC_PATH_PATTERNS = [
+    (re.compile(r"^/approvals/[0-9a-f-]+$"), "/approvals/{id}"),
+    (re.compile(r"^/approvals/[0-9a-f-]+/audit$"), "/approvals/{id}/audit"),
+    (re.compile(r"^/tasks/[0-9a-f-]+$"), "/tasks/{id}"),
+    (re.compile(r"^/ws/[^/]+$"), "/ws/{ticket}"),
+    (re.compile(r"^/agents/[^/]+$"), "/agents/{name}"),
+]
+
+
+def _normalize_endpoint(path: str) -> str:
+    """Normalize a request path for Prometheus labels.
+
+    Replaces dynamic segments (UUIDs, IDs, tokens) with placeholders so
+    that the number of distinct labels stays bounded.
+    """
+    for pattern, replacement in _DYNAMIC_PATH_PATTERNS:
+        if pattern.match(path):
+            return replacement
+    return path
+
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
@@ -38,14 +61,15 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         start = time.monotonic()
         response = await call_next(request)
         duration = time.monotonic() - start
+        endpoint = _normalize_endpoint(request.url.path)
         METRIC_HTTP_REQUESTS.labels(
             method=request.method,
-            endpoint=request.url.path,
+            endpoint=endpoint,
             status=response.status_code,
         ).inc()
         METRIC_HTTP_DURATION.labels(
             method=request.method,
-            endpoint=request.url.path,
+            endpoint=endpoint,
         ).observe(duration)
         return response
 
@@ -75,10 +99,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if settings.ENV == Environment.TESTING:
             return await call_next(request)
 
-        forwarded = request.headers.get("X-Forwarded-For", "")
-        client_ip = forwarded.split(",")[0].strip() if forwarded else (
-            request.client.host if request.client else "unknown"
-        )
+        client_ip = self._get_trusted_client_ip(request)
         allowed, count = await check_rate_limit(client_ip, settings.RATE_LIMIT_PER_MINUTE)
 
         if not allowed:
@@ -92,6 +113,42 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             )
 
         return await call_next(request)
+
+    def _get_trusted_client_ip(self, request: Request) -> str:
+        """Extract the real client IP.
+
+        Only honors X-Forwarded-For when the request originates from a
+        trusted proxy (or when in testing / local mode). This prevents
+        clients from spoofing their IP to bypass rate limits (H10).
+        """
+        direct_ip = request.client.host if request.client else "unknown"
+
+        if settings.ENV == Environment.TESTING:
+            forwarded = request.headers.get("X-Forwarded-For", "")
+            if forwarded:
+                return forwarded.split(",")[0].strip()
+            return direct_ip
+
+        if not settings.TRUSTED_PROXIES:
+            return direct_ip
+
+        import ipaddress
+
+        try:
+            client_addr = ipaddress.ip_address(direct_ip)
+        except ValueError:
+            return direct_ip
+
+        for proxy_cidr in settings.TRUSTED_PROXIES:
+            try:
+                if client_addr in ipaddress.ip_network(proxy_cidr, strict=False):
+                    forwarded = request.headers.get("X-Forwarded-For", "")
+                    if forwarded:
+                        return forwarded.split(",")[0].strip()
+            except ValueError:
+                logger.warning("Invalid TRUSTED_PROXIES CIDR: %s", proxy_cidr)
+
+        return direct_ip
 
 
 MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024  # 10 MB

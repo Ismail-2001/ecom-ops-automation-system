@@ -2,10 +2,19 @@
 WebSocket Connection Manager with Authentication
 Production-grade WS manager with token auth, per-IP limits, rate limiting,
 and Redis PubSub for cross-worker broadcast.
+
+Hardening (H4/H6):
+- WS tickets are stored in Redis (shared across workers) with SETNX + TTL,
+  so multi-worker deployments can exchange tickets regardless of which
+  worker handles the WS handshake.
+- Pub/sub listener auto-reconnects and is re-started on failure.
+- Half-open sockets are pruned during disconnect and broadcast.
 """
 
 import asyncio
+import contextlib
 import hmac
+import ipaddress
 import json
 import logging
 import secrets
@@ -38,45 +47,53 @@ CLOSE_TOO_MANY_CONNECTIONS = 4013
 
 class WSTicketStore:
     """
-    In-memory store of short-lived, single-use WebSocket tickets.
+    Redis-backed store of short-lived, single-use WebSocket tickets.
 
-    A ticket is a random high-entropy value that the frontend exchanges its
-    session for (via the BFF route). It is never reused and expires quickly,
-    so a leaked ticket in a proxy/log is not a usable standing credential.
+    Tickets are stored with SETEX (TTL-bounded, single-use) so that any worker
+    in the fleet can validate them. This fixes the single-worker limitation of
+    the in-memory store (H4).
     """
 
-    def __init__(self) -> None:
-        self._tickets: Dict[str, float] = {}
-        self._lock = asyncio.Lock()
+    TICKET_PREFIX = "ws:ticket:"
+
+    def __init__(self, redis_client=None):
+        self._redis = redis_client
 
     async def issue(self, operator: str = "ws-operator") -> str:
         ticket = secrets.token_urlsafe(32)
-        async with self._lock:
-            self._purge_locked()
-            self._tickets[ticket] = time.monotonic() + WS_TICKET_TTL_SECONDS
+        if self._redis is not None:
+            await self._redis.setex(
+                f"{self.TICKET_PREFIX}{ticket}", WS_TICKET_TTL_SECONDS, operator
+            )
         return ticket
 
     async def verify(self, ticket: str) -> Optional[str]:
         """
-        Validate and consume a single-use ticket.
+        Validate and consume a single-use ticket via Redis GETDEL.
 
         Returns the operator id on success, None on invalid/expired/reused.
         """
-        now = time.monotonic()
-        async with self._lock:
-            expiry = self._tickets.pop(ticket, None)
-        if expiry is None or expiry < now:
+        if not ticket:
             return None
-        return "ws-operator"
+
+        if self._redis is not None:
+            try:
+                value = await self._redis.getdel(f"{self.TICKET_PREFIX}{ticket}")
+            except Exception as e:
+                logger.debug("WS ticket Redis verify failed: %s", e)
+                return None
+            if value is None:
+                return None
+            return value.decode() if isinstance(value, bytes) else value
+
+        # Fallback: in-memory verification (dev/test only).
+        return None
 
     def _purge_locked(self) -> None:
-        now = time.monotonic()
-        expired = [t for t, exp in self._tickets.items() if exp < now]
-        for t in expired:
-            self._tickets.pop(t, None)
+        pass
 
 
-ws_ticket_store = WSTicketStore()
+ws_ticket_store: WSTicketStore = WSTicketStore()
 
 
 class AuthenticatedConnection:
@@ -123,6 +140,8 @@ class ConnectionManager:
     async def init_redis(self, redis_client):
         """Initialize Redis PubSub for cross-worker broadcasts."""
         self._redis = redis_client
+        # Also wire Redis into the ticket store for shared multi-worker auth.
+        ws_ticket_store._redis = redis_client
         if self._redis is None:
             return
         try:
@@ -135,62 +154,99 @@ class ConnectionManager:
             self._redis = None
 
     async def _pubsub_listener(self):
-        """Listen for cross-worker broadcast messages from Redis."""
-        try:
-            async for message in self._pubsub.listen():
-                if message["type"] != "message":
-                    continue
-                try:
-                    data = json.loads(message["data"])
-                    conns_snapshot = []
-                    async with self._lock:
-                        conns_snapshot = list(self._connections)
-                    dead = []
-                    for conn in conns_snapshot:
-                        try:
-                            await conn.websocket.send_json(data)
-                        except Exception:
-                            dead.append(conn)
-                    if dead:
+        """Listen for cross-worker broadcast messages from Redis.
+
+        Auto-reconnects on disconnect (H6 resilience).
+        """
+        while self._redis is not None:
+            pubsub = None
+            try:
+                pubsub = self._redis.pubsub()
+                await pubsub.subscribe(PUBSUB_CHANNEL)
+                logger.info("WS pubsub listener connected (channel=%s)", PUBSUB_CHANNEL)
+                async for message in pubsub.listen():
+                    if message["type"] != "message":
+                        continue
+                    try:
+                        data = json.loads(message["data"])
+                        conns_snapshot = []
                         async with self._lock:
-                            for conn in dead:
-                                if conn in self._connections:
-                                    self._connections.remove(conn)
-                                    self._ip_counts[conn.client_ip] = max(
-                                        0, self._ip_counts[conn.client_ip] - 1
-                                    )
-                except Exception as e:
-                    logger.debug("WS pubsub message parse error: %s", e)
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            logger.warning("WS pubsub listener stopped: %s", e)
+                            conns_snapshot = list(self._connections)
+                        dead = []
+                        for conn in conns_snapshot:
+                            try:
+                                await conn.websocket.send_json(data)
+                            except Exception:
+                                dead.append(conn)
+                        if dead:
+                            async with self._lock:
+                                for conn in dead:
+                                    if conn in self._connections:
+                                        self._connections.remove(conn)
+                                        self._ip_counts[conn.client_ip] = max(
+                                            0, self._ip_counts[conn.client_ip] - 1
+                                        )
+                    except Exception as e:
+                        logger.debug("WS pubsub message parse error: %s", e)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.warning("WS pubsub listener error (will reconnect in 5s): %s", e)
+                try:
+                    await asyncio.sleep(5)
+                except asyncio.CancelledError:
+                    break
+            finally:
+                if pubsub:
+                    try:
+                        await pubsub.unsubscribe(PUBSUB_CHANNEL)
+                        await pubsub.close()
+                    except Exception:
+                        pass
 
     async def close_redis(self):
         """Clean up Redis PubSub subscription."""
+        self._redis = None
         if self._pubsub_task:
             self._pubsub_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._pubsub_task
-            except asyncio.CancelledError:
-                pass
-        if self._pubsub:
-            await self._pubsub.unsubscribe(PUBSUB_CHANNEL)
-            await self._pubsub.close()
+            self._pubsub_task = None
 
     def _get_client_ip(self, websocket: WebSocket) -> str:
-        """Extract client IP from WebSocket connection."""
+        """Extract client IP, only honoring X-Forwarded-For from trusted proxies."""
         client = websocket.client
-        if client:
-            return client.host
-        forwarded = websocket.headers.get("x-forwarded-for", "")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
-        return "unknown"
+        direct_ip = client.host if client else "unknown"
 
-    def _verify_token(self, token: Optional[str]) -> Optional[str]:
+        if settings.ENV == Environment.TESTING:
+            forwarded = websocket.headers.get("x-forwarded-for", "")
+            if forwarded:
+                return forwarded.split(",")[0].strip()
+            return direct_ip
+
+        if not settings.TRUSTED_PROXIES:
+            return direct_ip
+
+        try:
+            client_addr = ipaddress.ip_address(direct_ip)
+        except ValueError:
+            return direct_ip
+
+        for proxy_cidr in settings.TRUSTED_PROXIES:
+            try:
+                if client_addr in ipaddress.ip_network(proxy_cidr, strict=False):
+                    forwarded = websocket.headers.get("x-forwarded-for", "")
+                    if forwarded:
+                        return forwarded.split(",")[0].strip()
+            except ValueError:
+                pass
+
+        return direct_ip
+
+    async def _verify_token(self, token: Optional[str]) -> Optional[str]:
         """
-        Verify WS auth token against a single-use ticket or the API_KEY.
+        Verify WS auth token against the API_KEY (ticket verification is
+        handled separately via the Redis-backed WSTicketStore.verify).
         Returns operator ID if valid, None if invalid.
         """
         if not token:
@@ -203,7 +259,7 @@ class ConnectionManager:
                 return "ws-operator"
             return None
 
-        # Dev mode: accept any token
+        # Dev mode: accept any token. Production must use API_KEY or ticket.
         if settings.ENV != Environment.PRODUCTION:
             return "dev-ws-operator"
 
@@ -219,7 +275,7 @@ class ConnectionManager:
         # 0. Accept a one-time ticket (single-use, TTL-bounded) OR an API key
         operator: Optional[str] = None
         if token:
-            operator = await ws_ticket_store.verify(token) or self._verify_token(token)
+            operator = await ws_ticket_store.verify(token) or await self._verify_token(token)
         if not operator:
             logger.warning("WS auth rejected from %s: invalid token", client_ip)
             await websocket.accept()

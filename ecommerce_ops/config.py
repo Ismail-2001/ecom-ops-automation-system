@@ -1,12 +1,15 @@
 from enum import Enum
 from typing import Optional
-from pydantic_settings import BaseSettings, SettingsConfigDict
+
 from pydantic import Field, SecretStr, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class Environment(str, Enum):
     DEVELOPMENT = "development"
     PRODUCTION = "production"
     TESTING = "testing"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -16,17 +19,17 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     PROJECT_NAME: str = "ecommerce-ops-agent"
     LOG_LEVEL: str = "INFO"
-    
+
     # Authentication
     API_KEY: Optional[SecretStr] = None
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:8000"]
-    
+
     # API Keys
     GOOGLE_API_KEY: Optional[SecretStr] = None
     DEEPSEEK_API_KEY: Optional[SecretStr] = None
     DEEPSEEK_BASE_URL: str = ""
     LLM_MODEL: str = "gemini-2.0-flash"
-    
+
     SHOPIFY_API_KEY: Optional[SecretStr] = None
     SHOPIFY_PASSWORD: Optional[SecretStr] = None
     SHOPIFY_STORE_URL: Optional[str] = None
@@ -38,11 +41,11 @@ class Settings(BaseSettings):
     SHOPIFY_APP_URL: Optional[str] = None
     SHOPIFY_SHOP_DOMAIN: Optional[str] = None
     SHOPIFY_ACCESS_TOKEN: Optional[str] = None
-    
+
     # DB & Cache
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/ecommerce_ops"
     REDIS_URL: str = "redis://localhost:6379/0"
-    
+
     # Connection Pooling
     DB_POOL_SIZE: int = 20
     DB_MAX_OVERFLOW: int = 10
@@ -54,7 +57,7 @@ class Settings(BaseSettings):
     # Task Queue
     TASK_QUEUE_WORKERS: int = 2
     TASK_QUEUE_MAX_SIZE: int = 100
-    
+
     # Safety Thresholds
     GLOBAL_PO_LIMIT: float = 1000.0
     GLOBAL_PRICE_CHANGE_LIMIT_PERCENT: float = 20.0
@@ -64,6 +67,13 @@ class Settings(BaseSettings):
 
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 60
+
+    # Trusted proxies for X-Forwarded-For header parsing.
+    # In production, set to the CIDR/range of your load balancer/proxy
+    # (e.g. "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16" for private LBs).
+    # Requests from untrusted IPs will NOT have X-Forwarded-For honored,
+    # preventing IP spoofing for rate-limit / per-IP connection limits.
+    TRUSTED_PROXIES: list[str] = Field(default_factory=list)
 
     # Notification
     SLACK_BOT_TOKEN: Optional[SecretStr] = None
@@ -81,5 +91,6 @@ class Settings(BaseSettings):
             if "postgresql" not in self.DATABASE_URL:
                 raise ValueError("DATABASE_URL must use PostgreSQL in production")
         return self
+
 
 settings = Settings()

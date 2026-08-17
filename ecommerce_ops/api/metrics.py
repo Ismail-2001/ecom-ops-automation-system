@@ -1,4 +1,30 @@
+import os
+
 from prometheus_client import Counter, Gauge, Histogram
+
+# When running with multiple gunicorn/uvicorn workers, set
+# PROMETHEUS_MULTIPROC_DIR to a shared tmpfs dir so that all workers'
+# metrics are aggregated by the pushgateway / /metrics endpoint.
+# See: https://github.com/prometheus/client_python#multiprocess-mode-eg-gunicorn
+_MULTIPROC_DIR = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
+
+if _MULTIPROC_DIR:
+    from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
+    from prometheus_client.multiprocess import MultiProcessCollector
+
+    registry = CollectorRegistry()
+    MultiProcessCollector(registry)
+
+    def generate_metrics() -> tuple[bytes, str]:
+        """Generate aggregated metrics for the /metrics endpoint (multi-worker)."""
+        return generate_latest(registry), CONTENT_TYPE_LATEST
+else:
+    registry = None
+
+    def generate_metrics() -> tuple[bytes, str]:
+        """Generate metrics (single-process fallback)."""
+        from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+        return generate_latest(), CONTENT_TYPE_LATEST
 
 METRIC_HTTP_REQUESTS = Counter(
     "http_requests_total", "Total HTTP requests", ["method", "endpoint", "status"]

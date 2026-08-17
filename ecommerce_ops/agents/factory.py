@@ -25,7 +25,7 @@ logger = logging.getLogger("ecommerce_ops.agents.factory")
 class AgentFactory:
     """
     Factory that creates agent instances with LLM-first, rule-based fallback.
-    
+
     Each agent node in the supervisor graph gets a UnifiedAgent that:
     1. Tries the LLM variant first (richer analysis, guardrails, message bus)
     2. On any LLM failure, silently falls back to the rule-based variant
@@ -217,11 +217,12 @@ class AgentFactory:
     def _adapt_marketing_output(self, llm_result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if not llm_result:
             return None
+        confidence = float(llm_result.get("confidence") or 0)
         return {
             "action_type": "DRAFT_MARKETING_CAMPAIGN",
             "reasoning": llm_result.get("reasoning", ""),
-            "confidence": 0.8,
-            "requires_approval": True,
+            "confidence": confidence,
+            "requires_approval": confidence < 0.95 or True,  # marketing campaigns always require approval
             "data": {
                 "campaign_name": llm_result.get("campaign_name", ""),
                 "campaign_type": llm_result.get("campaign_type", "email"),

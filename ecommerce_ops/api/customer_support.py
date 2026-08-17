@@ -239,13 +239,17 @@ async def respond_to_ticket(
 @router.get("/tickets/{ticket_id}/suggestion")
 async def get_response_suggestion(ticket_id: str):
     """Get AI response suggestion for a ticket."""
-    # In production: generate suggestion based on ticket content
+    # In production: generate suggestion based on ticket content via LLM agent.
+    # This stub returns a generic placeholder — it does NOT fabricate a
+    # confidence score or financial impact. Confidence is reported as 0.0
+    # (unknown) and requires_human_review is always True so the suggestion
+    # is never auto-executed.
     suggestion = ResponseSuggestion(
         ticket_id=ticket_id,
-        suggested_response="Thank you for reaching out. I'd be happy to help you with your order.",
-        confidence=0.85,
-        reasoning="Order status inquiry with moderate urgency",
-        requires_human_review=False,
+        suggested_response="Thank you for reaching out. I'd be happy to help you with your order. Could you please provide your order number so I can look up its status?",
+        confidence=0.0,
+        reasoning="Stub response — real LLM agent not configured for this route.",
+        requires_human_review=True,
         follow_up_questions=["Could you provide your order number?"],
     )
 

@@ -1,3 +1,4 @@
+import hmac
 import logging
 import os
 import time
@@ -6,10 +7,9 @@ from contextlib import asynccontextmanager, suppress
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel
 from sqlalchemy import desc, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -633,8 +633,30 @@ async def get_task_status(task_id: str):
 
 
 @app.get("/metrics")
-async def metrics():
-    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+async def metrics(request: Request):
+    # Auth-gate /metrics in production (H8). Prometheus can use a bearer token
+    # or basic auth configured via reverse proxy; otherwise we require API key.
+    if app_settings.ENV == Environment.PRODUCTION:
+        auth_header = request.headers.get("Authorization", "")
+        api_key = app_settings.API_KEY.get_secret_value() if app_settings.API_KEY else None
+        if not api_key:
+            return Response(
+                status_code=403,
+                content="Metrics disabled: API_KEY not configured",
+                media_type="text/plain",
+            )
+        # Accept "Bearer <api_key>" or "ApiKey <api_key>" from Prometheus.
+        token = auth_header.replace("Bearer ", "").replace("ApiKey ", "").strip()
+        if not token or not hmac.compare_digest(token, api_key):
+            return Response(
+                status_code=401,
+                content=" Unauthorized",
+                headers={"WWW-Authenticate": 'Bearer realm="metrics"'},
+            )
+
+    from ecommerce_ops.api.metrics import generate_metrics
+    content, content_type = generate_metrics()
+    return Response(content=content, media_type=content_type)
 
 
 dist_path = "dashboard/dist"

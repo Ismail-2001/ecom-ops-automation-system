@@ -1,6 +1,10 @@
 """
 Task Queue
 In-memory async task queue with size limits and task expiry.
+
+Hardening (H5):
+- Enqueue rejects with QueueFullError when MAX_TASKS is reached (503-style).
+  Pending and running tasks are never evicted to make room.
 """
 
 import asyncio
@@ -14,6 +18,10 @@ logger = logging.getLogger("ecommerce_ops.infra.task_queue")
 
 MAX_TASKS = 500
 TASK_EXPIRY_HOURS = 24
+
+
+class QueueFullError(Exception):
+    """Raised when the in-memory task queue is at capacity."""
 
 
 class TaskStatus(str, Enum):
@@ -68,10 +76,12 @@ class TaskQueue:
     async def enqueue(self, name: str, coro_factory: Callable, *args, **kwargs) -> str:
         self._evict_expired()
 
+        # Never evict pending/running tasks — reject if at capacity.
         if len(self._tasks) >= MAX_TASKS:
-            self._evict_oldest_completed()
-            if len(self._tasks) >= MAX_TASKS:
-                raise RuntimeError(f"Task queue full ({MAX_TASKS} tasks)")
+            raise QueueFullError(
+                f"Task queue at maximum capacity ({MAX_TASKS}). "
+                "Please try again later or scale workers."
+            )
 
         task_id = str(uuid.uuid4())
         task = Task(task_id, name, coro_factory, *args, **kwargs)
@@ -93,21 +103,12 @@ class TaskQueue:
                 ca = datetime.fromtimestamp(ca, tz=UTC)
             elif ca.tzinfo is None:
                 ca = ca.replace(tzinfo=UTC)
-            if ca < cutoff:
+            if ca < cutoff and t.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
                 expired.append(tid)
         for tid in expired:
             del self._tasks[tid]
         if expired:
             logger.info("Evicted %d expired tasks", len(expired))
-
-    def _evict_oldest_completed(self):
-        completed = sorted(
-            [(tid, t) for tid, t in self._tasks.items() if t.status in (TaskStatus.COMPLETED, TaskStatus.FAILED)],
-            key=lambda x: x[1].completed_at or datetime.min,
-        )
-        evict_count = max(1, len(completed) // 4)
-        for tid, _ in completed[:evict_count]:
-            del self._tasks[tid]
 
     async def _worker_loop(self, worker_id: int):
         logger.debug("Worker %d started", worker_id)

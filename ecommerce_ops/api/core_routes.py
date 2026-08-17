@@ -79,6 +79,53 @@ async def expire_stale_approvals(db: AsyncSession) -> int:
     return result.rowcount or 0
 
 
+async def sweep_stale_executing(db: AsyncSession, stale_after_minutes: int = 60) -> int:
+    """Recover actions stuck in 'executing' due to a crash between the
+    approval commit and the terminal commit (H1 data-loss window).
+
+    Actions that have been 'executing' for longer than ``stale_after_minutes``
+    without reaching a terminal status are marked 'failed' and an audit entry
+    is written recording the abort.
+    """
+    now = datetime.utcnow()
+    cutoff = now - timedelta(minutes=stale_after_minutes)
+
+    result = await db.execute(
+        select(ApprovalAction).where(
+            ApprovalAction.status == "executing",
+            ApprovalAction.reviewed_at.isnot(None),
+            ApprovalAction.reviewed_at < cutoff,
+        )
+    )
+    stale = result.scalars().all()
+    count = 0
+    for action in stale:
+        action.status = "failed"
+        action.operator_notes = (
+            f"{action.operator_notes or ''} [Aborted: pipeline crashed during execution]"
+        ).strip()
+        db.add(
+            AuditEntry(
+                action_id=action.id,
+                timestamp=now,
+                agent=action.agent,
+                action_type=action.action_type,
+                decision="shadow" if action.shadow_mode else "approved",
+                operator=action.reviewed_by or "system-sweeper",
+                confidence_score=action.confidence_score,
+                financial_impact=(action.impact or {}).get("financial_impact", 0.0),
+                details={
+                    "execution_status": "failed",
+                    "execution_message": "Stale executing action recovered by sweeper",
+                },
+            )
+        )
+        count += 1
+    if stale:
+        await db.commit()
+    return count
+
+
 @router.get("/approvals")
 async def get_approvals(
     agent: Optional[str] = None,
@@ -89,6 +136,7 @@ async def get_approvals(
     db: AsyncSession = Depends(get_db_session),
 ):
     await expire_stale_approvals(db)
+    await sweep_stale_executing(db)
     query = select(ApprovalAction)
     if status == "pending":
         query = query.where(ApprovalAction.status == "pending")
@@ -183,9 +231,11 @@ async def approve_approval(
     )
 
     action.status = "executing"
-    await db.commit()
-
-    success, exec_msg = await execute_shop_action(action)
+    try:
+        success, exec_msg = await execute_shop_action(action)
+    except Exception as exc:
+        success = False
+        exec_msg = f"execution_error: {exc}"
     action.status = "executed" if success else "failed"
     if not success:
         action.operator_notes = f"{action.operator_notes or ''} [Error: {exec_msg}]".strip()
@@ -274,7 +324,7 @@ async def batch_approvals(
         raise HTTPException(status_code=400, detail="Action must be 'approve' or 'reject'")
 
     results = await db.execute(
-        select(ApprovalAction).where(ApprovalAction.id.in_(body.ids))
+        select(ApprovalAction).where(ApprovalAction.id.in_(body.ids)).with_for_update()
     )
     actions = results.scalars().all()
     updated_ids = []
@@ -312,7 +362,7 @@ async def batch_approvals(
             success, _ = await execute_shop_action(action)
             action.status = "executed" if success else "failed"
             audit_entry.details["execution_status"] = action.status
-            await update_agent_streak(action.agent, True, action.confidence_score, db)
+            await update_agent_streak(action.agent, success, action.confidence_score, db)
 
         elif body.action == "reject":
             action.reviewed_by = operator
