@@ -4,9 +4,11 @@ OAuth flow, webhooks, and sync endpoints.
 """
 
 import logging
+from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from pydantic import BaseModel
+from sqlalchemy import select
 
 from ecommerce_ops.connectors.shopify.client import ShopifyClient
 from ecommerce_ops.connectors.shopify.handlers.order_handlers import WEBHOOK_HANDLERS
@@ -14,7 +16,7 @@ from ecommerce_ops.connectors.shopify.oauth import shopify_oauth
 from ecommerce_ops.connectors.shopify.oauth_state import oauth_state_store
 from ecommerce_ops.connectors.shopify.sync import ShopifySyncService
 from ecommerce_ops.connectors.shopify.webhooks import webhook_router
-from ecommerce_ops.models import async_session_factory
+from ecommerce_ops.models import ShopifyShopCredential, async_session_factory
 
 logger = logging.getLogger("ecommerce_ops.api.shopify")
 
@@ -85,7 +87,31 @@ async def oauth_callback(
     if not session:
         raise HTTPException(status_code=500, detail="Token exchange failed")
 
-    # TODO: Store session in database (for now, log it)
+    # C9: Persist OAuth token in database
+    async with async_session_factory() as db_session:
+        existing = await db_session.execute(
+            select(ShopifyShopCredential).where(
+                ShopifyShopCredential.shop_domain == session.shop_domain
+            )
+        )
+        cred = existing.scalar_one_or_none()
+        if cred:
+            cred.access_token = session.access_token
+            cred.scope = session.scope
+            cred.updated_at = datetime.utcnow()
+            cred.is_active = True
+        else:
+            db_session.add(
+                ShopifyShopCredential(
+                    shop_domain=session.shop_domain,
+                    access_token=session.access_token,
+                    scope=session.scope,
+                    installed_at=datetime.utcnow(),
+                    is_active=True,
+                )
+            )
+        await db_session.commit()
+
     logger.info(
         "Shopify app installed: shop=%s, scope=%s",
         session.shop_domain,
@@ -151,7 +177,8 @@ async def sync_shopify_data(
     from ecommerce_ops.config import settings as app_settings
 
     shop_domain = app_settings.SHOPIFY_SHOP_DOMAIN
-    access_token = app_settings.SHOPIFY_ACCESS_TOKEN
+    access_token_raw = app_settings.SHOPIFY_ACCESS_TOKEN
+    access_token = access_token_raw.get_secret_value() if access_token_raw else None
 
     if not shop_domain or not access_token:
         raise HTTPException(
@@ -209,9 +236,11 @@ async def list_shopify_products(
     if not app_settings.SHOPIFY_SHOP_DOMAIN or not app_settings.SHOPIFY_ACCESS_TOKEN:
         raise HTTPException(status_code=400, detail="Shopify not configured")
 
+    access_token = app_settings.SHOPIFY_ACCESS_TOKEN.get_secret_value()
+
     client = ShopifyClient(
         shop_domain=app_settings.SHOPIFY_SHOP_DOMAIN,
-        access_token=app_settings.SHOPIFY_ACCESS_TOKEN,
+        access_token=access_token,
         api_version=app_settings.SHOPIFY_API_VERSION,
     )
 
@@ -236,9 +265,11 @@ async def list_shopify_orders(
     if not app_settings.SHOPIFY_SHOP_DOMAIN or not app_settings.SHOPIFY_ACCESS_TOKEN:
         raise HTTPException(status_code=400, detail="Shopify not configured")
 
+    access_token = app_settings.SHOPIFY_ACCESS_TOKEN.get_secret_value()
+
     client = ShopifyClient(
         shop_domain=app_settings.SHOPIFY_SHOP_DOMAIN,
-        access_token=app_settings.SHOPIFY_ACCESS_TOKEN,
+        access_token=access_token,
         api_version=app_settings.SHOPIFY_API_VERSION,
     )
 

@@ -276,6 +276,27 @@ class OutboxMessage(Base):
     __table_args__ = ()
 
 
+# ── Shopify OAuth Credentials (C9) ────────────────────────
+
+
+class ShopifyShopCredential(Base):
+    """Per-shop OAuth credentials persisted after token exchange.
+
+    After a merchant installs the app, the access token is written here
+    so it survives server restarts.  ``shop_domain`` is the unique key.
+    """
+
+    __tablename__ = "shopify_shop_credentials"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    shop_domain = Column(String, unique=True, nullable=False, index=True)
+    access_token = Column(String, nullable=False)
+    scope = Column(String, nullable=True)
+    installed_at = Column(DateTime, default=utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+
+
 # Async Generator for DB sessions
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_factory() as session:

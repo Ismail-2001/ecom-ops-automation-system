@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     SHOPIFY_CLIENT_SECRET: Optional[SecretStr] = None
     SHOPIFY_APP_URL: Optional[str] = None
     SHOPIFY_SHOP_DOMAIN: Optional[str] = None
-    SHOPIFY_ACCESS_TOKEN: Optional[str] = None
+    SHOPIFY_ACCESS_TOKEN: Optional[SecretStr] = None
 
     # DB & Cache
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/ecommerce_ops"

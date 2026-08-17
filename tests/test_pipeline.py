@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from ecommerce_ops.models.db import ApprovalAction, AuditEntry, StoreSettings
 from ecommerce_ops.pipeline.builder import build_payload_and_evidence
@@ -136,7 +137,7 @@ class TestExecuteShopAction:
         action.action_type = "price_change"
         action.id = "test-id"
         with patch("ecommerce_ops.pipeline.runner.app_settings.SHOPIFY_SHOP_DOMAIN", ""), \
-             patch("ecommerce_ops.pipeline.runner.app_settings.SHOPIFY_ACCESS_TOKEN", ""):
+             patch("ecommerce_ops.pipeline.runner.app_settings.SHOPIFY_ACCESS_TOKEN", SecretStr("")):
             success, msg = await execute_shop_action(action)
         assert success is False
         assert "requires Shopify credentials" in msg
@@ -150,7 +151,7 @@ class TestExecuteShopAction:
         action.id = "test-id"
         action.payload = {"sku": "SKU1", "proposed_price": 9.99}
         with patch("ecommerce_ops.pipeline.runner.app_settings.SHOPIFY_SHOP_DOMAIN", "test-shop.myshopify.com"), \
-             patch("ecommerce_ops.pipeline.runner.app_settings.SHOPIFY_ACCESS_TOKEN", "test-token"), \
+             patch("ecommerce_ops.pipeline.runner.app_settings.SHOPIFY_ACCESS_TOKEN", SecretStr("test-token")), \
              patch("ecommerce_ops.connectors.shopify.client.ShopifyClient") as mock_client:
             mock_client.return_value.get_products = AsyncMock(return_value={
                 "products": [{"id": "100", "variants": [{"id": "200", "sku": "SKU1"}]}]
@@ -172,7 +173,7 @@ class TestExecuteShopAction:
         action.action_type = "price_change"
         action.id = "test-id"
         with patch("ecommerce_ops.pipeline.runner.app_settings.SHOPIFY_SHOP_DOMAIN", "test-shop.myshopify.com"), \
-             patch("ecommerce_ops.pipeline.runner.app_settings.SHOPIFY_ACCESS_TOKEN", "test-token"), \
+             patch("ecommerce_ops.pipeline.runner.app_settings.SHOPIFY_ACCESS_TOKEN", SecretStr("test-token")), \
              patch("ecommerce_ops.connectors.shopify.client.ShopifyClient") as mock_client:
             success, msg = await execute_shop_action(action)
         assert success is False
@@ -187,7 +188,7 @@ class TestExecuteShopAction:
         action.action_type = "price_change"
         action.id = "test-id"
         with patch("ecommerce_ops.pipeline.runner.app_settings.SHOPIFY_SHOP_DOMAIN", "test-shop.myshopify.com"), \
-             patch("ecommerce_ops.pipeline.runner.app_settings.SHOPIFY_ACCESS_TOKEN", "test-token"), \
+             patch("ecommerce_ops.pipeline.runner.app_settings.SHOPIFY_ACCESS_TOKEN", SecretStr("test-token")), \
              patch("ecommerce_ops.connectors.shopify.client.ShopifyClient") as mock_client:
             success, msg = await execute_shop_action(action)
         assert success is False

@@ -713,7 +713,7 @@ async def metrics(request: Request):
 
 dist_path = "dashboard/dist"
 if os.path.exists(dist_path):
-    app.mount("/", StaticFiles(directory=dist_path, html=True), name="static")
-    logger.info("Mounted static frontend from %s", dist_path)
+    app.mount("/app", StaticFiles(directory=dist_path, html=True), name="static")
+    logger.info("Mounted static frontend from %s at /app", dist_path)
 else:
     logger.warning("Static frontend path '%s' not found.", dist_path)

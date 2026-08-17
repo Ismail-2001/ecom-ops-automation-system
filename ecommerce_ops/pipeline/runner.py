@@ -40,12 +40,24 @@ from ecommerce_ops.safety.safety_rules import evaluate_action_safety
 # In-process asyncio lock per run_id (prevents concurrent runs in same process).
 # For multi-worker deployments, add a Redis/distributed lock via backend.
 _pipeline_locks: dict[str, asyncio.Lock] = {}
+_pipeline_lock_times: dict[str, float] = {}
+_LOCK_TTL_SECONDS = 3600  # clean up locks older than 1 hour
 
 
 def _get_pipeline_lock(run_id: str) -> asyncio.Lock:
-    """Get or create a lock for the given run_id."""
+    """Get or create a lock for the given run_id, with TTL cleanup."""
+    import time as _time
+
+    now = _time.monotonic()
+    # Evict expired locks
+    expired = [k for k, t in _pipeline_lock_times.items() if now - t > _LOCK_TTL_SECONDS]
+    for k in expired:
+        _pipeline_locks.pop(k, None)
+        _pipeline_lock_times.pop(k, None)
+
     if run_id not in _pipeline_locks:
         _pipeline_locks[run_id] = asyncio.Lock()
+    _pipeline_lock_times[run_id] = now
     return _pipeline_locks[run_id]
 
 
@@ -92,7 +104,8 @@ async def fetch_shopify_data() -> Optional[Dict[str, Any]]:
     from ecommerce_ops.connectors.shopify.client import ShopifyClient
 
     shop_domain = app_settings.SHOPIFY_SHOP_DOMAIN
-    access_token = app_settings.SHOPIFY_ACCESS_TOKEN
+    access_token_raw = app_settings.SHOPIFY_ACCESS_TOKEN
+    access_token = access_token_raw.get_secret_value() if access_token_raw else None
 
     if not shop_domain or not access_token:
         logger.debug("Shopify credentials not configured, using mock data")
@@ -247,7 +260,8 @@ async def execute_shop_action(action: ApprovalAction) -> tuple[bool, str]:
     # cannot be performed, so report an honest failure instead of a fabricated
     # "Executed" result.
     shop_domain = app_settings.SHOPIFY_SHOP_DOMAIN
-    access_token = app_settings.SHOPIFY_ACCESS_TOKEN
+    access_token_raw = app_settings.SHOPIFY_ACCESS_TOKEN
+    access_token = access_token_raw.get_secret_value() if access_token_raw else None
     if not shop_domain or not access_token:
         logger.warning(
             "[LIVE] Cannot execute %s for %s: Shopify not configured",
@@ -406,11 +420,10 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
             raise RuntimeError(f"Pipeline run {run_id} has already completed")
         await session.commit()
 
-    async with lock:
-        logger.info("Starting pipeline run %s", run_id)
-
-        # Try to fetch real Shopify data first
-        shopify_data = await fetch_shopify_data()
+    # Fetch data OUTSIDE the lock — this is read-only I/O and should not
+    # serialize unrelated pipeline runs.
+    logger.info("Starting pipeline run %s", run_id)
+    shopify_data = await fetch_shopify_data()
 
     if shopify_data:
         inventory_data = shopify_data["inventory_data"]

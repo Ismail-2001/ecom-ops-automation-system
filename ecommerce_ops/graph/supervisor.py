@@ -1,9 +1,11 @@
-from typing import Dict, Any, List
-from langgraph.graph import StateGraph, END
-from ecommerce_ops.graph.state import OverallState, ExecutionPlan, ReflectionFeedback
+import logging
+from typing import Any, Dict
+
+from langgraph.graph import END, StateGraph
+
 from ecommerce_ops.agents.factory import agent_factory
 from ecommerce_ops.agents.reflection import ReflectionAgent
-import logging
+from ecommerce_ops.graph.state import ExecutionPlan, OverallState
 
 logger = logging.getLogger("ecommerce_ops.graph.supervisor")
 
@@ -80,35 +82,40 @@ async def reflection_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
 
 class Supervisor:
-    def __init__(self):
-        self.builder = StateGraph(OverallState)
-        self._setup_graph()
+    _compiled_graph = None
 
-    def _setup_graph(self):
-        self.builder.add_node("planner", planner)
-        self.builder.add_node("reflection", reflection_node)
+    def __init__(self):
+        if Supervisor._compiled_graph is None:
+            builder = StateGraph(OverallState)
+            self._setup_graph(builder)
+            Supervisor._compiled_graph = builder.compile()
+        self.graph = Supervisor._compiled_graph
+
+    def _setup_graph(self, builder):
+        builder.add_node("planner", planner)
+        builder.add_node("reflection", reflection_node)
 
         for name in DEFAULT_PLAN:
             async def make_node(state, n=name):
                 return await run_agent(n, state)
-            self.builder.add_node(name, make_node)
+            builder.add_node(name, make_node)
 
         all_nodes = list(DEFAULT_PLAN) + ["reflection", END]
-        self.builder.set_conditional_entry_point(
+        builder.set_conditional_entry_point(
             lambda s: "planner" if s.get("execution_plan") is None else DEFAULT_PLAN[0],
             {"planner": "planner", DEFAULT_PLAN[0]: DEFAULT_PLAN[0]},
         )
 
-        self.builder.add_edge("planner", DEFAULT_PLAN[0])
+        builder.add_edge("planner", DEFAULT_PLAN[0])
 
         for name in DEFAULT_PLAN:
-            self.builder.add_conditional_edges(
+            builder.add_conditional_edges(
                 name,
                 router,
                 {n: n for n in all_nodes},
             )
 
-        self.builder.add_edge("reflection", END)
+        builder.add_edge("reflection", END)
 
         self.graph = self.builder.compile()
 

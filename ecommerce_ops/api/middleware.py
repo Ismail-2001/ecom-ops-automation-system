@@ -160,12 +160,15 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > MAX_REQUEST_BODY_BYTES:
-            return Response(
-                status_code=413,
-                content='{"detail":"Request body too large. Max 10MB."}',
-                media_type="application/json",
-            )
+        try:
+            if content_length and int(content_length) > MAX_REQUEST_BODY_BYTES:
+                return Response(
+                    status_code=413,
+                    content='{"detail":"Request body too large. Max 10MB."}',
+                    media_type="application/json",
+                )
+        except (ValueError, TypeError):
+            pass
 
         return await call_next(request)
 
