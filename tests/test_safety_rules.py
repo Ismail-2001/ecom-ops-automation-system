@@ -39,6 +39,18 @@ class TestFraudSafety:
         )
         assert impact == 2500.0
 
+    def test_fraud_none_order_total_does_not_crash(self, settings):
+        requires_hitl, risk_level, impact = evaluate_action_safety(
+            agent_id="FraudAgent",
+            action_type="fraud_hold",
+            action_data={"order_total": None},
+            confidence=0.95,
+            settings=settings,
+        )
+        assert requires_hitl is True
+        assert risk_level == "high"
+        assert impact == 0.0
+
 
 class TestInventorySafety:
     def test_po_below_limit_auto_approves(self, settings):
@@ -54,7 +66,7 @@ class TestInventorySafety:
         assert impact == -500.0
 
     def test_po_above_limit_requires_hitl(self, settings):
-        requires_hitl, risk_level, impact = evaluate_action_safety(
+        requires_hitl, risk_level, _ = evaluate_action_safety(
             agent_id="InventoryAgent",
             action_type="purchase_order",
             action_data={"total_po_value": 1500.0},
@@ -75,15 +87,51 @@ class TestInventorySafety:
         assert requires_hitl is True
         assert risk_level == "high"
 
-    def test_po_falls_back_to_qty_times_cost(self, settings):
+    def test_po_falls_back_to_qty_times_cost_when_cost_known(self, settings):
         _, _, impact = evaluate_action_safety(
+            agent_id="InventoryAgent",
+            action_type="purchase_order",
+            action_data={"quantity_to_order": 100, "unit_cost": 20.0},
+            confidence=0.85,
+            settings=settings,
+        )
+        assert impact == -2000.0
+
+    def test_po_with_unknown_cost_requires_hitl(self, settings):
+        requires_hitl, risk_level, impact = evaluate_action_safety(
             agent_id="InventoryAgent",
             action_type="purchase_order",
             action_data={"quantity_to_order": 100},
             confidence=0.85,
             settings=settings,
         )
-        assert impact == -2000.0
+        assert requires_hitl is True
+        assert risk_level == "medium"
+        assert impact == 0.0
+
+    def test_po_none_values_do_not_crash(self, settings):
+        requires_hitl, risk_level, impact = evaluate_action_safety(
+            agent_id="InventoryAgent",
+            action_type="purchase_order",
+            action_data={"total_po_value": None, "quantity_to_order": None, "unit_cost": None},
+            confidence=0.85,
+            settings=settings,
+        )
+        assert requires_hitl is True
+        assert risk_level == "medium"
+        assert impact == 0.0
+
+    def test_po_string_values_are_tolerated(self, settings):
+        requires_hitl, risk_level, impact = evaluate_action_safety(
+            agent_id="InventoryAgent",
+            action_type="purchase_order",
+            action_data={"total_po_value": "500"},
+            confidence=0.85,
+            settings=settings,
+        )
+        assert requires_hitl is False
+        assert risk_level == "low"
+        assert impact == -500.0
 
 
 class TestPricingSafety:
@@ -97,6 +145,17 @@ class TestPricingSafety:
         )
         assert requires_hitl is False
         assert risk_level == "low"
+
+    def test_none_prices_require_hitl(self, settings):
+        requires_hitl, risk_level, _ = evaluate_action_safety(
+            agent_id="PricingAgent",
+            action_type="price_change",
+            action_data={"old_price": None, "new_price": None},
+            confidence=0.85,
+            settings=settings,
+        )
+        assert requires_hitl is True
+        assert risk_level == "medium"
 
     def test_moderate_change_requires_hitl(self, settings):
         requires_hitl, risk_level, _ = evaluate_action_safety(
@@ -155,6 +214,17 @@ class TestReviewsSafety:
         assert requires_hitl is True
         assert risk_level == "medium"
 
+    def test_missing_rating_requires_hitl(self, settings):
+        requires_hitl, risk_level, _ = evaluate_action_safety(
+            agent_id="ReviewsAgent",
+            action_type="review_response",
+            action_data={},
+            confidence=0.95,
+            settings=settings,
+        )
+        assert requires_hitl is True
+        assert risk_level == "medium"
+
 
 class TestMarketingSafety:
     def test_marketing_always_requires_hitl(self, settings):
@@ -172,7 +242,7 @@ class TestMarketingSafety:
 
 class TestLowConfidenceEscalation:
     def test_low_confidence_escalates_low_risk(self, settings):
-        requires_hitl, risk_level, _ = evaluate_action_safety(
+        _requires_hitl, risk_level, _ = evaluate_action_safety(
             agent_id="PricingAgent",
             action_type="price_change",
             action_data={"old_price": 100.0, "new_price": 101.0},

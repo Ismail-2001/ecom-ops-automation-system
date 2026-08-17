@@ -14,6 +14,7 @@ from ecommerce_ops.api.metrics import (
     METRIC_PIPELINE_RUNS,
 )
 from ecommerce_ops.api.ws import ws_manager
+from ecommerce_ops.config import Environment
 from ecommerce_ops.config import settings as app_settings
 from ecommerce_ops.graph.supervisor import Supervisor
 from ecommerce_ops.infra.notifications import (
@@ -56,9 +57,11 @@ async def _check_existing_pipeline_run(run_id: str) -> bool:
     try:
         async with async_session_factory() as session:
             from sqlalchemy import func
+
             result = await session.execute(
-                select(func.count(ApprovalAction.id))
-                .where(ApprovalAction.created_at > datetime.utcnow() - timedelta(hours=1))
+                select(func.count(ApprovalAction.id)).where(
+                    ApprovalAction.created_at > datetime.utcnow() - timedelta(hours=1)
+                )
             )
             count = result.scalar() or 0
             # Heuristic: if there are many recent actions, a run likely happened
@@ -67,6 +70,7 @@ async def _check_existing_pipeline_run(run_id: str) -> bool:
     except Exception:
         # In tests, the session may be mocked; don't block on check failures
         return False
+
 
 logger = logging.getLogger("ecommerce_ops.pipeline.runner")
 
@@ -94,12 +98,14 @@ async def fetch_shopify_data() -> Optional[Dict[str, Any]]:
         inventory_data = []
         for product in inventory_response.get("products", []):
             for variant in product.get("variants", []):
-                inventory_data.append({
-                    "sku": variant.get("sku", f"SKU-{variant['id']}"),
-                    "stock": variant.get("inventory_quantity", 0),
-                    "price": float(variant.get("price", 0)),
-                    "variant_id": str(variant["id"]),
-                })
+                inventory_data.append(
+                    {
+                        "sku": variant.get("sku", f"SKU-{variant['id']}"),
+                        "stock": variant.get("inventory_quantity", 0),
+                        "price": float(variant.get("price", 0)),
+                        "variant_id": str(variant["id"]),
+                    }
+                )
 
         # Fetch recent orders (last 24h)
         orders_response = await client.get_orders(
@@ -110,14 +116,16 @@ async def fetch_shopify_data() -> Optional[Dict[str, Any]]:
         active_orders = []
         for order in orders_response.get("orders", []):
             if order.get("fulfillment_status") != "fulfilled":
-                active_orders.append({
-                    "id": str(order["id"]),
-                    "line_items": [
-                        {"sku": item.get("sku", ""), "quantity": item.get("quantity", 1)}
-                        for item in order.get("line_items", [])
-                    ],
-                    "order_total": float(order.get("total_price", 0)),
-                })
+                active_orders.append(
+                    {
+                        "id": str(order["id"]),
+                        "line_items": [
+                            {"sku": item.get("sku", ""), "quantity": item.get("quantity", 1)}
+                            for item in order.get("line_items", [])
+                        ],
+                        "order_total": float(order.get("total_price", 0)),
+                    }
+                )
 
         # Fetch reviews (from order notes/comments - placeholder)
         reviews_data = []  # Reviews API not available in basic scope
@@ -130,34 +138,40 @@ async def fetch_shopify_data() -> Optional[Dict[str, Any]]:
             if checkout.get("order") is None:
                 items = []
                 for item in checkout.get("line_items", []):
-                    items.append({
-                        "product_id": item.get("product_id", 0),
-                        "variant_id": item.get("variant_id", 0),
-                        "title": item.get("title", "Unknown"),
-                        "sku": item.get("sku"),
-                        "quantity": item.get("quantity", 1),
-                        "price": float(item.get("price", 0)),
-                        "total": float(item.get("line_price", 0)),
-                    })
+                    items.append(
+                        {
+                            "product_id": item.get("product_id", 0),
+                            "variant_id": item.get("variant_id", 0),
+                            "title": item.get("title", "Unknown"),
+                            "sku": item.get("sku"),
+                            "quantity": item.get("quantity", 1),
+                            "price": float(item.get("price", 0)),
+                            "total": float(item.get("line_price", 0)),
+                        }
+                    )
 
-                abandoned_carts.append({
-                    "id": str(checkout.get("id", f"cart-{len(abandoned_carts)}")),
-                    "shop_domain": shop_domain,
-                    "checkout_token": checkout.get("token"),
-                    "items": items,
-                    "total_value": float(checkout.get("total_price", 0)),
-                    "currency": checkout.get("currency", "USD"),
-                    "items_count": len(items),
-                    "status": "abandoned",
-                    "checkout_url": checkout.get("abandoned_checkout_url"),
-                    "created_at": checkout.get("created_at"),
-                    "abandoned_at": checkout.get("updated_at"),
-                    "customer": {
-                        "email": checkout.get("email"),
-                        "first_name": checkout.get("billing_address", {}).get("first_name"),
-                        "last_name": checkout.get("billing_address", {}).get("last_name"),
-                    } if checkout.get("email") else None,
-                })
+                abandoned_carts.append(
+                    {
+                        "id": str(checkout.get("id", f"cart-{len(abandoned_carts)}")),
+                        "shop_domain": shop_domain,
+                        "checkout_token": checkout.get("token"),
+                        "items": items,
+                        "total_value": float(checkout.get("total_price", 0)),
+                        "currency": checkout.get("currency", "USD"),
+                        "items_count": len(items),
+                        "status": "abandoned",
+                        "checkout_url": checkout.get("abandoned_checkout_url"),
+                        "created_at": checkout.get("created_at"),
+                        "abandoned_at": checkout.get("updated_at"),
+                        "customer": {
+                            "email": checkout.get("email"),
+                            "first_name": checkout.get("billing_address", {}).get("first_name"),
+                            "last_name": checkout.get("billing_address", {}).get("last_name"),
+                        }
+                        if checkout.get("email")
+                        else None,
+                    }
+                )
 
         await client.close()
 
@@ -229,8 +243,7 @@ async def execute_shop_action(action: ApprovalAction) -> tuple[bool, str]:
             action.id,
         )
         return False, (
-            "execution requires Shopify credentials "
-            "(SHOPIFY_SHOP_DOMAIN / SHOPIFY_ACCESS_TOKEN)"
+            "execution requires Shopify credentials (SHOPIFY_SHOP_DOMAIN / SHOPIFY_ACCESS_TOKEN)"
         )
 
     from ecommerce_ops.connectors.shopify.client import ShopifyClient
@@ -246,9 +259,7 @@ async def execute_shop_action(action: ApprovalAction) -> tuple[bool, str]:
             order_id = payload.get("order_id") or payload.get("id")
             if not order_id or not str(order_id).isdigit():
                 return False, "fraud_hold requires a real Shopify order_id"
-            await client.update_order(
-                str(order_id), {"tags": ["FRAUD_HOLD"]}
-            )
+            await client.update_order(str(order_id), {"tags": ["FRAUD_HOLD"]})
             logger.info("Applied FRAUD_HOLD to order %s", order_id)
             return True, f"Applied FRAUD_HOLD to order {order_id}"
 
@@ -278,35 +289,28 @@ async def execute_shop_action(action: ApprovalAction) -> tuple[bool, str]:
 
         if action.action_type == "purchase_order":
             return False, (
-                "purchase_order requires inventory_location_id and "
-                "reorder_quantity; not executed"
+                "purchase_order requires inventory_location_id and reorder_quantity; not executed"
             )
 
         if action.action_type == "review_response":
             return False, (
-                "review_response requires a product reviews API scope that "
-                "is not configured"
+                "review_response requires a product reviews API scope that is not configured"
             )
 
         if action.action_type == "marketing_campaign":
             return False, (
-                "marketing_campaign requires a marketing events API scope "
-                "that is not configured"
+                "marketing_campaign requires a marketing events API scope that is not configured"
             )
 
         return False, f"Unknown action type: {action.action_type}"
     except Exception as e:
-        logger.error(
-            "Shop action %s for %s failed: %s", action.action_type, action.id, e
-        )
+        logger.error("Shop action %s for %s failed: %s", action.action_type, action.id, e)
         return False, str(e)
     finally:
         await client.close()
 
 
-async def update_agent_streak(
-    agent_name: str, approved: bool, confidence: float, db: AsyncSession
-):
+async def update_agent_streak(agent_name: str, approved: bool, confidence: float, db: AsyncSession):
     """Atomically update agent streak metrics via a single UPDATE statement.
 
     Uses SQL-level expressions instead of read-modify-write to avoid lost
@@ -318,12 +322,8 @@ async def update_agent_streak(
             update(AgentStatus)
             .where(AgentStatus.agent_id == agent_name)
             .values(
-                total_decisions=func.coalesce(
-                    AgentStatus.total_decisions, 0
-                ) + 1,
-                total_approvals=func.coalesce(
-                    AgentStatus.total_approvals, 0
-                ) + 1,
+                total_decisions=func.coalesce(AgentStatus.total_decisions, 0) + 1,
+                total_approvals=func.coalesce(AgentStatus.total_approvals, 0) + 1,
                 streak=func.coalesce(AgentStatus.streak, 0) + 1,
                 avg_confidence=(
                     func.coalesce(AgentStatus.avg_confidence, 0)
@@ -339,12 +339,8 @@ async def update_agent_streak(
             update(AgentStatus)
             .where(AgentStatus.agent_id == agent_name)
             .values(
-                total_decisions=func.coalesce(
-                    AgentStatus.total_decisions, 0
-                ) + 1,
-                total_rejections=func.coalesce(
-                    AgentStatus.total_rejections, 0
-                ) + 1,
+                total_decisions=func.coalesce(AgentStatus.total_decisions, 0) + 1,
+                total_rejections=func.coalesce(AgentStatus.total_rejections, 0) + 1,
                 streak=0,
                 avg_confidence=(
                     func.coalesce(AgentStatus.avg_confidence, 0)
@@ -360,8 +356,7 @@ async def update_agent_streak(
     # Check for autonomy graduation (read the updated value)
     if approved and confidence >= 0.95:
         res = await db.execute(
-            select(func.coalesce(AgentStatus.streak, 0))
-            .where(AgentStatus.agent_id == agent_name)
+            select(func.coalesce(AgentStatus.streak, 0)).where(AgentStatus.agent_id == agent_name)
         )
         streak = res.scalar() or 0
         if streak >= 50:
@@ -417,7 +412,13 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
             len(abandoned_carts),
         )
     else:
-        # Fallback to mock data
+        if app_settings.ENV == Environment.PRODUCTION:
+            raise RuntimeError(
+                f"Pipeline run {run_id}: Shopify data unavailable in production and "
+                "fail-open to mock data is disabled. Configure Shopify "
+                "credentials or check the Shopify API."
+            )
+        # Fallback to mock data (development/testing only)
         inventory_data = [
             {"sku": "TSHIRT-BLUE-L", "stock": 3, "price": 25.0, "variant_id": "v1"},
             {"sku": "MUG-WHITE", "stock": 2, "price": 12.0, "variant_id": "v2"},
@@ -433,7 +434,11 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
         ]
 
         reviews_data = [
-            {"id": "r_100", "content": "The shipping was delayed and box was damaged!", "rating": 2},
+            {
+                "id": "r_100",
+                "content": "The shipping was delayed and box was damaged!",
+                "rating": 2,
+            },
         ]
 
         abandoned_carts = [
@@ -441,8 +446,24 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                 "id": "cart_mock_1",
                 "shop_domain": "mock-store.myshopify.com",
                 "items": [
-                    {"product_id": 101, "variant_id": 201, "title": "Blue T-Shirt", "sku": "TSHIRT-BLUE-L", "quantity": 2, "price": 25.0, "total": 50.0},
-                    {"product_id": 102, "variant_id": 202, "title": "White Mug", "sku": "MUG-WHITE", "quantity": 1, "price": 12.0, "total": 12.0},
+                    {
+                        "product_id": 101,
+                        "variant_id": 201,
+                        "title": "Blue T-Shirt",
+                        "sku": "TSHIRT-BLUE-L",
+                        "quantity": 2,
+                        "price": 25.0,
+                        "total": 50.0,
+                    },
+                    {
+                        "product_id": 102,
+                        "variant_id": 202,
+                        "title": "White Mug",
+                        "sku": "MUG-WHITE",
+                        "quantity": 1,
+                        "price": 12.0,
+                        "total": 12.0,
+                    },
                 ],
                 "total_value": 62.0,
                 "currency": "USD",
@@ -548,9 +569,7 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                 )
 
         async with async_session_factory() as session:
-            res_set = await session.execute(
-                select(StoreSettings).where(StoreSettings.id == 1)
-            )
+            res_set = await session.execute(select(StoreSettings).where(StoreSettings.id == 1))
             settings = res_set.scalar_one()
             new_actions_count = 0
 
@@ -559,7 +578,8 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                 if mapped_type is None:
                     logger.error(
                         "Unknown action_type '%s' for agent '%s' — refusing to create action",
-                        d.action_type, d.agent_id,
+                        d.action_type,
+                        d.agent_id,
                     )
                     continue  # skip, don't silently default to marketing_campaign
                 requires_hitl, risk_level, financial_impact = evaluate_action_safety(
@@ -577,9 +597,7 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                 if d.agent_id in ("FraudAgent",):
                     impact["affected_orders"] = [payload.get("order_id", "")]
                 else:
-                    impact["affected_skus"] = (
-                        [payload.get("sku", "")] if payload.get("sku") else []
-                    )
+                    impact["affected_skus"] = [payload.get("sku", "")] if payload.get("sku") else []
 
                 action_id = str(uuid.uuid4())
 
@@ -614,22 +632,16 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                     executed_ok, execution_msg = await execute_shop_action(action)
                     action.status = "executed" if executed_ok else "failed"
                     if not executed_ok:
-                        action.operator_notes = (
-                            f"Auto-execution failed: {execution_msg}"
-                        )
+                        action.operator_notes = f"Auto-execution failed: {execution_msg}"
                     else:
-                        METRIC_DECISIONS_AUTO_APPROVED.labels(
-                            agent=d.agent_id
-                        ).inc()
+                        METRIC_DECISIONS_AUTO_APPROVED.labels(agent=d.agent_id).inc()
 
                 session.add(action)
 
-                METRIC_DECISIONS_CREATED.labels(
-                    agent=d.agent_id, action_type=mapped_type
-                ).inc()
-                METRIC_FINANCIAL_IMPACT.labels(
-                    agent=d.agent_id, action_type=mapped_type
-                ).inc(financial_impact)
+                METRIC_DECISIONS_CREATED.labels(agent=d.agent_id, action_type=mapped_type).inc()
+                METRIC_FINANCIAL_IMPACT.labels(agent=d.agent_id, action_type=mapped_type).inc(
+                    financial_impact
+                )
 
                 if auto_attempt:
                     session.add(
@@ -638,11 +650,7 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                             timestamp=datetime.utcnow(),
                             agent=d.agent_id,
                             action_type=mapped_type,
-                            decision=(
-                                "auto-approved"
-                                if executed_ok
-                                else "auto-approval-failed"
-                            ),
+                            decision=("auto-approved" if executed_ok else "auto-approval-failed"),
                             operator=None,
                             confidence_score=d.confidence_score,
                             financial_impact=financial_impact,
@@ -657,9 +665,7 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                             },
                         )
                     )
-                    await update_agent_streak(
-                        d.agent_id, executed_ok, d.confidence_score, session
-                    )
+                    await update_agent_streak(d.agent_id, executed_ok, d.confidence_score, session)
 
                 new_actions_count += 1
                 if action.status == "pending":
@@ -698,9 +704,9 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                         "decisions_count": len(decisions_list),
                         "actions_count": new_actions_count,
                         "evaluation_avg_score": round(avg_score, 3),
-                        "evaluation_pass_rate": round(
-                            passed_count / len(evaluation_results), 3
-                        ) if evaluation_results else 0,
+                        "evaluation_pass_rate": round(passed_count / len(evaluation_results), 3)
+                        if evaluation_results
+                        else 0,
                     },
                 )
 
@@ -712,9 +718,9 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                         "action_count": new_actions_count,
                         "evaluation": {
                             "avg_score": round(avg_score, 3),
-                            "pass_rate": round(
-                                passed_count / len(evaluation_results), 3
-                            ) if evaluation_results else 0,
+                            "pass_rate": round(passed_count / len(evaluation_results), 3)
+                            if evaluation_results
+                            else 0,
                         },
                     },
                 }

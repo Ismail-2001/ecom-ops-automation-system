@@ -38,6 +38,7 @@ from ecommerce_ops.infra.task_queue import TaskQueue
 from ecommerce_ops.models import (
     AuditEntry,
     StoreSettings,
+    async_session_factory,
     get_db_session,
     init_db,
     seed_data_if_empty,
@@ -51,7 +52,9 @@ configure_logger()
 logger = logging.getLogger("ecommerce_ops.api")
 
 
-task_queue = TaskQueue(num_workers=app_settings.TASK_QUEUE_WORKERS, max_queue_size=app_settings.TASK_QUEUE_MAX_SIZE)
+task_queue = TaskQueue(
+    num_workers=app_settings.TASK_QUEUE_WORKERS, max_queue_size=app_settings.TASK_QUEUE_MAX_SIZE
+)
 redis_task_queue: Optional["RedisTaskQueue"] = None
 SERVER_START_TIME = time.time()
 
@@ -59,14 +62,17 @@ SERVER_START_TIME = time.time()
 async def _pipeline_task_handler(payload: Dict[str, Any]):
     """Handler for Redis-backed pipeline tasks."""
     run_id = payload.get("run_id", "")
-    from ecommerce_ops.models import StoreSettings
-    async with get_db_session() as session:
+    async with async_session_factory() as session:
         res = await session.execute(select(StoreSettings).where(StoreSettings.id == 1))
         db_settings = res.scalar_one_or_none()
         if not db_settings:
             db_settings = StoreSettings(
-                id=1, shadow_mode=True, fraud_threshold=70,
-                po_limit=1000.0, pricing_limit=5.0, reviews_rating_threshold=4,
+                id=1,
+                shadow_mode=True,
+                fraud_threshold=70,
+                po_limit=1000.0,
+                pricing_limit=5.0,
+                reviews_rating_threshold=4,
             )
             session.add(db_settings)
             await session.commit()
@@ -77,6 +83,7 @@ async def _init_task_queue() -> Optional["RedisTaskQueue"]:
     """Initialize RedisTaskQueue if Redis is available, else fall back to in-memory."""
     try:
         from ecommerce_ops.memory.cache import cache
+
         redis_client = await cache.get_client()
         if redis_client is None:
             logger.warning("Redis unavailable, using in-memory task queue")
@@ -120,6 +127,7 @@ async def lifespan(app: FastAPI):
         await seed_data_if_empty()
         try:
             from ecommerce_ops.models import engine
+
             METRIC_DB_CONNECTION_POOL.set(engine.pool.size())
         except Exception:
             pass
@@ -137,6 +145,7 @@ async def lifespan(app: FastAPI):
 
     try:
         from ecommerce_ops.memory.cache import cache
+
         redis_client = await cache.get_client()
         if redis_client is not None:
             await ws_manager.init_redis(redis_client)
@@ -167,6 +176,7 @@ async def lifespan(app: FastAPI):
         await task_queue.stop(wait=True)
     await browser_pool.stop()
     from ecommerce_ops.memory.cache import cache
+
     await cache.close()
     logger.info("Application shutdown complete.")
 
@@ -254,8 +264,13 @@ app.include_router(core_router, prefix="/api")
 
 # ── API Versioning: /api/v1/ routes + deprecation headers ──
 v1_router = create_v1_router(
-    shopify_router, cart_recovery_router, customer_support_router,
-    observability_router, memory_router, security_router, demo_router,
+    shopify_router,
+    cart_recovery_router,
+    customer_support_router,
+    observability_router,
+    memory_router,
+    security_router,
+    demo_router,
     core_router,
 )
 app.include_router(v1_router)
@@ -274,6 +289,7 @@ async def get_current_operator(identity: str = Depends(verify_auth)) -> str:
 @app.post("/api/auth/login")
 async def login(body: LoginBody):
     import hmac
+
     api_key_setting = app_settings.API_KEY
     valid_key = api_key_setting.get_secret_value() if api_key_setting else ""
 
@@ -321,6 +337,7 @@ async def health(operator: str = Depends(verify_auth_optional)):
     # Redis check
     try:
         from ecommerce_ops.memory.cache import cache
+
         client = await cache.get_client()
         if client:
             await client.ping()
@@ -335,7 +352,11 @@ async def health(operator: str = Depends(verify_auth_optional)):
     # Task queue check
     try:
         if redis_task_queue is not None:
-            task_queue_size = len(await redis_task_queue.redis.zrange(redis_task_queue.QUEUE_KEY, 0, -1)) if redis_task_queue.redis else 0
+            task_queue_size = (
+                len(await redis_task_queue.redis.zrange(redis_task_queue.QUEUE_KEY, 0, -1))
+                if redis_task_queue.redis
+                else 0
+            )
         else:
             task_queue_size = task_queue._queue.qsize() if hasattr(task_queue, "_queue") else 0
         METRIC_QUEUE_DEPTH.set(task_queue_size)
@@ -347,6 +368,7 @@ async def health(operator: str = Depends(verify_auth_optional)):
     # pgvector check
     try:
         from ecommerce_ops.models import async_session_factory
+
         async with async_session_factory() as session:
             result = await session.execute(
                 text("SELECT 1 FROM pg_extension WHERE extname = 'vector'")
@@ -367,6 +389,7 @@ async def health(operator: str = Depends(verify_auth_optional)):
     # Agent status check
     try:
         from ecommerce_ops.agents.factory import agent_factory
+
         for name in ["fraud", "inventory", "pricing", "reviews", "marketing"]:
             agent_factory.get_agent(name)
         deps["agents"] = "loaded"
@@ -382,7 +405,9 @@ async def health(operator: str = Depends(verify_auth_optional)):
             "uptime_seconds": uptime_seconds,
             "version": app_settings.PROJECT_NAME,
             "version_number": "0.2.0",
-            "environment": app_settings.ENV.value if hasattr(app_settings.ENV, "value") else str(app_settings.ENV),
+            "environment": app_settings.ENV.value
+            if hasattr(app_settings.ENV, "value")
+            else str(app_settings.ENV),
             "timestamp": datetime.utcnow().isoformat(),
             "checks": {
                 "database": deps.get("database", "unknown"),
@@ -422,6 +447,7 @@ async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
             # Respond to ping
             try:
                 import json
+
                 msg = json.loads(data)
                 if msg.get("type") == "ping":
                     await websocket.send_json({"type": "pong"})
@@ -495,7 +521,19 @@ async def export_audit_logs(
     async def _iter_csv():
         buffer = _io.StringIO()
         writer = _csv.writer(buffer)
-        writer.writerow(["ID", "Timestamp", "Agent", "Action Type", "Decision", "Operator", "Confidence", "Financial Impact", "Details"])
+        writer.writerow(
+            [
+                "ID",
+                "Timestamp",
+                "Agent",
+                "Action Type",
+                "Decision",
+                "Operator",
+                "Confidence",
+                "Financial Impact",
+                "Details",
+            ]
+        )
         row = buffer.getvalue()
         buffer.seek(0)
         buffer.truncate(0)
@@ -504,11 +542,19 @@ async def export_audit_logs(
         result = await db.stream(query)
         async for srows in result.scalars().partitions(500):
             for e in srows:
-                writer.writerow([
-                    e.action_id, e.timestamp.isoformat() if e.timestamp else "", e.agent,
-                    e.action_type, e.decision, e.operator, e.confidence_score,
-                    e.financial_impact, str(e.details),
-                ])
+                writer.writerow(
+                    [
+                        e.action_id,
+                        e.timestamp.isoformat() if e.timestamp else "",
+                        e.agent,
+                        e.action_type,
+                        e.decision,
+                        e.operator,
+                        e.confidence_score,
+                        e.financial_impact,
+                        str(e.details),
+                    ]
+                )
             yield buffer.getvalue()
             buffer.seek(0)
             buffer.truncate(0)
@@ -553,7 +599,10 @@ async def readiness():
 
     return JSONResponse(
         status_code=200 if db_ok else 503,
-        content={"status": "ready" if db_ok else "not ready", "database": "ok" if db_ok else "down"},
+        content={
+            "status": "ready" if db_ok else "not ready",
+            "database": "ok" if db_ok else "down",
+        },
     )
 
 
@@ -580,15 +629,17 @@ async def trigger_run(
     db_settings = res.scalar_one_or_none()
     if not db_settings:
         db_settings = StoreSettings(
-            id=1, shadow_mode=True, fraud_threshold=70,
-            po_limit=1000.0, pricing_limit=5.0, reviews_rating_threshold=4,
+            id=1,
+            shadow_mode=True,
+            fraud_threshold=70,
+            po_limit=1000.0,
+            pricing_limit=5.0,
+            reviews_rating_threshold=4,
         )
         db.add(db_settings)
         await db.commit()
 
-    await ws_manager.broadcast(
-        {"type": "pipeline_started", "payload": {"run_id": run_id}}
-    )
+    await ws_manager.broadcast({"type": "pipeline_started", "payload": {"run_id": run_id}})
 
     if redis_task_queue is not None:
         task_id = await redis_task_queue.enqueue(
@@ -655,6 +706,7 @@ async def metrics(request: Request):
             )
 
     from ecommerce_ops.api.metrics import generate_metrics
+
     content, content_type = generate_metrics()
     return Response(content=content, media_type=content_type)
 

@@ -1,6 +1,5 @@
 import logging
 import os
-import uuid
 from datetime import UTC, datetime
 from typing import AsyncGenerator
 
@@ -14,8 +13,9 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
-    insert,
 )
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
@@ -132,6 +132,7 @@ class StoreSettings(Base):
 
 # ── RBAC Models (Persistent) ──────────────────────────────
 
+
 class RBACUser(Base):
     __tablename__ = "rbac_users"
 
@@ -147,9 +148,7 @@ class RBACUser(Base):
     last_login = Column(DateTime, nullable=True)
     login_count = Column(Integer, default=0, nullable=False)
 
-    __table_args__ = (
-        Index("idx_rbac_users_role_active", "role", "is_active"),
-    )
+    __table_args__ = (Index("idx_rbac_users_role_active", "role", "is_active"),)
 
 
 class RBACApiKey(Base):
@@ -172,6 +171,7 @@ class RBACApiKey(Base):
 
 # ── Shopify Webhook Events (Persistent) ───────────────────
 
+
 class ShopifyWebhookEvent(Base):
     __tablename__ = "shopify_webhook_events"
 
@@ -192,6 +192,7 @@ class ShopifyWebhookEvent(Base):
 
 
 # ── Security Audit Log (Persistent) ───────────────────────
+
 
 class SecurityAuditLog(Base):
     __tablename__ = "security_audit_log"
@@ -250,6 +251,19 @@ def _auto_create_schema() -> bool:
     return is_sqlite
 
 
+def _conflict_insert(table):
+    """Dialect-aware insert supporting ``ON CONFLICT DO NOTHING``.
+
+    The generic ``sqlalchemy.insert`` does not expose
+    ``on_conflict_do_nothing``; only the PostgreSQL and SQLite dialect
+    constructs do. ``indexes`` is not a valid argument either — the columns
+    must be passed as ``index_elements``.
+    """
+    if is_sqlite:
+        return sqlite_insert(table)
+    return pg_insert(table)
+
+
 # Database initialization helper
 async def init_db():
     if _auto_create_schema():
@@ -261,14 +275,16 @@ async def init_db():
         # IntegrityError crashes when 4 uvicorn workers start simultaneously
         # on a fresh database (M9).
         await session.execute(
-            insert(StoreSettings).values(
+            _conflict_insert(StoreSettings)
+            .values(
                 id=1,
                 shadow_mode=settings.SHADOW_MODE,
                 fraud_threshold=70,
                 po_limit=settings.GLOBAL_PO_LIMIT,
                 pricing_limit=settings.GLOBAL_PRICE_CHANGE_LIMIT_PERCENT,
                 reviews_rating_threshold=4,
-            ).on_conflict_do_nothing(indexes=[StoreSettings.__table__.primary_key])
+            )
+            .on_conflict_do_nothing(index_elements=[StoreSettings.id])
         )
 
         agents = ["FraudAgent", "InventoryAgent", "PricingAgent", "ReviewsAgent", "MarketingAgent"]
@@ -286,21 +302,26 @@ async def init_db():
             for name in agents
         ]
         await session.execute(
-            insert(AgentStatus).values(agent_values).on_conflict_do_nothing(
-                indexes=[AgentStatus.__table__.primary_key]
-            )
+            _conflict_insert(AgentStatus)
+            .values(agent_values)
+            .on_conflict_do_nothing(index_elements=[AgentStatus.agent_id])
         )
 
         await session.execute(
-            insert(RBACUser).values(
-                id=str(uuid.uuid4()),
+            _conflict_insert(RBACUser)
+            .values(
+                # Deterministic id so concurrent workers dedupe on PK (M9):
+                # a random UUID would never collide and the unique-email
+                # constraint would fire on the second worker.
+                id="default-admin",
                 email="admin@example.com",
                 name="Admin",
                 role="super_admin",
                 is_active=True,
                 permissions=[],
                 metadata_json={"is_default_admin": True},
-            ).on_conflict_do_nothing(indexes=[RBACUser.__table__.primary_key])
+            )
+            .on_conflict_do_nothing(index_elements=[RBACUser.id])
         )
         logger.info("Database initialization complete (idempotent)")
 
