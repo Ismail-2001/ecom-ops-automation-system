@@ -106,9 +106,13 @@ celerybeat.pid
 *.sage.py
 
 # Environments
+# Real environment / secret files must NEVER be committed.
+# (Secrets were previously leaked via .env.production / .env.docker and
+#  scrubbed from history; keep them local-only from now on.)
 .env
-.env.local
-.env*.local
+.env.*
+!.env.example
+!**/.env.example
 .venv
 env/
 venv/
