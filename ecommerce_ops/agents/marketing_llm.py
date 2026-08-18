@@ -81,7 +81,7 @@ class MarketingAutomationAgentLLM(BaseAgent):
         """Handle messages from other agents."""
         if message.topic == MessageTopics.CART_ABANDONED:
             cart_data = message.payload
-            result = await self.create_campaign(
+            await self.create_campaign(
                 {
                     "trigger": "cart_abandonment",
                     "customer": cart_data.get("customer"),
@@ -91,7 +91,7 @@ class MarketingAutomationAgentLLM(BaseAgent):
 
         elif message.topic == MessageTopics.ORDER_SHIPPED:
             order_data = message.payload
-            result = await self.create_campaign(
+            await self.create_campaign(
                 {
                     "trigger": "post_purchase",
                     "customer": order_data.get("customer"),

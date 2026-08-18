@@ -4,7 +4,7 @@ Type-safe models for Shopify API data.
 """
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 # ── Enums ──────────────────────────────────────────────────
 
 
-class OrderFinancialStatus(str, Enum):
+class OrderFinancialStatus(StrEnum):
     PENDING = "pending"
     AUTHORIZED = "authorized"
     PAID = "paid"
@@ -24,7 +24,7 @@ class OrderFinancialStatus(str, Enum):
     UNPAID = "unpaid"
 
 
-class OrderFulfillmentStatus(str, Enum):
+class OrderFulfillmentStatus(StrEnum):
     UNFULFILLED = "unfulfilled"
     PARTIAL = "partial"
     FULFILLED = "fulfilled"
@@ -33,13 +33,13 @@ class OrderFulfillmentStatus(str, Enum):
     IN_TRANSIT = "in_transit"
 
 
-class ProductStatus(str, Enum):
+class ProductStatus(StrEnum):
     ACTIVE = "active"
     ARCHIVED = "archived"
     DRAFT = "draft"
 
 
-class InventoryLevel(str, Enum):
+class InventoryLevel(StrEnum):
     IN_STOCK = "in_stock"
     LOW_STOCK = "low_stock"
     OUT_OF_STOCK = "out_of_stock"

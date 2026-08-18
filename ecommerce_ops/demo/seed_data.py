@@ -59,7 +59,7 @@ async def seed_expanded_demo():
         audits = []
 
         # Generate 30 approval actions over the last 7 days
-        for i in range(30):
+        for _i in range(30):
             agent = random.choice(AGENTS)
             action_type = random.choice(ACTION_TYPES[agent])
             risk = random.choice(RISK_LEVELS)
@@ -68,7 +68,6 @@ async def seed_expanded_demo():
                 hours=random.randint(0, 168),
                 minutes=random.randint(0, 59),
             )
-            days_ago = (now - created).days
             status = random.choices(
                 ["pending", "executed", "rejected", "expired"],
                 weights=[30, 40, 20, 10],

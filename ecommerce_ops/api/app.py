@@ -43,6 +43,7 @@ from ecommerce_ops.models import (
     seed_data_if_empty,
 )
 from ecommerce_ops.observability.tracing_otel import init_tracing, instrument_app
+from ecommerce_ops.pipeline.outbox import OutboxSweeper
 from ecommerce_ops.pipeline.runner import run_pipeline_task
 from ecommerce_ops.security.auth import AuthenticationMiddleware, require_permission
 from ecommerce_ops.security.models import Permission, User
@@ -57,6 +58,7 @@ task_queue = TaskQueue(
     num_workers=app_settings.TASK_QUEUE_WORKERS, max_queue_size=app_settings.TASK_QUEUE_MAX_SIZE
 )
 redis_task_queue: Optional["RedisTaskQueue"] = None
+outbox_sweeper = OutboxSweeper()
 SERVER_START_TIME = time.time()
 
 
@@ -110,9 +112,25 @@ async def _init_task_queue() -> Optional["RedisTaskQueue"]:
         return None
 
 
+async def _register_webhook_handlers() -> None:
+    """Register Shopify webhook handlers at startup.
+
+    Previously handlers were only registered inside the OAuth callback, so any
+    worker that never ran a callback would silently drop webhooks ("no
+    handlers for topic"). Registration is idempotent, so the legacy callback
+    path remains harmless.
+    """
+    from ecommerce_ops.connectors.shopify.handlers.order_handlers import WEBHOOK_HANDLERS
+    from ecommerce_ops.connectors.shopify.webhooks import webhook_router
+
+    webhook_router.register_many(WEBHOOK_HANDLERS)
+    logger.info("Registered %d Shopify webhook handler(s) at startup", len(WEBHOOK_HANDLERS))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global redis_task_queue
+    await _register_webhook_handlers()
     redis_task_queue = await _init_task_queue()
     if redis_task_queue is None:
         await task_queue.start()
@@ -137,6 +155,8 @@ async def lifespan(app: FastAPI):
         logger.critical("Database initialization failed: %s", e)
         if app_settings.ENV == "production":
             raise
+
+    await outbox_sweeper.start()
 
     try:
         await browser_pool.start()
@@ -171,6 +191,7 @@ async def lifespan(app: FastAPI):
     logger.info("WebSocket connections drained (%d closed)", len(close_snapshot))
 
     await ws_manager.close_redis()
+    await outbox_sweeper.stop()
     if redis_task_queue is not None:
         await redis_task_queue.stop(wait=True)
     else:

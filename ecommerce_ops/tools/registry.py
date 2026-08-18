@@ -1,6 +1,6 @@
 import abc
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, ClassVar, Dict, List, Optional
 
 logger = logging.getLogger("ecommerce_ops.tools.registry")
 
@@ -14,7 +14,7 @@ class Tool(abc.ABC):
 
 
 class ToolRegistry:
-    _tools: Dict[str, Tool] = {}
+    _tools: ClassVar[Dict[str, Tool]] = {}
 
     @classmethod
     def register(cls, tool: Tool) -> None:

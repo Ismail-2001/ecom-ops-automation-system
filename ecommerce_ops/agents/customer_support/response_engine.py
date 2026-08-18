@@ -4,7 +4,7 @@ Generates AI-powered customer support responses.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, ClassVar, Dict, List, Optional
 
 from ecommerce_ops.agents.customer_support.models import (
     KnowledgeArticle,
@@ -21,7 +21,7 @@ logger = logging.getLogger("ecommerce_ops.agents.customer_support.response")
 class ResponseTemplates:
     """Built-in response templates for common scenarios."""
 
-    TEMPLATES = {
+    TEMPLATES: ClassVar[Dict[TicketCategory, List[Dict[str, Any]]]] = {
         TicketCategory.ORDER_STATUS: [
             {
                 "name": "order_status_general",
@@ -99,7 +99,7 @@ class ResponseGenerationEngine:
     def generate_suggestion(
         self,
         ticket: SupportTicket,
-        conversation_history: List[Dict[str, Any]] = None,
+        conversation_history: List[Dict[str, Any]] | None = None,
         customer_context: Optional[Dict[str, Any]] = None,
     ) -> ResponseSuggestion:
         """Generate a response suggestion for a ticket."""
@@ -382,10 +382,7 @@ class ResponseGenerationEngine:
                 return True
 
         # Escalate VIP customers
-        if ticket.metadata.get("is_vip_customer"):
-            return True
-
-        return False
+        return bool(ticket.metadata.get("is_vip_customer"))
 
     def _generate_follow_ups(self, ticket: SupportTicket, response: Dict[str, Any]) -> List[str]:
         """Generate follow-up questions to gather more info."""

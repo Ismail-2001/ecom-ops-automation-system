@@ -16,12 +16,13 @@ Hardening (H3):
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Callable, Coroutine, Dict, List, Optional, Set
 
 logger = logging.getLogger("ecommerce_ops.infra.redis_task_queue")
@@ -41,7 +42,7 @@ class QueueFullError(Exception):
     """Raised when the task queue is at capacity and cannot accept new tasks."""
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"
@@ -50,7 +51,7 @@ class TaskStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class TaskPriority(str, Enum):
+class TaskPriority(StrEnum):
     LOW = "low"
     NORMAL = "normal"
     HIGH = "high"
@@ -457,17 +458,13 @@ class RedisTaskQueue:
 
         # Signal workers to drain.
         for _ in range(self.num_workers):
-            try:
+            with contextlib.suppress(Exception):
                 await self._queue_put_none()
-            except Exception:
-                pass
 
         if self._sweeper_task:
             self._sweeper_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._sweeper_task
-            except asyncio.CancelledError:
-                pass
 
         if wait:
             # Give in-flight tasks a bounded time to finish.
@@ -537,10 +534,8 @@ class RedisTaskQueue:
             return await asyncio.wait_for(handler(task.payload), timeout=timeout)
         finally:
             heartbeat_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await heartbeat_task
-            except asyncio.CancelledError:
-                pass
 
     async def _periodic_heartbeat(self, task_id: str, interval: float):
         """Send lease heartbeats while a task is executing."""

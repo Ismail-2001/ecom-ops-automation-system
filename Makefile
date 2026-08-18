@@ -41,12 +41,12 @@ prod-backup: ## Create backup
 
 test: ## Run all tests (Python + Frontend)
 	@echo "Running Python tests..."
-	cd .. && py -3 -m pytest tests/ -x -q --tb=short
+	py -3 -m pytest tests/ -x -q --tb=short
 	@echo "Running frontend tests..."
 	cd frontend && npx vitest run
 
 test-python: ## Run Python tests only
-	cd .. && py -3 -m pytest tests/ -x -q --tb=short
+	py -3 -m pytest tests/ -x -q --tb=short
 
 test-frontend: ## Run frontend unit tests only
 	cd frontend && npx vitest run
@@ -55,17 +55,17 @@ test-e2e: ## Run Playwright E2E tests
 	cd frontend && npx playwright test
 
 test-coverage: ## Run tests with coverage
-	cd .. && py -3 -m pytest tests/ --cov=ecommerce_ops --cov-report=term-missing
+	py -3 -m pytest tests/ --cov=ecommerce_ops --cov-report=term-missing
 
 # ── Linting ─────────────────────────────────────────────────
 
 lint: ## Run all linters
-	cd .. && ruff check ecommerce_ops/
+	ruff check ecommerce_ops/
 	cd frontend && npx next lint
 
 lint-fix: ## Auto-fix lint issues
-	cd .. && ruff check ecommerce_ops/ --fix
-	cd .. && ruff format ecommerce_ops/
+	ruff check ecommerce_ops/ --fix
+	ruff format ecommerce_ops/
 	cd frontend && npx next lint --fix
 
 # ── Build ───────────────────────────────────────────────────
@@ -82,10 +82,10 @@ build-frontend: ## Build frontend image only
 # ── Database ────────────────────────────────────────────────
 
 db-migrate: ## Run Alembic migrations
-	cd .. && alembic upgrade head
+	alembic upgrade head
 
 db-revision: ## Create new migration (usage: make db-revision MSG="add users table")
-	cd .. && alembic revision --autogenerate -m "$(MSG)"
+	alembic revision --autogenerate -m "$(MSG)"
 
 db-check: ## Check for migration drift
 	bash scripts/check-migrations.sh

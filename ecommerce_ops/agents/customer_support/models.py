@@ -4,13 +4,13 @@ Pydantic models for support tickets, responses, and analytics.
 """
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
 
-class TicketStatus(str, Enum):
+class TicketStatus(StrEnum):
     OPEN = "open"
     IN_PROGRESS = "in_progress"
     WAITING_CUSTOMER = "waiting_customer"
@@ -20,7 +20,7 @@ class TicketStatus(str, Enum):
     ESCALATED = "escalated"
 
 
-class TicketPriority(str, Enum):
+class TicketPriority(StrEnum):
     LOW = "low"
     NORMAL = "normal"
     HIGH = "high"
@@ -28,7 +28,7 @@ class TicketPriority(str, Enum):
     CRITICAL = "critical"
 
 
-class TicketCategory(str, Enum):
+class TicketCategory(StrEnum):
     ORDER_STATUS = "order_status"
     SHIPPING = "shipping"
     RETURNS = "returns"
@@ -41,7 +41,7 @@ class TicketCategory(str, Enum):
     OTHER = "other"
 
 
-class TicketChannel(str, Enum):
+class TicketChannel(StrEnum):
     EMAIL = "email"
     CHAT = "chat"
     PHONE = "phone"
@@ -49,7 +49,7 @@ class TicketChannel(str, Enum):
     API = "api"
 
 
-class SentimentType(str, Enum):
+class SentimentType(StrEnum):
     VERY_NEGATIVE = "very_negative"
     NEGATIVE = "negative"
     NEUTRAL = "neutral"
@@ -57,7 +57,7 @@ class SentimentType(str, Enum):
     VERY_POSITIVE = "very_positive"
 
 
-class CustomerSatisfaction(str, Enum):
+class CustomerSatisfaction(StrEnum):
     VERY_DISSATISFIED = "very_dissatisfied"
     DISSATISFIED = "dissatisfied"
     NEUTRAL = "neutral"

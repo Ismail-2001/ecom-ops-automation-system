@@ -1,4 +1,5 @@
 """Tests for Shopify webhook durable-inbox semantics (C2)."""
+
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -7,10 +8,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from ecommerce_ops.connectors.shopify.handlers.order_handlers import (
     SHOPIFY_TASK_NAMES,
+    WEBHOOK_HANDLERS,
     _persist_event,
     process_shopify_event,
 )
-from ecommerce_ops.connectors.shopify.webhooks import WebhookEvent
+from ecommerce_ops.connectors.shopify.webhooks import (
+    ShopifyWebhookRouter,
+    WebhookEvent,
+    webhook_router,
+)
 from ecommerce_ops.models import ShopifyWebhookEvent
 from ecommerce_ops.models.db import Base
 
@@ -111,3 +117,27 @@ async def test_process_event_failure_keeps_unprocessed_and_raises(db_factory):
         row = await s.get(ShopifyWebhookEvent, row_id)
     assert row.processed is False
     assert "boom" in (row.error or "")
+
+
+def test_router_register_is_idempotent():
+    """Registering the same handlers twice must not double-dispatch."""
+    router = ShopifyWebhookRouter()
+    router.register_many(WEBHOOK_HANDLERS)
+    router.register_many(WEBHOOK_HANDLERS)
+    assert len(router.get_supported_topics()) == len(WEBHOOK_HANDLERS)
+    assert all(len(handlers) == 1 for handlers in router._handlers.values())
+
+
+@pytest.mark.asyncio
+async def test_app_startup_registers_webhook_handlers():
+    """Every worker must serve webhooks from boot, not only after an OAuth
+    callback (any worker that never ran a callback would otherwise drop
+    webhooks with 'no handlers for topic')."""
+    import ecommerce_ops.api.app as app_mod
+
+    await app_mod._register_webhook_handlers()
+    topics = webhook_router.get_supported_topics()
+    assert set(WEBHOOK_HANDLERS).issubset(topics)
+
+    await app_mod._register_webhook_handlers()  # idempotent — no duplicates
+    assert len(webhook_router._handlers["orders/create"]) == 1

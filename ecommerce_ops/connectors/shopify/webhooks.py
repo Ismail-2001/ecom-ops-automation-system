@@ -44,11 +44,11 @@ WebhookHandler = Callable[[WebhookEvent], Coroutine[Any, Any, None]]
 class ShopifyWebhookRouter:
     """Routes Shopify webhook events to registered handlers."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._handlers: Dict[str, List[WebhookHandler]] = {}
         self._shopify_oauth = None
 
-    def _get_oauth(self):
+    def _get_oauth(self) -> Any:
         """Lazy import to avoid circular dependencies."""
         if self._shopify_oauth is None:
             from ecommerce_ops.connectors.shopify.oauth import shopify_oauth
@@ -56,14 +56,19 @@ class ShopifyWebhookRouter:
             self._shopify_oauth = shopify_oauth
         return self._shopify_oauth
 
-    def register(self, topic: str, handler: WebhookHandler):
-        """Register a handler for a webhook topic."""
-        if topic not in self._handlers:
-            self._handlers[topic] = []
-        self._handlers[topic].append(handler)
-        logger.debug("Registered handler for topic: %s", topic)
+    def register(self, topic: str, handler: WebhookHandler) -> None:
+        """Register a handler for a webhook topic (idempotent per handler).
 
-    def register_many(self, handlers: Dict[str, WebhookHandler]):
+        Idempotency is important because handlers are registered both at app
+        startup (so every worker serves webhooks from boot) and in the OAuth
+        callback path (legacy). Duplicate registration would double-dispatch.
+        """
+        handlers = self._handlers.setdefault(topic, [])
+        if handler not in handlers:
+            handlers.append(handler)
+            logger.debug("Registered handler for topic: %s", topic)
+
+    def register_many(self, handlers: Dict[str, WebhookHandler]) -> None:
         """Register multiple handlers at once."""
         for topic, handler in handlers.items():
             self.register(topic, handler)
@@ -74,7 +79,7 @@ class ShopifyWebhookRouter:
 
     def verify_hmac(self, body: bytes, hmac_header: str) -> bool:
         """Verify HMAC signature from Shopify."""
-        return self._get_oauth().verify_webhook(body, hmac_header)
+        return bool(self._get_oauth().verify_webhook(body, hmac_header))
 
     def parse_event(
         self,

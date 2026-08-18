@@ -3,9 +3,10 @@ Audit Logging (PostgreSQL-backed)
 Comprehensive audit logging for security events with persistent storage.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, ClassVar, Dict, List, Optional, Set
 
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -43,7 +44,7 @@ class AuditEntry(BaseModel):
 class AuditLogger:
     """Comprehensive audit logging service backed by PostgreSQL."""
 
-    _sensitive_fields = {
+    _sensitive_fields: ClassVar[Set[str]] = {
         "password",
         "api_key",
         "secret",
@@ -51,6 +52,9 @@ class AuditLogger:
         "credit_card",
         "ssn",
     }
+
+    # Strong references to background persist tasks so they are not GC'd (RUF006).
+    _background_tasks: ClassVar[Set["asyncio.Task"]] = set()
 
     def log_event(self, event: SecurityEvent) -> AuditEntry:
         """Log a security event to PostgreSQL."""
@@ -84,11 +88,11 @@ class AuditLogger:
         )
 
         # Persist asynchronously (fire-and-forget for non-blocking)
-        import asyncio
-
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(self._persist_entry(entry))
+            task = loop.create_task(self._persist_entry(entry))
+            task.add_done_callback(self._background_tasks.discard)
+            self._background_tasks.add(task)
         except RuntimeError:
             # No event loop running — persist synchronously via helper
             logger.warning("No event loop; audit entry may not persist")
@@ -277,7 +281,7 @@ class AuditLogger:
 
             failures_q = await session.execute(
                 select(func.count()).select_from(
-                    base.where(SecurityAuditLog.success == False).subquery()
+                    base.where(not SecurityAuditLog.success).subquery()
                 )
             )
             failures = failures_q.scalar() or 0

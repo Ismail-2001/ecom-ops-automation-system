@@ -4,7 +4,7 @@ Analyzes cart data and selects optimal recovery strategy.
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, ClassVar, Dict, List, Optional, Tuple
 
 from ecommerce_ops.agents.cart_recovery.models import (
     AbandonedCart,
@@ -19,7 +19,7 @@ class StrategyConfig:
     """Configuration for recovery strategies."""
 
     # Discount thresholds by cart value
-    DISCOUNT_THRESHOLDS = {
+    DISCOUNT_THRESHOLDS: ClassVar[Dict[str, Dict[str, float]]] = {
         "low": {"min": 0, "max": 50, "percent": 5, "fixed": 2.0},
         "medium": {"min": 50, "max": 150, "percent": 10, "fixed": 5.0},
         "high": {"min": 150, "max": 500, "percent": 15, "fixed": 15.0},
@@ -27,7 +27,7 @@ class StrategyConfig:
     }
 
     # Risk thresholds
-    RISK_THRESHOLDS = {
+    RISK_THRESHOLDS: ClassVar[Dict[CartRiskLevel, Dict[str, float]]] = {
         CartRiskLevel.LOW: {"max_hours": 2, "min_value": 0},
         CartRiskLevel.MEDIUM: {"max_hours": 24, "min_value": 25},
         CartRiskLevel.HIGH: {"max_hours": 72, "min_value": 100},
@@ -35,7 +35,7 @@ class StrategyConfig:
     }
 
     # Strategy effectiveness weights (can be tuned based on data)
-    STRATEGY_WEIGHTS = {
+    STRATEGY_WEIGHTS: ClassVar[Dict[RecoveryStrategy, float]] = {
         RecoveryStrategy.DISCOUNT_PERCENT: 0.35,
         RecoveryStrategy.DISCOUNT_FIXED: 0.25,
         RecoveryStrategy.FREE_SHIPPING: 0.20,

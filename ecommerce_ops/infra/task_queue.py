@@ -11,7 +11,7 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Callable, Optional
 
 from ecommerce_ops.utils import utc_now
@@ -26,7 +26,7 @@ class QueueFullError(Exception):
     """Raised when the in-memory task queue is at capacity."""
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"

@@ -66,7 +66,7 @@ async def _persist_event(event: WebhookEvent, error: Optional[str] = None) -> Op
             await session.commit()
             await session.refresh(row)
         logger.info("Persisted webhook event topic=%s shop=%s", event.topic, event.shop_domain)
-        return row.id
+        return int(row.id)
     except Exception:
         logger.exception(
             "Failed to persist webhook event topic=%s shop=%s", event.topic, event.shop_domain

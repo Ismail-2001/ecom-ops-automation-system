@@ -4,7 +4,7 @@ Role-Based Access Control models and permission definitions.
 """
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Dict, List, Optional, Set
 
 from pydantic import BaseModel, Field
@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from ecommerce_ops.utils import utc_now
 
 
-class Permission(str, Enum):
+class Permission(StrEnum):
     """System permissions."""
 
     # Dashboard
@@ -78,7 +78,7 @@ class Permission(str, Enum):
     API_KEYS_REVOKE = "api_keys:revoke"
 
 
-class Role(str, Enum):
+class Role(StrEnum):
     """Predefined roles."""
 
     SUPER_ADMIN = "super_admin"

@@ -140,8 +140,8 @@ class LocalEmbeddingProvider(EmbeddingProvider):
                 from sentence_transformers import SentenceTransformer
 
                 self._model = SentenceTransformer(self.model_name)
-            except ImportError:
-                raise RuntimeError("sentence-transformers not installed")
+            except ImportError as exc:
+                raise RuntimeError("sentence-transformers not installed") from exc
         return self._model
 
     async def embed_text(self, text: str) -> List[float]:
@@ -242,7 +242,7 @@ class EmbeddingService:
         # Generate embeddings for uncached texts
         if uncached_texts:
             new_embeddings = await self.provider.embed_texts(uncached_texts)
-            for idx, embedding in zip(uncached_indices, new_embeddings):
+            for idx, embedding in zip(uncached_indices, new_embeddings, strict=False):
                 results[idx] = embedding
                 if use_cache:
                     self._cache[texts[idx]] = embedding

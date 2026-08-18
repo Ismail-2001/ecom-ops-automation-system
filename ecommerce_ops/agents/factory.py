@@ -284,7 +284,7 @@ class UnifiedAgent:
                             confidence=adapted.get("confidence", 0.5),
                             requires_approval=adapted.get("requires_approval", True),
                         )
-                        decisions = state.get("decisions", []) + [decision]
+                        decisions = [*state.get("decisions", []), decision]
                         state["decisions"] = decisions
                         elapsed = (time.monotonic() - start) * 1000
                         logger.info(

@@ -4,7 +4,7 @@ Models for vector-based memory storage and retrieval.
 """
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from ecommerce_ops.utils import utc_now
 
 
-class MemoryType(str, Enum):
+class MemoryType(StrEnum):
     """Types of memory entries."""
 
     EPISODIC = "episodic"  # Specific events/interactions
@@ -22,7 +22,7 @@ class MemoryType(str, Enum):
     DECISION = "decision"  # Past decisions and outcomes
 
 
-class MemoryImportance(str, Enum):
+class MemoryImportance(StrEnum):
     """Importance levels for memory entries."""
 
     LOW = "low"

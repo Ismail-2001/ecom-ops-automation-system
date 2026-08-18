@@ -69,7 +69,7 @@ async def reflection_node(state: Dict[str, Any]) -> Dict[str, Any]:
     feedback = await reflection.run(decisions)
 
     corrected = []
-    for d, fb in zip(decisions, feedback):
+    for d, fb in zip(decisions, feedback, strict=False):
         c = await reflection.correct_decision(d, fb)
         corrected.append(c)
 
@@ -102,7 +102,7 @@ class Supervisor:
 
             builder.add_node(name, make_node)
 
-        all_nodes = list(DEFAULT_PLAN) + ["reflection", END]
+        all_nodes = [*list(DEFAULT_PLAN), "reflection", END]
         builder.set_conditional_entry_point(
             lambda s: "planner" if s.get("execution_plan") is None else DEFAULT_PLAN[0],
             {"planner": "planner", DEFAULT_PLAN[0]: DEFAULT_PLAN[0]},

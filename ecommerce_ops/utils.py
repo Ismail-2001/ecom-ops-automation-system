@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import wraps
 from typing import Any, Callable, TypeVar
 
@@ -17,7 +17,7 @@ def utc_now() -> datetime:
     (and other databases that do not preserve timezone info on read). This
     avoids comparing an aware timestamp against a naive value from the DB.
     """
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def utc_now_iso() -> str:

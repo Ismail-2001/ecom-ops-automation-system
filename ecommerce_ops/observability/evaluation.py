@@ -5,15 +5,15 @@ Comprehensive evaluation of agent performance and decision quality.
 
 import logging
 from datetime import datetime
-from enum import Enum
-from typing import Any, Dict, List, Optional
+from enum import StrEnum
+from typing import Any, ClassVar, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger("ecommerce_ops.observability.evaluation")
 
 
-class MetricType(str, Enum):
+class MetricType(StrEnum):
     """Types of evaluation metrics."""
 
     BINARY = "binary"  # 0 or 1
@@ -22,7 +22,7 @@ class MetricType(str, Enum):
     CATEGORICAL = "categorical"  # predefined categories
 
 
-class EvaluationDimension(str, Enum):
+class EvaluationDimension(StrEnum):
     """Evaluation dimensions for agent decisions."""
 
     ACCURACY = "accuracy"
@@ -106,7 +106,7 @@ class EvaluationFramework:
     """Framework for evaluating agent decisions."""
 
     # Default metric definitions
-    DEFAULT_METRICS = {
+    DEFAULT_METRICS: ClassVar[Dict[EvaluationDimension, MetricDefinition]] = {
         EvaluationDimension.ACCURACY: MetricDefinition(
             name="decision_accuracy",
             dimension=EvaluationDimension.ACCURACY,

@@ -4,13 +4,13 @@ Models for local trace storage and retrieval.
 """
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
 
-class TraceStatus(str, Enum):
+class TraceStatus(StrEnum):
     """Trace execution status."""
 
     RUNNING = "running"
@@ -19,7 +19,7 @@ class TraceStatus(str, Enum):
     TIMEOUT = "timeout"
 
 
-class SpanType(str, Enum):
+class SpanType(StrEnum):
     """Types of spans."""
 
     AGENT = "agent"

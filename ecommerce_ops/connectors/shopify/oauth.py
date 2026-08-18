@@ -9,7 +9,7 @@ import hmac
 import logging
 import secrets
 import time
-from typing import Optional
+from typing import ClassVar, List, Optional
 from urllib.parse import urlencode
 
 import httpx
@@ -31,7 +31,7 @@ class OAuthSession(BaseModel):
 class ShopifyOAuth:
     """Shopify OAuth 2.0 implementation."""
 
-    SCOPES = [
+    SCOPES: ClassVar[List[str]] = [
         "read_products",
         "write_products",
         "read_orders",

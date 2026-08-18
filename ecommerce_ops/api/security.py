@@ -85,7 +85,7 @@ async def create_user(req: UserCreateRequest, admin: User = Depends(require_admi
         }
 
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.get("/users")
@@ -327,7 +327,7 @@ async def get_role_permissions(role_name: str, admin: User = Depends(require_adm
     try:
         role = Role(role_name)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid role")
+        raise HTTPException(status_code=400, detail="Invalid role") from None
 
     role_def = role_manager.get_role(role)
     if not role_def:

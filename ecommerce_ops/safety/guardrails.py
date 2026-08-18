@@ -5,7 +5,7 @@ Guardrails - Prompt injection protection and hallucination detection.
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, ClassVar, Dict, List, Optional
 
 logger = logging.getLogger("ecommerce_ops.safety.guardrails")
 
@@ -23,7 +23,7 @@ class GuardrailResult:
 class PromptInjectionGuard:
     """Protect against prompt injection attacks."""
 
-    DANGEROUS_PATTERNS = [
+    DANGEROUS_PATTERNS: ClassVar[List[str]] = [
         r"ignore\s+(all\s+)?previous\s+instructions",
         r"ignore\s+(all\s+)?above\s+instructions",
         r"disregard\s+(all\s+)?previous",

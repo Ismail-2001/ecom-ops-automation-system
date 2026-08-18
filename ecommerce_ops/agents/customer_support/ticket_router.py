@@ -4,7 +4,7 @@ Automatically classifies, prioritizes, and routes support tickets.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, ClassVar, Dict, List, Optional
 
 from ecommerce_ops.agents.customer_support.models import (
     EscalationRule,
@@ -20,7 +20,7 @@ logger = logging.getLogger("ecommerce_ops.agents.customer_support.routing")
 class CategoryClassifier:
     """Classifies tickets into categories based on content."""
 
-    CATEGORY_KEYWORDS = {
+    CATEGORY_KEYWORDS: ClassVar[Dict[TicketCategory, List[str]]] = {
         TicketCategory.ORDER_STATUS: [
             "order",
             "status",
@@ -145,7 +145,7 @@ class PriorityAssigner:
     """Assigns priority based on multiple factors."""
 
     # SLA targets in hours
-    SLA_TARGETS = {
+    SLA_TARGETS: ClassVar[Dict[TicketPriority, int]] = {
         TicketPriority.CRITICAL: 1,
         TicketPriority.URGENT: 4,
         TicketPriority.HIGH: 8,
@@ -154,7 +154,7 @@ class PriorityAssigner:
     }
 
     # Category base priorities
-    CATEGORY_BASE_PRIORITY = {
+    CATEGORY_BASE_PRIORITY: ClassVar[Dict[TicketCategory, TicketPriority]] = {
         TicketCategory.COMPLAINT: TicketPriority.HIGH,
         TicketCategory.REFUNDS: TicketPriority.HIGH,
         TicketCategory.TECHNICAL: TicketPriority.NORMAL,
@@ -228,7 +228,7 @@ class TicketRouter:
     def route_ticket(
         self,
         ticket: SupportTicket,
-        available_agents: List[Dict[str, Any]] = None,
+        available_agents: List[Dict[str, Any]] | None = None,
     ) -> Dict[str, Any]:
         """Route ticket to appropriate queue/agent."""
         # Check escalation rules
@@ -318,14 +318,14 @@ class TicketRouter:
                 return False
 
         # Check category
-        if "categories" in conditions:
-            if ticket.category.value not in conditions["categories"]:
-                return False
+        if "categories" in conditions and ticket.category.value not in conditions["categories"]:
+            return False
 
         # Check sentiment
-        if "sentiment" in conditions:
-            if ticket.sentiment and ticket.sentiment.value != conditions["sentiment"]:
-                return False
+        if "sentiment" in conditions and (
+            ticket.sentiment and ticket.sentiment.value != conditions["sentiment"]
+        ):
+            return False
 
         # Check keywords
         if "keywords" in conditions:
@@ -405,7 +405,7 @@ class TicketClassifier:
         self,
         ticket: SupportTicket,
         customer_value: float = 0.0,
-        available_agents: List[Dict[str, Any]] = None,
+        available_agents: List[Dict[str, Any]] | None = None,
     ) -> Dict[str, Any]:
         """Full ticket classification pipeline."""
         # Classify category

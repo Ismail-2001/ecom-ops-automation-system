@@ -5,7 +5,7 @@ Middleware for security hardening.
 
 import logging
 import time
-from typing import List
+from typing import ClassVar, Dict, List
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -25,7 +25,7 @@ ALLOWED_ORIGINS: List[str] = [
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Middleware for adding security headers."""
 
-    SECURITY_HEADERS = {
+    SECURITY_HEADERS: ClassVar[Dict[str, str]] = {
         "X-Content-Type-Options": "nosniff",
         "X-Frame-Options": "DENY",
         "X-XSS-Protection": "1; mode=block",
@@ -37,7 +37,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com;",
     }
 
-    CORS_HEADERS = {
+    CORS_HEADERS: ClassVar[Dict[str, str]] = {
         "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-Key, X-Operator-Id",
         "Access-Control-Max-Age": "86400",
@@ -72,7 +72,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 class InputSanitizationMiddleware(BaseHTTPMiddleware):
     """Middleware for input sanitization."""
 
-    DANGEROUS_PATTERNS = [
+    DANGEROUS_PATTERNS: ClassVar[List[str]] = [
         "<script",
         "javascript:",
         "onerror=",
@@ -100,7 +100,7 @@ class InputSanitizationMiddleware(BaseHTTPMiddleware):
                     content={"detail": "Invalid request"},
                 )
 
-        for header_name, header_value in request.headers.items():
+        for _header_name, header_value in request.headers.items():
             for pattern in self.DANGEROUS_PATTERNS:
                 if pattern.lower() in str(header_value).lower():
                     logger.warning(

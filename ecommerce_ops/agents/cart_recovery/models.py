@@ -4,7 +4,7 @@ Pydantic models for cart recovery analytics and strategy.
 """
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from ecommerce_ops.utils import utc_now
 
 
-class CartStatus(str, Enum):
+class CartStatus(StrEnum):
     ABANDONED = "abandoned"
     RECOVERY_PENDING = "recovery_pending"
     RECOVERY_SENT = "recovery_sent"
@@ -21,7 +21,7 @@ class CartStatus(str, Enum):
     LOST = "lost"
 
 
-class RecoveryStrategy(str, Enum):
+class RecoveryStrategy(StrEnum):
     NONE = "none"
     DISCOUNT_PERCENT = "discount_percent"
     DISCOUNT_FIXED = "discount_fixed"
@@ -32,7 +32,7 @@ class RecoveryStrategy(str, Enum):
     PERSONAL_OUTREACH = "personal_outreach"
 
 
-class CartRiskLevel(str, Enum):
+class CartRiskLevel(StrEnum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"

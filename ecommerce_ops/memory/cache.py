@@ -1,7 +1,8 @@
 import hashlib
 import json
 import logging
-from typing import Any, Optional
+import time
+from typing import Any, Dict, Optional
 
 import redis.asyncio as redis
 from redis.exceptions import ConnectionError, TimeoutError
@@ -12,6 +13,13 @@ from ecommerce_ops.infra.circuit_breaker import CircuitBreaker, CircuitBreakerOp
 from ecommerce_ops.infra.retry import async_retry_decorator
 
 logger = logging.getLogger("ecommerce_ops.memory")
+
+
+# Backoff window between connection attempts. Without it, every caller hammers
+# the connect timeout whenever Redis is down, which stalls boot and turns
+# benchmark/test runs into long hangs. After one failed attempt, callers get
+# None (graceful degradation) until the window elapses.
+REDIS_RECONNECT_BACKOFF_SECONDS = 30.0
 
 
 CACHE_TTL_BY_PREFIX: dict[str, int] = {
@@ -38,28 +46,34 @@ def _get_ttl(path: str) -> int:
 
 class RedisCache:
     _circuit_breaker = CircuitBreaker(name="Redis", failure_threshold=3, recovery_timeout=15.0)
+    _redis: Optional[redis.Redis] = None
+    _last_connect_attempt: float = 0.0
 
     async def get_client(self) -> Optional[redis.Redis]:
-        if self._redis is None:
-            try:
-                client = redis.from_url(
-                    self.redis_url,
-                    decode_responses=True,
-                    max_connections=settings.REDIS_MAX_CONNECTIONS,
-                    socket_timeout=settings.REDIS_SOCKET_TIMEOUT,
-                    socket_connect_timeout=settings.REDIS_SOCKET_CONNECT_TIMEOUT,
-                )
-                await client.ping()
-                self._redis = client
-                logger.info("Initialized Redis client")
-            except Exception as e:
-                logger.warning("Failed to initialize Redis: %s", e)
-                self._redis = None
+        if self._redis is not None:
+            return self._redis
+        now = time.monotonic()
+        if now - self._last_connect_attempt < REDIS_RECONNECT_BACKOFF_SECONDS:
+            return None
+        self._last_connect_attempt = now
+        try:
+            client = redis.from_url(
+                self.redis_url,
+                decode_responses=True,
+                max_connections=settings.REDIS_MAX_CONNECTIONS,
+                socket_timeout=settings.REDIS_SOCKET_TIMEOUT,
+                socket_connect_timeout=settings.REDIS_SOCKET_CONNECT_TIMEOUT,
+            )
+            await client.ping()
+            self._redis = client
+            logger.info("Initialized Redis client")
+        except Exception as e:
+            logger.warning("Failed to initialize Redis: %s", e)
+            self._redis = None
         return self._redis
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.redis_url = settings.REDIS_URL
-        self._redis: Optional[redis.Redis] = None
         self._hits = 0
         self._misses = 0
         self._last_hit_ratio = 0.0
@@ -89,7 +103,7 @@ class RedisCache:
 
     async def set(self, key: str, value: Any, ttl: int = 3600) -> bool:
         try:
-            return await self._circuit_breaker.call(self._set_with_retry, key, value, ttl)
+            return bool(await self._circuit_breaker.call(self._set_with_retry, key, value, ttl))
         except CircuitBreakerOpenError:
             logger.warning("Redis circuit open, skipping SET %s", key)
             return False
@@ -99,7 +113,7 @@ class RedisCache:
 
     async def get_cached_response(
         self, method: str, path: str, query: str = ""
-    ) -> Optional[tuple[int, dict]]:
+    ) -> Optional[tuple[int, Dict[str, Any]]]:
         ttl = _get_ttl(path)
         if ttl == 0 or method != "GET":
             return None
@@ -110,7 +124,7 @@ class RedisCache:
         return raw["status_code"], raw["body"]
 
     async def set_cached_response(
-        self, method: str, path: str, query: str, status_code: int, body: dict
+        self, method: str, path: str, query: str, status_code: int, body: Dict[str, Any]
     ) -> None:
         ttl = _get_ttl(path)
         if ttl == 0 or method != "GET":
@@ -118,7 +132,7 @@ class RedisCache:
         key = _cache_key(method, path, query)
         await self.set(key, {"status_code": status_code, "body": body}, ttl=ttl)
 
-    @async_retry_decorator(
+    @async_retry_decorator(  # type: ignore[untyped-decorator]
         exceptions=(ConnectionError, TimeoutError, CircuitBreakerOpenError),
         max_attempts=2,
         min_wait=0.5,
@@ -133,7 +147,7 @@ class RedisCache:
             return json.loads(val)
         return None
 
-    @async_retry_decorator(
+    @async_retry_decorator(  # type: ignore[untyped-decorator]
         exceptions=(ConnectionError, TimeoutError, CircuitBreakerOpenError),
         max_attempts=2,
         min_wait=0.5,
@@ -147,7 +161,7 @@ class RedisCache:
         await client.set(key, val_str, ex=ttl)
         return True
 
-    async def close(self):
+    async def close(self) -> None:
         if self._redis:
             await self._redis.close()
             self._redis = None

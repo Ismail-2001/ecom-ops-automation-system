@@ -660,14 +660,18 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                 executed_ok = False
                 execution_msg = None
                 if auto_attempt:
-                    # C5: Write outbox message before live Shopify call
+                    # C5: Transactional outbox. Commit the action + outbox row
+                    # BEFORE the live Shopify call so a crash mid-call cannot
+                    # silently lose the dispatch; the OutboxSweeper redelivers
+                    # rows left stuck in "pending".
                     outbox = OutboxMessage(
                         action_id=action_id,
                         status="pending",
                         payload=payload,
                     )
+                    session.add(action)
                     session.add(outbox)
-                    await session.flush()
+                    await session.commit()
 
                     executed_ok, execution_msg = await execute_shop_action(action)
                     action.status = "executed" if executed_ok else "failed"
@@ -679,8 +683,8 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                         outbox.status = "sent"
                         outbox.sent_at = utc_now()
                         METRIC_DECISIONS_AUTO_APPROVED.labels(agent=d.agent_id).inc()
-
-                session.add(action)
+                else:
+                    session.add(action)
 
                 METRIC_DECISIONS_CREATED.labels(agent=d.agent_id, action_type=mapped_type).inc()
                 METRIC_FINANCIAL_IMPACT.labels(agent=d.agent_id, action_type=mapped_type).inc(
