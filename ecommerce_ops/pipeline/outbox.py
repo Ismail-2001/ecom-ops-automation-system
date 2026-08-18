@@ -19,6 +19,7 @@ from typing import Any, Optional
 
 from sqlalchemy import select
 
+from ecommerce_ops.infra.distributed_lock import DistributedLock
 from ecommerce_ops.models import ApprovalAction, OutboxMessage, async_session_factory
 from ecommerce_ops.pipeline.runner import execute_shop_action
 from ecommerce_ops.utils import utc_now
@@ -29,6 +30,7 @@ OUTBOX_SWEEP_INTERVAL_SECONDS = 30
 OUTBOX_ORPHAN_AGE_SECONDS = 60
 OUTBOX_MAX_RETRY_COUNT = 5
 OUTBOX_BATCH_SIZE = 50
+OUTBOX_LEADER_TTL_SECONDS = 90
 
 
 class OutboxSweeper:
@@ -40,11 +42,16 @@ class OutboxSweeper:
         orphan_age_seconds: float = OUTBOX_ORPHAN_AGE_SECONDS,
         max_retry_count: int = OUTBOX_MAX_RETRY_COUNT,
         batch_size: int = OUTBOX_BATCH_SIZE,
+        leader_lock: Optional[DistributedLock] = None,
     ) -> None:
         self._interval_seconds = interval_seconds
         self._orphan_age_seconds = orphan_age_seconds
         self._max_retry_count = max_retry_count
         self._batch_size = batch_size
+        self._leader_lock = leader_lock or DistributedLock(
+            "outbox-sweeper",
+            ttl_seconds=OUTBOX_LEADER_TTL_SECONDS,
+        )
         self._task: Optional[asyncio.Task[Any]] = None
 
     async def start(self) -> None:
@@ -65,9 +72,17 @@ class OutboxSweeper:
     async def _run(self) -> None:
         while True:
             try:
-                redelivered = await self.sweep_once()
-                if redelivered:
-                    logger.info("Outbox sweep redelivered %d message(s)", redelivered)
+                acquired = await self._leader_lock.acquire()
+                if not acquired:
+                    logger.debug("Outbox sweep skipped: another instance is leader")
+                    await asyncio.sleep(self._interval_seconds)
+                    continue
+                try:
+                    redelivered = await self.sweep_once()
+                    if redelivered:
+                        logger.info("Outbox sweep redelivered %d message(s)", redelivered)
+                finally:
+                    await self._leader_lock.release()
             except asyncio.CancelledError:
                 raise
             except Exception:

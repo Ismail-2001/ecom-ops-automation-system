@@ -10,6 +10,7 @@ from ecommerce_ops.models.db import (
     AgentStatus,
     ApprovalAction,
     AuditEntry,
+    OutboxMessage,
     StoreSettings,
     async_session_factory,
 )
@@ -178,11 +179,29 @@ async def seed_expanded_demo():
 
         session.add_all(actions)
         session.add_all(audits)
+
+        # Seed orphaned outbox rows (older than the sweep window) so the
+        # distributed-lock-guarded OutboxSweeper has redeliverable work.
+        outbox_rows = []
+        for i in range(3):
+            action = actions[i]
+            outbox_rows.append(
+                OutboxMessage(
+                    action_id=action.id,
+                    status="pending",
+                    payload=action.payload,
+                    created_at=now - timedelta(hours=2 + i),
+                    retry_count=0,
+                )
+            )
+        session.add_all(outbox_rows)
+
         await session.commit()
 
         return {
             "status": "seeded",
             "actions_created": len(actions),
             "audits_created": len(audits),
+            "outbox_created": len(outbox_rows),
             "agents": len(AGENTS),
         }

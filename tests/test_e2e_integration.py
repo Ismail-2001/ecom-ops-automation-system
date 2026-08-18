@@ -279,7 +279,7 @@ async def test_security_roles(client):
 @pytest.mark.asyncio
 async def test_memory_health(client):
     with patch("ecommerce_ops.api.memory.vector_store") as mock_store:
-        mock_store.get_stats.return_value = MagicMock(total_memories=0)
+        mock_store.get_stats = AsyncMock(return_value=MagicMock(total_memories=0))
         with patch("ecommerce_ops.api.memory.session_manager") as mock_sess:
             mock_sess.get_stats.return_value = {"total_sessions": 0, "active_sessions": 0}
             resp = await client.get("/memory/health")
@@ -289,7 +289,7 @@ async def test_memory_health(client):
 @pytest.mark.asyncio
 async def test_memory_list_memories(client):
     with patch("ecommerce_ops.api.memory.vector_store") as mock_store:
-        mock_store._filter_memories.return_value = []
+        mock_store._filter_memories = AsyncMock(return_value=[])
         resp = await client.get("/memory/memories")
         assert resp.status_code == 200
 

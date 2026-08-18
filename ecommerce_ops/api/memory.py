@@ -14,9 +14,9 @@ from ecommerce_ops.memory.vector.models import (
     MemoryImportance,
     MemoryType,
 )
+from ecommerce_ops.memory.vector.persistent_store import vector_store
 from ecommerce_ops.memory.vector.retrieval import memory_retrieval
 from ecommerce_ops.memory.vector.sessions import session_manager
-from ecommerce_ops.memory.vector.store import vector_store
 from ecommerce_ops.security.auth import require_permission
 from ecommerce_ops.security.models import Permission, User
 from ecommerce_ops.utils import utc_now
@@ -166,7 +166,7 @@ async def list_memories(
         min_similarity=0.0,
     )
 
-    candidates = vector_store._filter_memories(query)
+    candidates = await vector_store._filter_memories(query)
     candidates.sort(key=lambda e: e.created_at, reverse=True)
 
     return {
@@ -193,7 +193,7 @@ async def get_memory_stats(
     _: User = Depends(require_permission(Permission.MEMORY_VIEW)),
 ):
     """Get memory system statistics."""
-    stats = vector_store.get_stats()
+    stats = await vector_store.get_stats()
     return stats.model_dump()
 
 
@@ -368,7 +368,7 @@ async def get_agent_memory_stats(
     _: User = Depends(require_permission(Permission.MEMORY_VIEW)),
 ):
     """Get memory stats for an agent."""
-    return agent_memory_manager.get_agent_memory_stats(agent_name)
+    return await agent_memory_manager.get_agent_memory_stats(agent_name)
 
 
 # ── Health ─────────────────────────────────────────────────
@@ -377,7 +377,7 @@ async def get_agent_memory_stats(
 @router.get("/health")
 async def memory_health():
     """Health check for memory service."""
-    stats = vector_store.get_stats()
+    stats = await vector_store.get_stats()
     session_stats = session_manager.get_stats()
 
     return {

@@ -102,19 +102,40 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         client_ip = self._get_trusted_client_ip(request)
-        allowed, count = await check_rate_limit(client_ip, settings.RATE_LIMIT_PER_MINUTE)
+        info = await check_rate_limit(
+            client_ip,
+            settings.RATE_LIMIT_PER_MINUTE,
+            max_requests_per_hour=settings.RATE_LIMIT_PER_HOUR,
+        )
 
-        if not allowed:
+        headers = {
+            "X-RateLimit-Limit": str(info.limit),
+            "X-RateLimit-Remaining": str(info.remaining),
+            "X-RateLimit-Reset": str(int(info.reset_at)),
+            "X-RateLimit-Hourly-Limit": str(info.hourly_limit),
+            "X-RateLimit-Hourly-Remaining": str(info.hourly_remaining),
+            "X-RateLimit-Hourly-Reset": str(int(info.hourly_reset_at)),
+        }
+
+        if not info.allowed:
             METRIC_RATE_LIMIT_REJECTED.inc()
-            logger.warning("Rate limit exceeded for %s (%d req/min)", client_ip, count)
+            logger.warning(
+                "Rate limit exceeded for %s (%d req/min, %d req/hr)",
+                client_ip,
+                info.remaining,
+                info.hourly_remaining,
+            )
             return Response(
                 status_code=429,
                 content='{"detail":"Rate limit exceeded. Try again later."}',
                 media_type="application/json",
-                headers={"X-RateLimit-Limit": str(settings.RATE_LIMIT_PER_MINUTE)},
+                headers=headers,
             )
 
-        return await call_next(request)
+        response = await call_next(request)
+        for header, value in headers.items():
+            response.headers[header] = value
+        return response
 
     def _get_trusted_client_ip(self, request: Request) -> str:
         """Extract the real client IP.

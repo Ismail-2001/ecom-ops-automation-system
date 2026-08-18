@@ -129,8 +129,45 @@ class TestBaseAgent:
             agent = TestAgent("TestAgent")
         with patch("ecommerce_ops.agents._base.get_recent_memories", new_callable=AsyncMock, return_value=[]):
             with patch("ecommerce_ops.agents._base.get_pattern_insight", new_callable=AsyncMock, return_value=None):
-                result = await agent.load_memory_context({})
-                assert result == ""
+                with patch("ecommerce_ops.agents._base.memory_retrieval") as mock_mr:
+                    mock_mr.get_context_window = AsyncMock(return_value="")
+                    result = await agent.load_memory_context({})
+                    assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_load_memory_context_includes_vector_context(self):
+        from ecommerce_ops.agents._base import BaseAgent
+        class TestAgent(BaseAgent):
+            async def run(self, state): return state
+        with patch("ecommerce_ops.agents._base.settings") as mock_settings:
+            mock_settings.GOOGLE_API_KEY = None
+            mock_settings.DEEPSEEK_API_KEY = MagicMock(get_secret_value=MagicMock(return_value="sk-test"))
+            mock_settings.LLM_MODEL = "test-model"
+            mock_settings.DEEPSEEK_BASE_URL = ""
+            agent = TestAgent("TestAgent")
+        with patch("ecommerce_ops.agents._base.get_recent_memories", new_callable=AsyncMock, return_value=[]):
+            with patch("ecommerce_ops.agents._base.get_pattern_insight", new_callable=AsyncMock, return_value=None):
+                with patch("ecommerce_ops.agents._base.memory_retrieval") as mock_mr:
+                    mock_mr.get_context_window = AsyncMock(return_value="[episodic] fraud pattern on repeat orders")
+                    result = await agent.load_memory_context({})
+                    assert "Relevant knowledge" in result
+                    assert "fraud pattern" in result
+
+    @pytest.mark.asyncio
+    async def test_load_vector_context_fail_open(self):
+        from ecommerce_ops.agents._base import BaseAgent
+        class TestAgent(BaseAgent):
+            async def run(self, state): return state
+        with patch("ecommerce_ops.agents._base.settings") as mock_settings:
+            mock_settings.GOOGLE_API_KEY = None
+            mock_settings.DEEPSEEK_API_KEY = MagicMock(get_secret_value=MagicMock(return_value="sk-test"))
+            mock_settings.LLM_MODEL = "test-model"
+            mock_settings.DEEPSEEK_BASE_URL = ""
+            agent = TestAgent("TestAgent")
+        with patch("ecommerce_ops.agents._base.memory_retrieval") as mock_mr:
+            mock_mr.get_context_window = AsyncMock(side_effect=RuntimeError("db down"))
+            result = await agent._load_vector_context({})
+            assert result == ""
 
     @pytest.mark.asyncio
     async def test_persist_decision(self):
@@ -148,8 +185,32 @@ class TestBaseAgent:
             reasoning="Test reasoning", confidence_score=0.8,
         )
         with patch("ecommerce_ops.agents._base.store_decision_memory", new_callable=AsyncMock) as mock_store:
-            await agent.persist_decision(decision)
-            mock_store.assert_called_once()
+            with patch("ecommerce_ops.agents._base.agent_memory_manager") as mock_mgr:
+                mock_mgr.store_decision = AsyncMock()
+                await agent.persist_decision(decision)
+                mock_store.assert_called_once()
+                mock_mgr.store_decision.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_persist_decision_durable_fail_open(self):
+        from ecommerce_ops.agents._base import BaseAgent
+        class TestAgent(BaseAgent):
+            async def run(self, state): return state
+        with patch("ecommerce_ops.agents._base.settings") as mock_settings:
+            mock_settings.GOOGLE_API_KEY = None
+            mock_settings.DEEPSEEK_API_KEY = MagicMock(get_secret_value=MagicMock(return_value="sk-test"))
+            mock_settings.LLM_MODEL = "test-model"
+            mock_settings.DEEPSEEK_BASE_URL = ""
+            agent = TestAgent("TestAgent")
+        decision = AgentDecision(
+            agent_id="TestAgent", action_type="TEST",
+            reasoning="Test reasoning", confidence_score=0.8,
+        )
+        with patch("ecommerce_ops.agents._base.store_decision_memory", new_callable=AsyncMock) as mock_store:
+            with patch("ecommerce_ops.agents._base.agent_memory_manager") as mock_mgr:
+                mock_mgr.store_decision = AsyncMock(side_effect=RuntimeError("db down"))
+                await agent.persist_decision(decision)
+                mock_store.assert_called_once()
 
 
 class TestFraudAgent:
@@ -470,7 +531,7 @@ class TestReviewsAgent:
         from ecommerce_ops.agents.reviews import ReviewsAgent
         agent = ReviewsAgent.__new__(ReviewsAgent)
         cached = {"sentiment": "Positive", "themes": ["Quality"], "response": "Thanks!", "contains_refund_offer": False, "confidence": 0.9}
-        with patch("ecommerce_ops.agents.reviews.cache") as mock_cache:
+        with patch("ecommerce_ops.agents.reviews.llm_response_cache") as mock_cache:
             mock_cache.get = AsyncMock(return_value=cached)
             result = await agent._analyze_review("Great product, love it so much!", 5)
             assert result["sentiment"] == "Positive"
@@ -486,11 +547,12 @@ class TestReviewsAgent:
         breaker = MagicMock()
         breaker.call = AsyncMock(return_value=llm_result)
         agent._llm_circuit_breaker = breaker
-        with patch("ecommerce_ops.agents.reviews.cache") as mock_cache:
+        with patch("ecommerce_ops.agents.reviews.llm_response_cache") as mock_cache:
             mock_cache.get = AsyncMock(return_value=None)
-            mock_cache.set = AsyncMock(return_value=True)
+            mock_cache.set = AsyncMock()
             result = await agent._analyze_review("Excellent product with amazing quality and fast shipping!", 5)
             assert result["sentiment"] == "Positive"
+            mock_cache.set.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_analyze_review_llm_sentiment_override_high_rating(self):
@@ -503,9 +565,9 @@ class TestReviewsAgent:
         breaker = MagicMock()
         breaker.call = AsyncMock(return_value=llm_result)
         agent._llm_circuit_breaker = breaker
-        with patch("ecommerce_ops.agents.reviews.cache") as mock_cache:
+        with patch("ecommerce_ops.agents.reviews.llm_response_cache") as mock_cache:
             mock_cache.get = AsyncMock(return_value=None)
-            mock_cache.set = AsyncMock(return_value=True)
+            mock_cache.set = AsyncMock()
             result = await agent._analyze_review("Really great product, happy with everything overall", 5)
             assert result["sentiment"] == "Positive"
 
@@ -520,9 +582,9 @@ class TestReviewsAgent:
         breaker = MagicMock()
         breaker.call = AsyncMock(return_value=llm_result)
         agent._llm_circuit_breaker = breaker
-        with patch("ecommerce_ops.agents.reviews.cache") as mock_cache:
+        with patch("ecommerce_ops.agents.reviews.llm_response_cache") as mock_cache:
             mock_cache.get = AsyncMock(return_value=None)
-            mock_cache.set = AsyncMock(return_value=True)
+            mock_cache.set = AsyncMock()
             result = await agent._analyze_review("Terrible quality, arrived broken and damaged badly", 1)
             assert result["sentiment"] == "Negative"
 

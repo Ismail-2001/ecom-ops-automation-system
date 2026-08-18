@@ -281,9 +281,9 @@ class AgentMemoryManager:
         else:
             return "Mixed results from similar decisions. Review carefully."
 
-    def get_agent_memory_stats(self, agent_name: str) -> Dict[str, Any]:
+    async def get_agent_memory_stats(self, agent_name: str) -> Dict[str, Any]:
         """Get memory statistics for an agent."""
-        stats = self.retrieval.get_stats()
+        stats = await self.retrieval.get_stats()
 
         # Filter by agent
         agent_memories = stats.get("memories_by_agent", {}).get(agent_name, 0)

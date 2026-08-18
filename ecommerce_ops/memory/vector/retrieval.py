@@ -16,7 +16,7 @@ from ecommerce_ops.memory.vector.models import (
     MemorySearchResult,
     MemoryType,
 )
-from ecommerce_ops.memory.vector.store import VectorStore, vector_store
+from ecommerce_ops.memory.vector.persistent_store import PersistentVectorStore, vector_store
 from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.memory.vector.retrieval")
@@ -27,7 +27,7 @@ class MemoryRetrievalService:
 
     def __init__(
         self,
-        store: VectorStore = None,
+        store: PersistentVectorStore = None,
         consolidation_threshold: int = 50,
     ):
         self.store = store or vector_store
@@ -120,7 +120,7 @@ class MemoryRetrievalService:
         )
 
         # Get recent memories sorted by creation time
-        candidates = self.store._filter_memories(memory_query)
+        candidates = await self.store._filter_memories(memory_query)
         candidates.sort(key=lambda e: e.created_at, reverse=True)
 
         results = []
@@ -154,7 +154,7 @@ class MemoryRetrievalService:
             min_similarity=0.0,
         )
 
-        candidates = self.store._filter_memories(memory_query)
+        candidates = await self.store._filter_memories(memory_query)
         candidates.sort(key=lambda e: e.importance_weight, reverse=True)
 
         results = []
@@ -275,7 +275,7 @@ class MemoryRetrievalService:
             include_expired=False,
         )
 
-        candidates = self.store._filter_memories(query)
+        candidates = await self.store._filter_memories(query)
         candidates = [m for m in candidates if not m.is_compressed]
 
         if len(candidates) < self.consolidation_threshold:
@@ -312,7 +312,7 @@ class MemoryRetrievalService:
             min_similarity=0.0,
         )
 
-        candidates = self.store._filter_memories(query)
+        candidates = await self.store._filter_memories(query)
 
         # Apply additional filters
         if older_than_days:
@@ -375,9 +375,9 @@ class MemoryRetrievalService:
 
         return key_points[:5]
 
-    def get_stats(self) -> Dict[str, Any]:
+    async def get_stats(self) -> Dict[str, Any]:
         """Get retrieval service statistics."""
-        store_stats = self.store.get_stats()
+        store_stats = await self.store.get_stats()
         return {
             **store_stats.model_dump(),
             "total_consolidations": len(self._consolidations),

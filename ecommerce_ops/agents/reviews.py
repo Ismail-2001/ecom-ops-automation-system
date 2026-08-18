@@ -1,4 +1,3 @@
-import hashlib
 from typing import Any, Dict, List
 
 import structlog
@@ -9,13 +8,10 @@ from ecommerce_ops.agents._base import BaseAgent
 from ecommerce_ops.agents.cost_tracker import track_llm_cost
 from ecommerce_ops.infra.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
 from ecommerce_ops.infra.retry import async_retry_decorator
-from ecommerce_ops.memory.cache import cache
+from ecommerce_ops.memory.llm_cache import llm_response_cache
 from ecommerce_ops.safety.guardrails import guardrail_manager
 
 logger = structlog.get_logger(__name__)
-
-
-LLM_CACHE_TTL = 86400
 
 
 class ReviewAnalysisOutput(BaseModel):
@@ -101,12 +97,11 @@ class ReviewsAgent(BaseAgent):
             )
             return self._fallback_analysis(rating)
 
-        content_hash = hashlib.sha256(sanitized.encode()).hexdigest()
-        cache_key = f"llm_review:{content_hash}:{rating}"
+        review_prompt = f"Analyze review (rating {rating}/5): {sanitized}"
 
-        cached = await cache.get(cache_key)
+        cached = await llm_response_cache.get(review_prompt, namespace="reviews")
         if cached is not None:
-            logger.info("LLM review analysis cache hit for hash %s", content_hash[:8])
+            logger.info("LLM review analysis cache hit (semantic)")
             return cached
 
         try:
@@ -122,7 +117,7 @@ class ReviewsAgent(BaseAgent):
             logger.info(f"LLM analyzed review with sentiment {result.sentiment}")
             output = result.model_dump()
 
-            await cache.set(cache_key, output, ttl=LLM_CACHE_TTL)
+            await llm_response_cache.set(review_prompt, output, namespace="reviews")
             return output
 
         except (CircuitBreakerOpenError, APIError, APITimeoutError, APIConnectionError) as e:

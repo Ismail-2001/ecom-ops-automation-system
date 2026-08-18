@@ -69,6 +69,7 @@ class Settings(BaseSettings):
 
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 60
+    RATE_LIMIT_PER_HOUR: int = 1000
 
     # Trusted proxies for X-Forwarded-For header parsing.
     # In production, set to the CIDR/range of your load balancer/proxy

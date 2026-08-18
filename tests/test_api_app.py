@@ -3,15 +3,16 @@ Comprehensive async tests for the FastAPI application endpoints.
 Covers health, auth, approvals, agents, audit, settings, memory,
 shopify, demo, websocket, metrics, analytics, and task endpoints.
 """
-from ecommerce_ops.utils import utc_now
 
 import os
 import uuid
-from datetime import datetime, timedelta, UTC
+from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
+
+from ecommerce_ops.utils import utc_now
 
 os.environ["ENV"] = "testing"
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite://"
@@ -24,9 +25,9 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.dialects.sqlite.base import SQLiteTypeCompiler
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-_orig_visit_JSONB = getattr(SQLiteTypeCompiler, 'visit_JSONB', None)
+_orig_visit_JSONB = getattr(SQLiteTypeCompiler, "visit_JSONB", None)
 if _orig_visit_JSONB is None:
-    SQLiteTypeCompiler.visit_JSONB = lambda self, type_, **kw: 'JSON'
+    SQLiteTypeCompiler.visit_JSONB = lambda self, type_, **kw: "JSON"
 
 from ecommerce_ops.api.app import app  # noqa: E402
 from ecommerce_ops.api.auth import verify_auth  # noqa: E402
@@ -47,11 +48,14 @@ AUTH_HEADER = {"Authorization": f"Bearer {TEST_API_KEY}"}
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def _patch_settings_for_testing():
     """Ensure settings reflect testing environment for every test."""
-    with patch.object(app_settings, "ENV", "testing"), \
-         patch.object(app_settings, "API_KEY", MagicMock(get_secret_value=lambda: TEST_API_KEY)):
+    with (
+        patch.object(app_settings, "ENV", "testing"),
+        patch.object(app_settings, "API_KEY", MagicMock(get_secret_value=lambda: TEST_API_KEY)),
+    ):
         yield
 
 
@@ -83,43 +87,82 @@ def _overrides(session: AsyncSession):
 
 def _seed_basic(session: AsyncSession):
     """Insert the minimal rows many endpoints expect."""
-    session.add(StoreSettings(
-        id=1, shadow_mode=True, fraud_threshold=70,
-        po_limit=1000.0, pricing_limit=5.0, reviews_rating_threshold=4,
-    ))
+    session.add(
+        StoreSettings(
+            id=1,
+            shadow_mode=True,
+            fraud_threshold=70,
+            po_limit=1000.0,
+            pricing_limit=5.0,
+            reviews_rating_threshold=4,
+        )
+    )
     for name in [
-        "FraudAgent", "InventoryAgent", "PricingAgent",
-        "ReviewsAgent", "MarketingAgent",
+        "FraudAgent",
+        "InventoryAgent",
+        "PricingAgent",
+        "ReviewsAgent",
+        "MarketingAgent",
     ]:
-        session.add(AgentStatus(
-            agent_id=name, status="active", streak=0,
-            autonomy_level="shadow", total_decisions=0,
-            total_approvals=0, total_rejections=0, avg_confidence=0.0,
-        ))
-    session.add(ApprovalAction(
-        id="act-1", agent="FraudAgent", action_type="fraud_hold",
-        status="pending", risk_level="high", confidence_score=0.92,
-        created_at=utc_now(), expires_at=utc_now() + timedelta(hours=24),
-        requires_hitl=True, shadow_mode=True,
-        payload={"order_id": "ORD-001"},
-        evidence=[{"label": "score", "value": "85"}],
-        impact={"financial_impact": 450.0},
-    ))
-    session.add(ApprovalAction(
-        id="act-2", agent="InventoryAgent", action_type="purchase_order",
-        status="pending", risk_level="low", confidence_score=0.85,
-        created_at=utc_now(), expires_at=utc_now() + timedelta(days=2),
-        requires_hitl=False, shadow_mode=True,
-        payload={"sku": "MUG-WHITE", "reorder_quantity": 100},
-        evidence=[], impact={"financial_impact": -500.0},
-    ))
-    session.add(AuditEntry(
-        action_id="act-1", timestamp=utc_now(),
-        agent="FraudAgent", action_type="fraud_hold",
-        decision="approved", operator="admin",
-        confidence_score=0.92, financial_impact=450.0,
-        details={"note": "test"},
-    ))
+        session.add(
+            AgentStatus(
+                agent_id=name,
+                status="active",
+                streak=0,
+                autonomy_level="shadow",
+                total_decisions=0,
+                total_approvals=0,
+                total_rejections=0,
+                avg_confidence=0.0,
+            )
+        )
+    session.add(
+        ApprovalAction(
+            id="act-1",
+            agent="FraudAgent",
+            action_type="fraud_hold",
+            status="pending",
+            risk_level="high",
+            confidence_score=0.92,
+            created_at=utc_now(),
+            expires_at=utc_now() + timedelta(hours=24),
+            requires_hitl=True,
+            shadow_mode=True,
+            payload={"order_id": "ORD-001"},
+            evidence=[{"label": "score", "value": "85"}],
+            impact={"financial_impact": 450.0},
+        )
+    )
+    session.add(
+        ApprovalAction(
+            id="act-2",
+            agent="InventoryAgent",
+            action_type="purchase_order",
+            status="pending",
+            risk_level="low",
+            confidence_score=0.85,
+            created_at=utc_now(),
+            expires_at=utc_now() + timedelta(days=2),
+            requires_hitl=False,
+            shadow_mode=True,
+            payload={"sku": "MUG-WHITE", "reorder_quantity": 100},
+            evidence=[],
+            impact={"financial_impact": -500.0},
+        )
+    )
+    session.add(
+        AuditEntry(
+            action_id="act-1",
+            timestamp=utc_now(),
+            agent="FraudAgent",
+            action_type="fraud_hold",
+            decision="approved",
+            operator="admin",
+            confidence_score=0.92,
+            financial_impact=450.0,
+            details={"note": "test"},
+        )
+    )
 
 
 @pytest_asyncio.fixture()
@@ -135,11 +178,14 @@ async def seeded_session(engine):
 # 1.  Health / Ready / Live
 # ---------------------------------------------------------------------------
 
+
 class TestHealthEndpoints:
     @pytest.mark.asyncio
     async def test_live_returns_200(self):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/live")
         assert r.status_code == 200
         assert r.json()["status"] == "alive"
@@ -148,7 +194,9 @@ class TestHealthEndpoints:
     async def test_ready_ok(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/ready")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -157,7 +205,9 @@ class TestHealthEndpoints:
     @pytest.mark.asyncio
     async def test_health_returns_200_or_503(self):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/health")
         assert r.status_code in (200, 503)
         body = r.json()
@@ -168,7 +218,9 @@ class TestHealthEndpoints:
     @pytest.mark.asyncio
     async def test_health_contains_expected_checks(self):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/health")
         checks = r.json().get("checks", {})
         for key in ("database", "redis", "task_queue", "agents"):
@@ -179,11 +231,14 @@ class TestHealthEndpoints:
 # 2.  Auth endpoints
 # ---------------------------------------------------------------------------
 
+
 class TestAuthEndpoints:
     @pytest.mark.asyncio
     async def test_login_success(self):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.post("/api/auth/login", json={"api_key": TEST_API_KEY})
         assert r.status_code == 200
         assert r.json()["status"] == "ok"
@@ -191,7 +246,9 @@ class TestAuthEndpoints:
     @pytest.mark.asyncio
     async def test_login_with_operator_id(self):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.post(
                 "/api/auth/login",
                 json={"api_key": TEST_API_KEY, "operator_id": "ops-42"},
@@ -202,21 +259,27 @@ class TestAuthEndpoints:
     @pytest.mark.asyncio
     async def test_login_wrong_key_returns_401(self):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.post("/api/auth/login", json={"api_key": "wrong"})
         assert r.status_code == 401
 
     @pytest.mark.asyncio
     async def test_login_empty_key_returns_401(self):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.post("/api/auth/login", json={"api_key": ""})
         assert r.status_code == 401
 
     @pytest.mark.asyncio
     async def test_login_no_key_field_returns_422(self):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.post("/api/auth/login", json={})
         assert r.status_code == 422
 
@@ -225,7 +288,9 @@ class TestAuthEndpoints:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "test-user"
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/ws/stats", headers=AUTH_HEADER)
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -234,7 +299,9 @@ class TestAuthEndpoints:
     async def test_auth_rejected_without_token(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers={"Authorization": "Bearer invalid"}) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers={"Authorization": "Bearer invalid"}
+        ) as c:
             r = await c.get("/api/ws/stats")
         app.dependency_overrides.clear()
         assert r.status_code in (401, 403)
@@ -243,7 +310,9 @@ class TestAuthEndpoints:
     async def test_auth_rejected_with_invalid_token(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/ws/stats", headers={"Authorization": "Bearer garbage"})
         app.dependency_overrides.clear()
         assert r.status_code == 401
@@ -253,6 +322,7 @@ class TestAuthEndpoints:
 # 3.  Approvals
 # ---------------------------------------------------------------------------
 
+
 class TestApprovals:
     @pytest.mark.asyncio
     async def test_get_approvals_empty(self, engine):
@@ -260,7 +330,9 @@ class TestApprovals:
         async with factory() as s:
             app.dependency_overrides.update(_overrides(s))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/approvals")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -270,7 +342,9 @@ class TestApprovals:
     async def test_get_approvals_seeded(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/approvals?status=pending")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -282,7 +356,9 @@ class TestApprovals:
     async def test_get_approvals_filter_by_agent(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/approvals?agent=FraudAgent")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -293,7 +369,9 @@ class TestApprovals:
     async def test_get_approvals_filter_by_risk(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/approvals?risk=high")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -304,7 +382,9 @@ class TestApprovals:
     async def test_get_approvals_search(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/approvals?search=ORD-001")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -314,7 +394,9 @@ class TestApprovals:
     async def test_get_single_approval(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/approvals/act-1")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -324,7 +406,9 @@ class TestApprovals:
     async def test_get_single_approval_404(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/approvals/nonexistent")
         app.dependency_overrides.clear()
         assert r.status_code == 404
@@ -333,12 +417,18 @@ class TestApprovals:
     async def test_approve_action(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws, \
-             patch("ecommerce_ops.api.core_routes.execute_shop_action", new_callable=AsyncMock) as mock_exec, \
-             patch("ecommerce_ops.api.core_routes.update_agent_streak", new_callable=AsyncMock):
+        with (
+            patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws,
+            patch(
+                "ecommerce_ops.api.core_routes.execute_shop_action", new_callable=AsyncMock
+            ) as mock_exec,
+            patch("ecommerce_ops.api.core_routes.update_agent_streak", new_callable=AsyncMock),
+        ):
             mock_exec.return_value = (True, "ok")
             mock_ws.broadcast = AsyncMock()
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.post(
                     "/api/approvals/act-1/approve",
                     json={"notes": "Looks good"},
@@ -355,7 +445,9 @@ class TestApprovals:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.post(
                 "/api/approvals/no-such-id/approve",
                 json={},
@@ -371,7 +463,9 @@ class TestApprovals:
         transport = ASGITransport(app=app)
         with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws:
             mock_ws.broadcast = AsyncMock()
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.post(
                     "/api/approvals/act-2/reject",
                     json={"reason": "Too expensive", "notes": "Hold for review"},
@@ -388,7 +482,9 @@ class TestApprovals:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.post(
                 "/api/approvals/does-not-exist/reject",
                 json={"reason": "nope"},
@@ -402,12 +498,18 @@ class TestApprovals:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "batch-op"
         transport = ASGITransport(app=app)
-        with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws, \
-             patch("ecommerce_ops.api.core_routes.execute_shop_action", new_callable=AsyncMock) as mock_exec, \
-             patch("ecommerce_ops.api.core_routes.update_agent_streak", new_callable=AsyncMock):
+        with (
+            patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws,
+            patch(
+                "ecommerce_ops.api.core_routes.execute_shop_action", new_callable=AsyncMock
+            ) as mock_exec,
+            patch("ecommerce_ops.api.core_routes.update_agent_streak", new_callable=AsyncMock),
+        ):
             mock_exec.return_value = (True, "ok")
             mock_ws.broadcast = AsyncMock()
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.post(
                     "/api/approvals/batch",
                     json={"ids": ["act-2"], "action": "approve", "notes": "batch"},
@@ -426,7 +528,9 @@ class TestApprovals:
         transport = ASGITransport(app=app)
         with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws:
             mock_ws.broadcast = AsyncMock()
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.post(
                     "/api/approvals/batch",
                     json={"ids": ["act-1"], "action": "reject", "reason": "No"},
@@ -443,7 +547,9 @@ class TestApprovals:
         transport = ASGITransport(app=app)
         with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws:
             mock_ws.broadcast = AsyncMock()
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.post(
                     "/api/approvals/batch",
                     json={"ids": ["act-1"], "action": "approve"},
@@ -458,7 +564,9 @@ class TestApprovals:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             _r = await c.post(
                 "/api/approvals/act-2/approve",
                 json={},
@@ -478,12 +586,15 @@ class TestApprovals:
 # 4.  Agents Status
 # ---------------------------------------------------------------------------
 
+
 class TestAgents:
     @pytest.mark.asyncio
     async def test_agents_status(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/agents/status")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -499,7 +610,9 @@ class TestAgents:
         async with factory() as s:
             app.dependency_overrides.update(_overrides(s))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/agents/status")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -510,6 +623,7 @@ class TestAgents:
 # 5.  Audit Log
 # ---------------------------------------------------------------------------
 
+
 class TestAudit:
     @pytest.mark.asyncio
     async def test_audit_empty(self, engine):
@@ -517,7 +631,9 @@ class TestAudit:
         async with factory() as s:
             app.dependency_overrides.update(_overrides(s))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/audit")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -529,7 +645,9 @@ class TestAudit:
     async def test_audit_with_data(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/audit")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -540,7 +658,9 @@ class TestAudit:
     async def test_audit_filter_agent(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/audit?agent=FraudAgent")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -551,7 +671,9 @@ class TestAudit:
     async def test_audit_filter_decision(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/audit?decision=approved")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -562,7 +684,9 @@ class TestAudit:
     async def test_audit_filter_operator(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/audit?operator=admin")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -573,7 +697,9 @@ class TestAudit:
     async def test_audit_pagination(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/audit?page=1&limit=1")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -586,7 +712,9 @@ class TestAudit:
     async def test_audit_export_csv(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/audit/export?format=csv")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -597,7 +725,9 @@ class TestAudit:
     async def test_audit_export_json(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/audit/export?format=json")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -609,12 +739,15 @@ class TestAudit:
 # 6.  Store Settings
 # ---------------------------------------------------------------------------
 
+
 class TestSettings:
     @pytest.mark.asyncio
     async def test_get_settings(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/settings")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -629,7 +762,9 @@ class TestSettings:
         transport = ASGITransport(app=app)
         with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws:
             mock_ws.broadcast = AsyncMock()
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.patch(
                     "/api/settings",
                     json={"shadow_mode": False},
@@ -646,7 +781,9 @@ class TestSettings:
         transport = ASGITransport(app=app)
         with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws:
             mock_ws.broadcast = AsyncMock()
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.patch(
                     "/api/settings",
                     json={"fraud_threshold": 85},
@@ -661,7 +798,9 @@ class TestSettings:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.patch(
                 "/api/settings",
                 json={"fraud_threshold": 150},
@@ -677,7 +816,9 @@ class TestSettings:
         transport = ASGITransport(app=app)
         with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws:
             mock_ws.broadcast = AsyncMock()
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.patch(
                     "/api/settings",
                     json={"po_limit": 2000.0},
@@ -692,7 +833,9 @@ class TestSettings:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.patch(
                 "/api/settings",
                 json={"po_limit": -10},
@@ -708,7 +851,9 @@ class TestSettings:
         transport = ASGITransport(app=app)
         with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws:
             mock_ws.broadcast = AsyncMock()
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.patch(
                     "/api/settings",
                     json={"pricing_limit": 10.0},
@@ -723,7 +868,9 @@ class TestSettings:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.patch(
                 "/api/settings",
                 json={"pricing_limit": 0},
@@ -739,7 +886,9 @@ class TestSettings:
         transport = ASGITransport(app=app)
         with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws:
             mock_ws.broadcast = AsyncMock()
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.patch(
                     "/api/settings",
                     json={"reviews_rating_threshold": 3},
@@ -754,7 +903,9 @@ class TestSettings:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.patch(
                 "/api/settings",
                 json={"reviews_rating_threshold": 10},
@@ -770,7 +921,9 @@ class TestSettings:
         transport = ASGITransport(app=app)
         with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws:
             mock_ws.broadcast = AsyncMock()
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.patch(
                     "/api/settings",
                     json={"slack_channel": "#ops-alerts"},
@@ -786,7 +939,9 @@ class TestSettings:
             app.dependency_overrides.update(_overrides(s))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.patch(
                 "/api/settings",
                 json={"shadow_mode": True},
@@ -800,6 +955,7 @@ class TestSettings:
 # 7.  Analytics
 # ---------------------------------------------------------------------------
 
+
 class TestAnalytics:
     @pytest.mark.asyncio
     async def test_analytics_empty_db(self, engine):
@@ -807,7 +963,9 @@ class TestAnalytics:
         async with factory() as s:
             app.dependency_overrides.update(_overrides(s))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/analytics")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -821,7 +979,9 @@ class TestAnalytics:
     async def test_analytics_with_data(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/analytics")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -835,17 +995,22 @@ class TestAnalytics:
 # 8.  Pipeline / Run
 # ---------------------------------------------------------------------------
 
+
 class TestPipeline:
     @pytest.mark.asyncio
     async def test_trigger_run(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        with patch("ecommerce_ops.api.app.ws_manager") as mock_ws, \
-             patch("ecommerce_ops.api.app.task_queue") as mock_tq, \
-             patch("ecommerce_ops.api.app.run_pipeline_task"):
+        with (
+            patch("ecommerce_ops.api.app.ws_manager") as mock_ws,
+            patch("ecommerce_ops.api.app.task_queue") as mock_tq,
+            patch("ecommerce_ops.api.app.run_pipeline_task"),
+        ):
             mock_ws.broadcast = AsyncMock()
             mock_tq.enqueue = AsyncMock(return_value="task-1")
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.post("/api/run")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -856,7 +1021,9 @@ class TestPipeline:
     @pytest.mark.asyncio
     async def test_get_task_not_found(self):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get(f"/api/tasks/{uuid.uuid4()}")
         assert r.status_code == 404
 
@@ -873,7 +1040,9 @@ class TestPipeline:
 
         with patch("ecommerce_ops.api.app.task_queue", tq):
             transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.get(f"/api/tasks/{task_id}")
         assert r.status_code == 200
         body = r.json()
@@ -885,11 +1054,14 @@ class TestPipeline:
 # 9.  Metrics
 # ---------------------------------------------------------------------------
 
+
 class TestMetrics:
     @pytest.mark.asyncio
     async def test_metrics_returns_prometheus(self):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/metrics")
         assert r.status_code == 200
         ct = r.headers.get("content-type", "")
@@ -900,13 +1072,18 @@ class TestMetrics:
 # 10.  Shopify Integration
 # ---------------------------------------------------------------------------
 
+
 class TestShopify:
     @pytest.mark.asyncio
     async def test_shopify_status_not_configured(self):
-        with patch.object(app_settings, "SHOPIFY_SHOP_DOMAIN", None), \
-             patch.object(app_settings, "SHOPIFY_ACCESS_TOKEN", None):
+        with (
+            patch.object(app_settings, "SHOPIFY_SHOP_DOMAIN", None),
+            patch.object(app_settings, "SHOPIFY_ACCESS_TOKEN", None),
+        ):
             transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.get("/shopify/status")
         assert r.status_code == 200
         body = r.json()
@@ -914,10 +1091,14 @@ class TestShopify:
 
     @pytest.mark.asyncio
     async def test_shopify_status_configured(self):
-        with patch.object(app_settings, "SHOPIFY_SHOP_DOMAIN", "my-store.myshopify.com"), \
-             patch.object(app_settings, "SHOPIFY_ACCESS_TOKEN", "shpat_xxx"):
+        with (
+            patch.object(app_settings, "SHOPIFY_SHOP_DOMAIN", "my-store.myshopify.com"),
+            patch.object(app_settings, "SHOPIFY_ACCESS_TOKEN", "shpat_xxx"),
+        ):
             transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.get("/shopify/status")
         assert r.status_code == 200
         body = r.json()
@@ -926,10 +1107,14 @@ class TestShopify:
 
     @pytest.mark.asyncio
     async def test_shopify_sync_not_configured_returns_400(self):
-        with patch.object(app_settings, "SHOPIFY_SHOP_DOMAIN", None), \
-             patch.object(app_settings, "SHOPIFY_ACCESS_TOKEN", None):
+        with (
+            patch.object(app_settings, "SHOPIFY_SHOP_DOMAIN", None),
+            patch.object(app_settings, "SHOPIFY_ACCESS_TOKEN", None),
+        ):
             transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.post("/shopify/sync")
         assert r.status_code == 400
 
@@ -938,7 +1123,9 @@ class TestShopify:
         with patch("ecommerce_ops.api.shopify.shopify_oauth") as mock_oauth:
             mock_oauth.get_install_url.return_value = "https://shop.myshopify.com/admin/oauth"
             transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.post(
                     "/shopify/install",
                     json={"shop_domain": "my-store.myshopify.com"},
@@ -953,11 +1140,14 @@ class TestShopify:
 # 11.  Demo Endpoints
 # ---------------------------------------------------------------------------
 
+
 class TestDemo:
     @pytest.mark.asyncio
     async def test_demo_status(self):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/demo/demo/status")
         assert r.status_code == 200
         body = r.json()
@@ -967,7 +1157,9 @@ class TestDemo:
     @pytest.mark.asyncio
     async def test_demo_scenarios(self):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/demo/demo/scenarios")
         assert r.status_code == 200
         scenarios = r.json()["scenarios"]
@@ -977,10 +1169,13 @@ class TestDemo:
     @pytest.mark.asyncio
     async def test_run_demo_fraud(self):
         from ecommerce_ops.security.auth import require_auth
+
         app.dependency_overrides[require_auth] = lambda: {"id": "u1"}
         try:
             transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.post("/demo/demo/run/fraud_detection")
         finally:
             app.dependency_overrides.pop(require_auth, None)
@@ -990,10 +1185,13 @@ class TestDemo:
     @pytest.mark.asyncio
     async def test_run_demo_unknown_returns_404(self):
         from ecommerce_ops.security.auth import require_auth
+
         app.dependency_overrides[require_auth] = lambda: {"id": "u1"}
         try:
             transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.post("/demo/demo/run/nonexistent")
         finally:
             app.dependency_overrides.pop(require_auth, None)
@@ -1004,13 +1202,16 @@ class TestDemo:
 # 12.  Memory Endpoints
 # ---------------------------------------------------------------------------
 
+
 class TestMemory:
     @pytest.mark.asyncio
     async def test_list_memories(self):
         with patch("ecommerce_ops.api.memory.vector_store") as mock_vs:
-            mock_vs._filter_memories.return_value = []
+            mock_vs._filter_memories = AsyncMock(return_value=[])
             transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.get("/memory/memories")
         assert r.status_code == 200
         body = r.json()
@@ -1027,7 +1228,9 @@ class TestMemory:
         with patch("ecommerce_ops.api.memory.memory_retrieval") as mock_mr:
             mock_mr.remember = AsyncMock(return_value=mock_entry)
             transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.post(
                     "/memory/memories",
                     json={"content": "Test memory entry"},
@@ -1049,7 +1252,9 @@ class TestMemory:
         with patch("ecommerce_ops.api.memory.memory_retrieval") as mock_mr:
             mock_mr.recall = AsyncMock(return_value=[mock_result])
             transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.post(
                     "/memory/memories/search",
                     json={"query": "test query", "max_results": 5},
@@ -1064,7 +1269,9 @@ class TestMemory:
         with patch("ecommerce_ops.api.memory.vector_store") as mock_vs:
             mock_vs.get = AsyncMock(return_value=None)
             transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.get("/memory/memories/nonexistent")
         assert r.status_code == 404
 
@@ -1083,7 +1290,9 @@ class TestMemory:
         with patch("ecommerce_ops.api.memory.vector_store") as mock_vs:
             mock_vs.get = AsyncMock(return_value=mock_entry)
             transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.get("/memory/memories/m1")
         assert r.status_code == 200
         assert r.json()["id"] == "m1"
@@ -1093,7 +1302,9 @@ class TestMemory:
         with patch("ecommerce_ops.api.memory.vector_store") as mock_vs:
             mock_vs.delete = AsyncMock(return_value=True)
             transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.delete("/memory/memories/m1")
         assert r.status_code == 200
         assert r.json()["deleted"] is True
@@ -1103,9 +1314,11 @@ class TestMemory:
         mock_stats = MagicMock()
         mock_stats.model_dump.return_value = {"total": 0, "by_type": {}}
         with patch("ecommerce_ops.api.memory.vector_store") as mock_vs:
-            mock_vs.get_stats.return_value = mock_stats
+            mock_vs.get_stats = AsyncMock(return_value=mock_stats)
             transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.get("/memory/memories/stats/summary")
         assert r.status_code == 200
 
@@ -1119,7 +1332,9 @@ class TestMemory:
         with patch("ecommerce_ops.api.memory.session_manager") as mock_sm:
             mock_sm.create_session.return_value = mock_sess
             transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.post(
                     "/memory/sessions",
                     json={"user_id": "u1", "agent_name": "agent"},
@@ -1132,7 +1347,9 @@ class TestMemory:
         with patch("ecommerce_ops.api.memory.session_manager") as mock_sm:
             mock_sm.get_active_sessions.return_value = []
             transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.get("/memory/sessions")
         assert r.status_code == 200
         assert r.json()["sessions"] == []
@@ -1141,6 +1358,7 @@ class TestMemory:
 # ---------------------------------------------------------------------------
 # 13.  WebSocket (connection test)
 # ---------------------------------------------------------------------------
+
 
 class TestWebSocket:
     @pytest.mark.asyncio
@@ -1173,26 +1391,33 @@ class TestWebSocket:
 # 14.  OpenAPI / Docs
 # ---------------------------------------------------------------------------
 
+
 class TestDocs:
     @pytest.mark.asyncio
     async def test_openapi_json_disabled_outside_dev(self):
         # docs/redoc/openapi are disabled outside development.
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/openapi.json")
         assert r.status_code == 404
 
     @pytest.mark.asyncio
     async def test_docs_page_disabled_outside_dev(self):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/docs")
         assert r.status_code == 404
 
     @pytest.mark.asyncio
     async def test_redoc_page_disabled_outside_dev(self):
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/redoc")
         assert r.status_code == 404
 
@@ -1201,18 +1426,25 @@ class TestDocs:
 # 15.  Edge cases / error paths
 # ---------------------------------------------------------------------------
 
+
 class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_approve_with_draft_response(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws, \
-             patch("ecommerce_ops.api.core_routes.execute_shop_action", new_callable=AsyncMock) as mock_exec, \
-             patch("ecommerce_ops.api.core_routes.update_agent_streak", new_callable=AsyncMock):
+        with (
+            patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws,
+            patch(
+                "ecommerce_ops.api.core_routes.execute_shop_action", new_callable=AsyncMock
+            ) as mock_exec,
+            patch("ecommerce_ops.api.core_routes.update_agent_streak", new_callable=AsyncMock),
+        ):
             mock_exec.return_value = (True, "ok")
             mock_ws.broadcast = AsyncMock()
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.post(
                     "/api/approvals/act-1/approve",
                     json={"notes": "ok", "draft_response": "Thanks for your order!"},
@@ -1228,12 +1460,18 @@ class TestEdgeCases:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws, \
-             patch("ecommerce_ops.api.core_routes.execute_shop_action", new_callable=AsyncMock) as mock_exec, \
-             patch("ecommerce_ops.api.core_routes.update_agent_streak", new_callable=AsyncMock):
+        with (
+            patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws,
+            patch(
+                "ecommerce_ops.api.core_routes.execute_shop_action", new_callable=AsyncMock
+            ) as mock_exec,
+            patch("ecommerce_ops.api.core_routes.update_agent_streak", new_callable=AsyncMock),
+        ):
             mock_exec.return_value = (False, "Shopify API error")
             mock_ws.broadcast = AsyncMock()
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.post(
                     "/api/approvals/act-1/approve",
                     json={},
@@ -1247,7 +1485,9 @@ class TestEdgeCases:
     async def test_get_approvals_all_status(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/approvals?status=all")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -1256,7 +1496,9 @@ class TestEdgeCases:
     async def test_get_approvals_sort_oldest(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/approvals?sort=oldest")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -1265,7 +1507,9 @@ class TestEdgeCases:
     async def test_audit_filter_action_type(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/audit?action_type=fraud_hold")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -1276,7 +1520,9 @@ class TestEdgeCases:
     async def test_audit_all_filters(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get(
                 "/api/audit?agent=FraudAgent&decision=approved&operator=admin"
                 "&action_type=fraud_hold&page=1&limit=5"
@@ -1287,20 +1533,28 @@ class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_approve_expired_action(self, session):
         expired = ApprovalAction(
-            id="expired-1", agent="FraudAgent", action_type="fraud_hold",
-            status="pending", risk_level="medium", confidence_score=0.8,
+            id="expired-1",
+            agent="FraudAgent",
+            action_type="fraud_hold",
+            status="pending",
+            risk_level="medium",
+            confidence_score=0.8,
             created_at=utc_now() - timedelta(days=2),
             expires_at=utc_now() - timedelta(hours=1),
-            requires_hitl=True, shadow_mode=True,
+            requires_hitl=True,
+            shadow_mode=True,
             payload={"order_id": "ORD-999"},
-            evidence=[], impact={"financial_impact": 0.0},
+            evidence=[],
+            impact={"financial_impact": 0.0},
         )
         session.add(expired)
         await session.commit()
         app.dependency_overrides.update(_overrides(session))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.post(
                 "/api/approvals/expired-1/approve",
                 json={},
@@ -1317,7 +1571,9 @@ class TestEdgeCases:
         transport = ASGITransport(app=app)
         with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws:
             mock_ws.broadcast = AsyncMock()
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 _r1 = await c.post(
                     "/api/approvals/act-2/reject",
                     json={"reason": "first"},
@@ -1337,12 +1593,16 @@ class TestEdgeCases:
         async with factory() as s:
             app.dependency_overrides.update(_overrides(s))
         transport = ASGITransport(app=app)
-        with patch("ecommerce_ops.api.app.ws_manager") as mock_ws, \
-             patch("ecommerce_ops.api.app.task_queue") as mock_tq, \
-             patch("ecommerce_ops.api.app.run_pipeline_task"):
+        with (
+            patch("ecommerce_ops.api.app.ws_manager") as mock_ws,
+            patch("ecommerce_ops.api.app.task_queue") as mock_tq,
+            patch("ecommerce_ops.api.app.run_pipeline_task"),
+        ):
             mock_ws.broadcast = AsyncMock()
             mock_tq.enqueue = AsyncMock(return_value="task-1")
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 r = await c.post("/api/run")
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -1351,7 +1611,9 @@ class TestEdgeCases:
     async def test_ws_stats_requires_auth(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers={"Authorization": "Bearer invalid"}) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers={"Authorization": "Bearer invalid"}
+        ) as c:
             r = await c.get("/api/ws/stats")
         app.dependency_overrides.clear()
         assert r.status_code in (401, 403)
@@ -1361,7 +1623,9 @@ class TestEdgeCases:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/ws/stats", headers=AUTH_HEADER)
         app.dependency_overrides.clear()
         assert r.status_code == 200
@@ -1373,7 +1637,9 @@ class TestEdgeCases:
         app.dependency_overrides.update(_overrides(seeded_session))
         app.dependency_overrides[verify_auth] = lambda: "op"
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.post(
                 "/api/approvals/batch",
                 json={"ids": [], "action": "approve"},
@@ -1387,7 +1653,9 @@ class TestEdgeCases:
     async def test_get_approvals_nonexistent_action(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
         transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
             r = await c.get("/api/approvals/does-not-exist")
         app.dependency_overrides.clear()
         assert r.status_code == 404
@@ -1399,7 +1667,9 @@ class TestEdgeCases:
         transport = ASGITransport(app=app)
         with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws:
             mock_ws.broadcast = AsyncMock()
-            async with AsyncClient(transport=transport, base_url="http://test", headers=AUTH_HEADER) as c:
+            async with AsyncClient(
+                transport=transport, base_url="http://test", headers=AUTH_HEADER
+            ) as c:
                 _r = await c.post(
                     "/api/approvals/act-2/approve",
                     json={},

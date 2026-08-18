@@ -12,8 +12,31 @@ from ecommerce_ops.memory.agent_memory import (
     get_recent_memories,
     store_decision_memory,
 )
+from ecommerce_ops.memory.vector.agent_integration import agent_memory_manager
+from ecommerce_ops.memory.vector.retrieval import memory_retrieval
 
 logger = structlog.get_logger(__name__)
+
+
+def _build_memory_query(agent_name: str, state: dict[str, Any]) -> str:
+    """Build a semantic query string from the current agent state snapshot."""
+    parts = [f"{agent_name} operational decision"]
+
+    for key in ("active_orders", "inventory_data", "reviews_data"):
+        items = state.get(key)
+        if isinstance(items, list):
+            for item in items[:3]:
+                if isinstance(item, dict):
+                    sku = item.get("sku")
+                    if sku:
+                        parts.append(sku)
+                    content = item.get("content")
+                    if isinstance(content, str) and content:
+                        parts.append(content[:120])
+                elif isinstance(item, str):
+                    parts.append(item[:120])
+
+    return " ".join(parts[:20])
 
 
 class BaseAgent(abc.ABC):  # noqa: B024
@@ -71,7 +94,23 @@ class BaseAgent(abc.ABC):  # noqa: B024
                 )
         if insight:
             lines.append(f"Pattern insight: {insight}")
+        vector_context = await self._load_vector_context(state)
+        if vector_context:
+            lines.append("Relevant knowledge:\n" + vector_context)
         return "\n".join(lines) if lines else ""
+
+    async def _load_vector_context(self, state: dict[str, Any]) -> str:
+        """Pull durable, semantically-relevant vector memories into the prompt."""
+        query = _build_memory_query(self.agent_name, state)
+        try:
+            return await memory_retrieval.get_context_window(
+                query=query,
+                agent_name=self.agent_name,
+                max_tokens=1000,
+            )
+        except Exception as e:  # pragma: no cover - fail-open, never blocks inference
+            logger.warning("vector memory unavailable for %s: %s", self.agent_name, e)
+            return ""
 
     async def persist_decision(self, decision: AgentDecision) -> None:
         await store_decision_memory(
@@ -83,6 +122,19 @@ class BaseAgent(abc.ABC):  # noqa: B024
                 "requires_approval": decision.requires_approval,
             },
         )
+        try:
+            await agent_memory_manager.store_decision(
+                agent_name=self.agent_name,
+                decision_type=decision.action_type,
+                reasoning=decision.reasoning,
+                outcome=(
+                    "sent_to_review" if decision.requires_approval else "executed_automatically"
+                ),
+                confidence=decision.confidence_score,
+                metadata={"requires_approval": decision.requires_approval},
+            )
+        except Exception as e:  # pragma: no cover - fail-open, never blocks inference
+            logger.warning("durable memory write failed for %s: %s", self.agent_name, e)
 
     def create_decision(
         self,
