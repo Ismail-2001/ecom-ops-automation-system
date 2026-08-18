@@ -56,68 +56,79 @@ class FakeWebSocket:
 # ── Token Verification Tests ────────────────────────────────
 
 
-def test_verify_token_valid():
+@pytest.mark.asyncio
+async def test_verify_token_valid():
     cm = ConnectionManager()
     # With API_KEY set, valid token should work
     with patch("ecommerce_ops.api.ws.settings") as mock_settings:
         from pydantic import SecretStr
+
         mock_settings.API_KEY = SecretStr("test-ws-key-2024")
         mock_settings.ENV = "production"
-        result = cm._verify_token("test-ws-key-2024")
+        result = await cm._verify_token("test-ws-key-2024")
         assert result is not None
 
 
-def test_verify_token_invalid():
+@pytest.mark.asyncio
+async def test_verify_token_invalid():
     cm = ConnectionManager()
     with patch("ecommerce_ops.api.ws.settings") as mock_settings:
         from pydantic import SecretStr
+
         mock_settings.API_KEY = SecretStr("test-ws-key-2024")
         mock_settings.ENV = "production"
-        result = cm._verify_token("wrong-key")
+        result = await cm._verify_token("wrong-key")
         assert result is None
 
 
-def test_verify_token_none():
+@pytest.mark.asyncio
+async def test_verify_token_none():
     cm = ConnectionManager()
     with patch("ecommerce_ops.api.ws.settings") as mock_settings:
         from pydantic import SecretStr
+
         mock_settings.API_KEY = SecretStr("test-ws-key-2024")
         mock_settings.ENV = "production"
-        result = cm._verify_token(None)
+        result = await cm._verify_token(None)
         assert result is None
 
 
-def test_verify_token_empty_string():
+@pytest.mark.asyncio
+async def test_verify_token_empty_string():
     cm = ConnectionManager()
     with patch("ecommerce_ops.api.ws.settings") as mock_settings:
         from pydantic import SecretStr
+
         mock_settings.API_KEY = SecretStr("test-ws-key-2024")
         mock_settings.ENV = "production"
-        result = cm._verify_token("")
+        result = await cm._verify_token("")
         assert result is None
 
 
-def test_verify_token_dev_mode_any_token():
+@pytest.mark.asyncio
+async def test_verify_token_dev_mode_any_token():
     cm = ConnectionManager()
     with patch("ecommerce_ops.api.ws.settings") as mock_settings:
         mock_settings.API_KEY = None
         mock_settings.ENV = "testing"
-        result = cm._verify_token("anything")
+        result = await cm._verify_token("anything")
         assert result == "dev-ws-operator"
 
 
-def test_verify_token_timing_safe():
+@pytest.mark.asyncio
+async def test_verify_token_timing_safe():
     """Verify that hmac.compare_digest is used (timing-safe comparison)."""
     cm = ConnectionManager()
     with patch("ecommerce_ops.api.ws.settings") as mock_settings:
         from pydantic import SecretStr
+
         mock_settings.API_KEY = SecretStr("exact-key")
         mock_settings.ENV = "production"
         # Correct key
-        assert cm._verify_token("exact-key") is not None
+        assert await cm._verify_token("exact-key") is not None
         # Close but wrong
-        assert cm._verify_token("exact-kez") is None
-        assert cm._verify_token("exact-k") is None
+        assert await cm._verify_token("exact-kez") is None
+        assert await cm._verify_token("exact-k") is None
 
 
 # ── Connection Rejection Tests ─────────────────────────────
@@ -129,6 +140,7 @@ async def test_connect_rejects_invalid_token():
     ws = FakeWebSocket()
     with patch("ecommerce_ops.api.ws.settings") as mock_settings:
         from pydantic import SecretStr
+
         mock_settings.API_KEY = SecretStr("real-key")
         mock_settings.ENV = "production"
         result = await cm.connect(ws, token="wrong-key")
@@ -145,6 +157,7 @@ async def test_connect_rejects_no_token():
     ws = FakeWebSocket()
     with patch("ecommerce_ops.api.ws.settings") as mock_settings:
         from pydantic import SecretStr
+
         mock_settings.API_KEY = SecretStr("real-key")
         mock_settings.ENV = "production"
         result = await cm.connect(ws, token=None)
@@ -160,6 +173,7 @@ async def test_connect_accepts_valid_token():
     ws = FakeWebSocket()
     with patch("ecommerce_ops.api.ws.settings") as mock_settings:
         from pydantic import SecretStr
+
         mock_settings.API_KEY = SecretStr("real-key")
         mock_settings.ENV = "production"
         conn = await cm.connect(ws, token="real-key")
@@ -180,6 +194,7 @@ async def test_per_ip_limit_enforced():
     cm = ConnectionManager()
     with patch("ecommerce_ops.api.ws.settings") as mock_settings:
         from pydantic import SecretStr
+
         mock_settings.API_KEY = SecretStr("key")
         mock_settings.ENV = "production"
 
@@ -208,6 +223,7 @@ async def test_disconnect_frees_ip_slot():
     cm = ConnectionManager()
     with patch("ecommerce_ops.api.ws.settings") as mock_settings:
         from pydantic import SecretStr
+
         mock_settings.API_KEY = SecretStr("key")
         mock_settings.ENV = "production"
 
@@ -252,6 +268,7 @@ async def test_broadcast_only_to_authenticated():
     cm = ConnectionManager()
     with patch("ecommerce_ops.api.ws.settings") as mock_settings:
         from pydantic import SecretStr
+
         mock_settings.API_KEY = SecretStr("key")
         mock_settings.ENV = "production"
 
@@ -273,6 +290,7 @@ async def test_broadcast_handles_dead_connections():
     cm = ConnectionManager()
     with patch("ecommerce_ops.api.ws.settings") as mock_settings:
         from pydantic import SecretStr
+
         mock_settings.API_KEY = SecretStr("key")
         mock_settings.ENV = "production"
 
@@ -301,6 +319,7 @@ async def test_stats_no_sensitive_data():
     cm = ConnectionManager()
     with patch("ecommerce_ops.api.ws.settings") as mock_settings:
         from pydantic import SecretStr
+
         mock_settings.API_KEY = SecretStr("key")
         mock_settings.ENV = "production"
 

@@ -1,4 +1,5 @@
 """Tests for Rate Limiter and Task Queue."""
+
 from ecommerce_ops.utils import utc_now
 
 import asyncio
@@ -151,14 +152,20 @@ async def test_task_queue_enqueue():
 @pytest.mark.asyncio
 async def test_task_queue_max_tasks():
 
-    from ecommerce_ops.infra.task_queue import MAX_TASKS, Task, TaskQueue, TaskStatus
+    from ecommerce_ops.infra.task_queue import (
+        MAX_TASKS,
+        QueueFullError,
+        Task,
+        TaskQueue,
+        TaskStatus,
+    )
 
     tq = TaskQueue(num_workers=0)
     tq._tasks = {str(i): Task(str(i), "test", AsyncMock) for i in range(MAX_TASKS)}
     for t in tq._tasks.values():
         t.status = TaskStatus.RUNNING
 
-    with pytest.raises(RuntimeError, match="full"):
+    with pytest.raises(QueueFullError, match="maximum capacity"):
         await tq.enqueue("test", AsyncMock)
 
 
