@@ -2,10 +2,13 @@
 Demo Helpers
 Utilities for running demonstrations and generating sample data.
 """
+
 import random
 import uuid
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from datetime import timedelta
+from typing import Any, Dict
+
+from ecommerce_ops.utils import utc_now
 
 
 def generate_demo_order() -> Dict[str, Any]:
@@ -45,7 +48,7 @@ def generate_demo_order() -> Dict[str, Any]:
         },
         "payment_method": random.choice(["credit_card", "paypal", "apple_pay"]),
         "risk_level": risk,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": utc_now().isoformat(),
         "status": "pending",
     }
 
@@ -62,7 +65,7 @@ def generate_demo_cart() -> Dict[str, Any]:
     cart_items = random.sample(items, k=random.randint(1, len(items)))
     total = sum(item["price"] * item["quantity"] for item in cart_items)
 
-    abandoned_at = datetime.utcnow() - timedelta(hours=random.randint(1, 72))
+    abandoned_at = utc_now() - timedelta(hours=random.randint(1, 72))
 
     recovery_strategies = [
         "discount_10_percent",
@@ -111,15 +114,17 @@ def generate_demo_ticket() -> Dict[str, Any]:
         "message": "This is a demo support ticket for testing the customer support agent.",
         "sentiment": random.choice(sentiments),
         "priority": random.choice(priorities),
-        "category": random.choice([
-            "order_issue",
-            "billing",
-            "product_question",
-            "technical_support",
-            "feedback",
-        ]),
+        "category": random.choice(
+            [
+                "order_issue",
+                "billing",
+                "product_question",
+                "technical_support",
+                "feedback",
+            ]
+        ),
         "status": random.choice(["open", "in_progress", "resolved"]),
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": utc_now().isoformat(),
         "response_time_hours": round(random.uniform(0.5, 24.0), 1),
         "satisfaction_score": random.randint(1, 5),
     }
@@ -153,8 +158,8 @@ def generate_demo_product() -> Dict[str, Any]:
         "inventory_quantity": stock,
         "inventory_management": "shopify",
         "status": "active" if stock > 0 else "out_of_stock",
-        "created_at": datetime.utcnow().isoformat(),
-        "updated_at": datetime.utcnow().isoformat(),
+        "created_at": utc_now().isoformat(),
+        "updated_at": utc_now().isoformat(),
     }
 
 

@@ -20,6 +20,7 @@ from ecommerce_ops.agents.customer_support.models import (
 from ecommerce_ops.agents.customer_support.response_engine import ResponseGenerationEngine
 from ecommerce_ops.agents.customer_support.ticket_router import TicketClassifier
 from ecommerce_ops.graph.state import AgentDecision
+from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.agents.customer_support")
 
@@ -130,9 +131,7 @@ class CustomerSupportAgent(BaseAgent):
         }
 
         # Determine reasoning
-        reasoning = self._build_reasoning(
-            ticket, classification, suggestion, requires_human
-        )
+        reasoning = self._build_reasoning(ticket, classification, suggestion, requires_human)
 
         # Create decision
         decision = self.create_decision(
@@ -171,7 +170,7 @@ class CustomerSupportAgent(BaseAgent):
             product_id=ticket_data.get("product_id"),
             tags=ticket_data.get("tags", []),
             metadata=ticket_data.get("metadata", {}),
-            created_at=created_at or datetime.utcnow(),
+            created_at=created_at or utc_now(),
         )
 
     def _build_reasoning(
@@ -186,7 +185,9 @@ class CustomerSupportAgent(BaseAgent):
 
         parts.append(f"Ticket from {ticket.customer_name or ticket.customer_email}")
         parts.append(f"Category: {classification['category']}")
-        parts.append(f"Priority: {classification['priority']} (SLA: {classification['sla_target_hours']}h)")
+        parts.append(
+            f"Priority: {classification['priority']} (SLA: {classification['sla_target_hours']}h)"
+        )
 
         if ticket.sentiment:
             parts.append(f"Sentiment: {ticket.sentiment.value}")
@@ -203,9 +204,7 @@ class CustomerSupportAgent(BaseAgent):
 
         return ". ".join(parts)
 
-    async def _store_response_suggestion(
-        self, ticket_id: str, suggestion: ResponseSuggestion
-    ):
+    async def _store_response_suggestion(self, ticket_id: str, suggestion: ResponseSuggestion):
         """Store response suggestion for later retrieval."""
         # In production, store in database
         logger.debug(
@@ -241,9 +240,7 @@ class CustomerSupportAgent(BaseAgent):
         )
         return True
 
-    async def get_support_metrics(
-        self, days: int = 7
-    ) -> Dict[str, Any]:
+    async def get_support_metrics(self, days: int = 7) -> Dict[str, Any]:
         """Get support metrics for the given period."""
         # In production, query database
         return {

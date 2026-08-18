@@ -9,6 +9,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from ecommerce_ops.utils import utc_now
+
 
 class CartStatus(str, Enum):
     ABANDONED = "abandoned"
@@ -109,7 +111,7 @@ class AbandonedCart(BaseModel):
     @property
     def time_abandoned_hours(self) -> float | None:
         if self.abandoned_at:
-            delta = datetime.utcnow() - self.abandoned_at
+            delta = utc_now() - self.abandoned_at
             return delta.total_seconds() / 3600
         return None
 

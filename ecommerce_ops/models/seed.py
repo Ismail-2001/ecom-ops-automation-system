@@ -1,10 +1,11 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy import select
 
 from ecommerce_ops.config import Environment, settings
 from ecommerce_ops.models.db import ApprovalAction, AuditEntry, async_session_factory
+from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.seed")
 
@@ -24,7 +25,7 @@ async def seed_data_if_empty():
 
         logger.info("Seeding database with mock operations actions...")
 
-        now = datetime.utcnow()
+        now = utc_now()
 
         mock_actions = [
             # 1. Pending Fraud Hold (High Risk)

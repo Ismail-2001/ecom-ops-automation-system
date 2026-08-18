@@ -2,6 +2,7 @@
 Agent Message Bus - Inter-agent communication system.
 Enables agents to share insights, coordinate actions, and collaborate.
 """
+
 import asyncio
 import logging
 import uuid
@@ -16,6 +17,7 @@ logger = logging.getLogger("ecommerce_ops.agents.message_bus")
 @dataclass
 class AgentMessage:
     """Message between agents."""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     sender: str = ""
     recipient: Optional[str] = None  # None = broadcast
@@ -75,7 +77,7 @@ class AgentMessageBus:
         """Publish a message to the bus."""
         self._message_history.append(message)
         if len(self._message_history) > self._max_history:
-            self._message_history = self._message_history[-self._max_history:]
+            self._message_history = self._message_history[-self._max_history :]
 
         logger.info(
             f"Message published: {message.sender} -> "
@@ -109,7 +111,14 @@ class AgentMessageBus:
             if not future.done():
                 future.set_result(message)
 
-    async def send_direct(self, sender: str, recipient: str, payload: Dict[str, Any], message_type: str = "info", topic: str = "direct"):
+    async def send_direct(
+        self,
+        sender: str,
+        recipient: str,
+        payload: Dict[str, Any],
+        message_type: str = "info",
+        topic: str = "direct",
+    ):
         """Send a direct message to a specific agent."""
         message = AgentMessage(
             sender=sender,
@@ -120,7 +129,13 @@ class AgentMessageBus:
         )
         await self.publish(message)
 
-    async def broadcast(self, sender: str, payload: Dict[str, Any], message_type: str = "info", topic: str = "broadcast"):
+    async def broadcast(
+        self,
+        sender: str,
+        payload: Dict[str, Any],
+        message_type: str = "info",
+        topic: str = "broadcast",
+    ):
         """Broadcast a message to all agents."""
         message = AgentMessage(
             sender=sender,
@@ -131,7 +146,9 @@ class AgentMessageBus:
         )
         await self.publish(message)
 
-    async def request(self, sender: str, recipient: str, payload: Dict[str, Any], timeout: float = 30.0) -> Optional[AgentMessage]:
+    async def request(
+        self, sender: str, recipient: str, payload: Dict[str, Any], timeout: float = 30.0
+    ) -> Optional[AgentMessage]:
         """Send a request and wait for response."""
         correlation_id = str(uuid.uuid4())
         future = asyncio.get_running_loop().create_future()
@@ -159,7 +176,9 @@ class AgentMessageBus:
         finally:
             self._pending_responses.pop(correlation_id, None)
 
-    def get_history(self, agent_id: Optional[str] = None, topic: Optional[str] = None, limit: int = 50) -> List[AgentMessage]:
+    def get_history(
+        self, agent_id: Optional[str] = None, topic: Optional[str] = None, limit: int = 50
+    ) -> List[AgentMessage]:
         """Get message history with optional filters."""
         messages = self._message_history
 
@@ -172,19 +191,23 @@ class AgentMessageBus:
 
     def get_agent_conversations(self, agent_id: str) -> List[Dict[str, Any]]:
         """Get all conversations involving an agent."""
-        messages = [m for m in self._message_history if m.sender == agent_id or m.recipient == agent_id]
+        messages = [
+            m for m in self._message_history if m.sender == agent_id or m.recipient == agent_id
+        ]
 
         conversations = []
         for msg in messages:
-            conversations.append({
-                "id": msg.id,
-                "with": msg.recipient if msg.sender == agent_id else msg.sender,
-                "direction": "sent" if msg.sender == agent_id else "received",
-                "type": msg.message_type,
-                "topic": msg.topic,
-                "payload": msg.payload,
-                "timestamp": msg.timestamp.isoformat(),
-            })
+            conversations.append(
+                {
+                    "id": msg.id,
+                    "with": msg.recipient if msg.sender == agent_id else msg.sender,
+                    "direction": "sent" if msg.sender == agent_id else "received",
+                    "type": msg.message_type,
+                    "topic": msg.topic,
+                    "payload": msg.payload,
+                    "timestamp": msg.timestamp.isoformat(),
+                }
+            )
 
         return conversations
 
@@ -208,7 +231,9 @@ class AgentMessageBus:
             "by_sender": dict(by_sender),
             "by_topic": dict(by_topic),
             "pending_requests": len(self._pending_responses),
-            "subscribers": {topic: len(callbacks) for topic, callbacks in self._subscribers.items()},
+            "subscribers": {
+                topic: len(callbacks) for topic, callbacks in self._subscribers.items()
+            },
         }
 
 
@@ -217,6 +242,7 @@ class AgentMessageBus:
 
 class MessageTopics:
     """Standard message topics for agent communication."""
+
     FRAUD_ALERT = "fraud.alert"
     FRAUD_APPROVED = "fraud.approved"
     FRAUD_REJECTED = "fraud.rejected"

@@ -89,9 +89,30 @@ class Settings(BaseSettings):
             if not self.API_KEY:
                 raise ValueError("API_KEY must be set in production")
             if not self.GOOGLE_API_KEY and not self.DEEPSEEK_API_KEY:
-                raise ValueError("Either GOOGLE_API_KEY or DEEPSEEK_API_KEY must be set in production")
+                raise ValueError(
+                    "Either GOOGLE_API_KEY or DEEPSEEK_API_KEY must be set in production"
+                )
             if "postgresql" not in self.DATABASE_URL:
                 raise ValueError("DATABASE_URL must use PostgreSQL in production")
+            if not self.REDIS_URL or not self.REDIS_URL.startswith("redis"):
+                raise ValueError("REDIS_URL must be a valid redis:// URL in production")
+
+            # Shopify integration: if enabled in production, require OAuth credentials
+            # so the system fails closed instead of running with partial config.
+            shopify_enabled = bool(self.SHOPIFY_SHOP_DOMAIN or self.SHOPIFY_STORE_URL)
+            if shopify_enabled:
+                missing = []
+                if not self.SHOPIFY_CLIENT_ID:
+                    missing.append("SHOPIFY_CLIENT_ID")
+                if not self.SHOPIFY_CLIENT_SECRET:
+                    missing.append("SHOPIFY_CLIENT_SECRET")
+                if not self.SHOPIFY_ACCESS_TOKEN and not self.SHOPIFY_APP_URL:
+                    missing.append("SHOPIFY_ACCESS_TOKEN or SHOPIFY_APP_URL")
+                if missing:
+                    raise ValueError(
+                        "Shopify is enabled in production but missing required config: "
+                        + ", ".join(missing)
+                    )
         return self
 
 

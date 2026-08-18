@@ -19,23 +19,17 @@ class ReflectionAgent:
                 adjusted_conf = max(0.0, min(1.0, d.confidence_score))
 
             if d.confidence_score > 0.95 and d.requires_approval:
-                issues.append(
-                    "High confidence decision sent to HITL — consider trusting the agent"
-                )
+                issues.append("High confidence decision sent to HITL — consider trusting the agent")
                 adjusted_conf = d.confidence_score
 
             if d.confidence_score < 0.5 and not d.requires_approval:
-                issues.append(
-                    "Low confidence decision auto-approved — risk of poor outcome"
-                )
+                issues.append("Low confidence decision auto-approved — risk of poor outcome")
 
             if not d.reasoning or len(d.reasoning.strip()) < 10:
                 issues.append("Reasoning is too short or empty")
 
             if d.action_type == "HOLD_ORDER" and d.confidence_score < 0.7:
-                issues.append(
-                    "Fraud hold with low confidence — may cause false positive"
-                )
+                issues.append("Fraud hold with low confidence — may cause false positive")
 
             passed = len(issues) == 0
             fb = ReflectionFeedback(
@@ -48,7 +42,6 @@ class ReflectionAgent:
             feedback.append(fb)
 
         return feedback
-
 
     async def correct_decision(
         self, decision: AgentDecision, feedback: ReflectionFeedback

@@ -22,40 +22,104 @@ class CategoryClassifier:
 
     CATEGORY_KEYWORDS = {
         TicketCategory.ORDER_STATUS: [
-            "order", "status", "tracking", "where is", "when will",
-            "delivery", "shipped", "processing", "confirmed",
+            "order",
+            "status",
+            "tracking",
+            "where is",
+            "when will",
+            "delivery",
+            "shipped",
+            "processing",
+            "confirmed",
         ],
         TicketCategory.SHIPPING: [
-            "shipping", "delivery", "carrier", "usps", "ups", "fedex",
-            "tracking number", "package", "lost", "delayed",
+            "shipping",
+            "delivery",
+            "carrier",
+            "usps",
+            "ups",
+            "fedex",
+            "tracking number",
+            "package",
+            "lost",
+            "delayed",
         ],
         TicketCategory.RETURNS: [
-            "return", "send back", "exchange", "wrong size", "wrong item",
-            "doesn't fit", "not as described", "defective",
+            "return",
+            "send back",
+            "exchange",
+            "wrong size",
+            "wrong item",
+            "doesn't fit",
+            "not as described",
+            "defective",
         ],
         TicketCategory.REFUNDS: [
-            "refund", "money back", "charge", "credit", "reimbursement",
-            "overcharged", "double charged", "billing error",
+            "refund",
+            "money back",
+            "charge",
+            "credit",
+            "reimbursement",
+            "overcharged",
+            "double charged",
+            "billing error",
         ],
         TicketCategory.PRODUCT_QUESTION: [
-            "question", "how to", "what is", "specification", "compatible",
-            "size", "color", "material", "dimensions", "features",
+            "question",
+            "how to",
+            "what is",
+            "specification",
+            "compatible",
+            "size",
+            "color",
+            "material",
+            "dimensions",
+            "features",
         ],
         TicketCategory.COMPLAINT: [
-            "complaint", "unhappy", "terrible", "worst", "never again",
-            "disappointed", "frustrated", "angry", "unacceptable",
+            "complaint",
+            "unhappy",
+            "terrible",
+            "worst",
+            "never again",
+            "disappointed",
+            "frustrated",
+            "angry",
+            "unacceptable",
         ],
         TicketCategory.TECHNICAL: [
-            "error", "bug", "crash", "not working", "broken", "issue",
-            "problem", "trouble", "help", "support", "technical",
+            "error",
+            "bug",
+            "crash",
+            "not working",
+            "broken",
+            "issue",
+            "problem",
+            "trouble",
+            "help",
+            "support",
+            "technical",
         ],
         TicketCategory.ACCOUNT: [
-            "account", "login", "password", "email", "profile",
-            "settings", "unsubscribe", "delete account",
+            "account",
+            "login",
+            "password",
+            "email",
+            "profile",
+            "settings",
+            "unsubscribe",
+            "delete account",
         ],
         TicketCategory.BILLING: [
-            "billing", "invoice", "payment", "charge", "subscription",
-            "cancel", "plan", "price", "discount",
+            "billing",
+            "invoice",
+            "payment",
+            "charge",
+            "subscription",
+            "cancel",
+            "plan",
+            "price",
+            "discount",
         ],
     }
 
@@ -110,9 +174,7 @@ class PriorityAssigner:
         customer_value: float = 0.0,
     ) -> TicketPriority:
         """Assign priority based on multiple factors."""
-        base_priority = self.CATEGORY_BASE_PRIORITY.get(
-            ticket.category, TicketPriority.NORMAL
-        )
+        base_priority = self.CATEGORY_BASE_PRIORITY.get(ticket.category, TicketPriority.NORMAL)
 
         # Boost priority based on sentiment
         if sentiment in (SentimentType.VERY_NEGATIVE, SentimentType.NEGATIVE):
@@ -191,7 +253,8 @@ class TicketRouter:
             "action": "route",
             "target_queue": queue,
             "target_agent": agent["id"] if agent else None,
-            "reason": f"Routed to {queue} queue" + (f", assigned to {agent['name']}" if agent else ""),
+            "reason": f"Routed to {queue} queue"
+            + (f", assigned to {agent['name']}" if agent else ""),
         }
 
     def add_escalation_rule(self, rule: EscalationRule):
@@ -211,9 +274,7 @@ class TicketRouter:
     def remove_from_queue(self, queue: str, ticket_id: str):
         """Remove ticket from queue."""
         if queue in self._queues:
-            self._queues[queue] = [
-                t for t in self._queues[queue] if t != ticket_id
-            ]
+            self._queues[queue] = [t for t in self._queues[queue] if t != ticket_id]
 
     def get_agent_workload(self, agent_id: str) -> int:
         """Get agent's current workload."""
@@ -224,9 +285,7 @@ class TicketRouter:
         current = self._agent_workload.get(agent_id, 0)
         self._agent_workload[agent_id] = max(0, current + delta)
 
-    def _check_escalation_rules(
-        self, ticket: SupportTicket
-    ) -> Optional[Dict[str, Any]]:
+    def _check_escalation_rules(self, ticket: SupportTicket) -> Optional[Dict[str, Any]]:
         """Check if any escalation rules match."""
         for rule in self._escalation_rules:
             if not rule.is_active:
@@ -241,9 +300,7 @@ class TicketRouter:
                 }
         return None
 
-    def _rule_matches(
-        self, ticket: SupportTicket, rule: EscalationRule
-    ) -> bool:
+    def _rule_matches(self, ticket: SupportTicket, rule: EscalationRule) -> bool:
         """Check if ticket matches escalation rule conditions."""
         conditions = rule.conditions
 
@@ -356,9 +413,7 @@ class TicketClassifier:
         ticket.category = category
 
         # Assign priority
-        priority = self.priority_assigner.assign_priority(
-            ticket, ticket.sentiment, customer_value
-        )
+        priority = self.priority_assigner.assign_priority(ticket, ticket.sentiment, customer_value)
         ticket.priority = priority
 
         # Get SLA target

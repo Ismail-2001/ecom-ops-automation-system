@@ -4,7 +4,6 @@ Endpoints for vector memory and session management.
 """
 
 import logging
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -18,6 +17,7 @@ from ecommerce_ops.memory.vector.models import (
 from ecommerce_ops.memory.vector.retrieval import memory_retrieval
 from ecommerce_ops.memory.vector.sessions import session_manager
 from ecommerce_ops.memory.vector.store import vector_store
+from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.api.memory")
 
@@ -350,5 +350,5 @@ async def memory_health():
         "total_memories": stats.total_memories,
         "total_sessions": session_stats["total_sessions"],
         "active_sessions": session_stats["active_sessions"],
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": utc_now().isoformat(),
     }

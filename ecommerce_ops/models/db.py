@@ -1,6 +1,5 @@
 import logging
 import os
-from datetime import UTC, datetime
 from typing import AsyncGenerator
 
 from sqlalchemy import (
@@ -20,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import declarative_base
 
 from ecommerce_ops.config import Environment, settings
+from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.db")
 
@@ -53,7 +53,7 @@ Base = declarative_base()
 
 
 def utcnow():
-    return datetime.now(UTC)
+    return utc_now()
 
 
 class ApprovalAction(Base):
@@ -295,6 +295,81 @@ class ShopifyShopCredential(Base):
     installed_at = Column(DateTime, default=utcnow, nullable=False)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
+
+
+# ── Shopify Synced Data Snapshots (Phase 3 — sync persistence) ──
+# The /shopify/sync endpoint pulls products/orders/customers from Shopify.
+# These tables persist the synced data (key columns + full raw payload)
+# so the "synced" counts returned by the endpoint reflect real writes.
+
+
+class ShopifyProductSnapshot(Base):
+    __tablename__ = "shopify_product_snapshots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    shopify_product_id = Column(String, nullable=False, index=True)
+    shop_domain = Column(String, nullable=False, index=True)
+    title = Column(String, nullable=True)
+    sku = Column(String, nullable=True, index=True)
+    min_price = Column(Float, nullable=False, default=0.0)
+    max_price = Column(Float, nullable=False, default=0.0)
+    total_inventory = Column(Integer, nullable=False, default=0)
+    raw_data = Column(JSON, nullable=False)
+    synced_at = Column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        Index(
+            "ix_shopify_product_snapshots_shop_product",
+            "shop_domain",
+            "shopify_product_id",
+            unique=True,
+        ),
+    )
+
+
+class ShopifyOrderSnapshot(Base):
+    __tablename__ = "shopify_order_snapshots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    shopify_order_id = Column(String, nullable=False, index=True)
+    shop_domain = Column(String, nullable=False, index=True)
+    order_number = Column(Integer, nullable=True)
+    total_price = Column(Float, nullable=False, default=0.0)
+    currency = Column(String, nullable=True)
+    financial_status = Column(String, nullable=True)
+    fulfillment_status = Column(String, nullable=True)
+    raw_data = Column(JSON, nullable=False)
+    synced_at = Column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        Index(
+            "ix_shopify_order_snapshots_shop_order", "shop_domain", "shopify_order_id", unique=True
+        ),
+    )
+
+
+class ShopifyCustomerSnapshot(Base):
+    __tablename__ = "shopify_customer_snapshots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    shopify_customer_id = Column(String, nullable=False, index=True)
+    shop_domain = Column(String, nullable=False, index=True)
+    email = Column(String, nullable=True)
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
+    orders_count = Column(Integer, nullable=False, default=0)
+    total_spent = Column(Float, nullable=False, default=0.0)
+    raw_data = Column(JSON, nullable=False)
+    synced_at = Column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        Index(
+            "ix_shopify_customer_snapshots_shop_customer",
+            "shop_domain",
+            "shopify_customer_id",
+            unique=True,
+        ),
+    )
 
 
 # Async Generator for DB sessions

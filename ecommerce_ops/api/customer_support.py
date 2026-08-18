@@ -4,7 +4,6 @@ Endpoints for ticket management, responses, and analytics.
 """
 
 import logging
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Query
@@ -23,6 +22,7 @@ from ecommerce_ops.agents.customer_support.models import (
 from ecommerce_ops.agents.customer_support.response_engine import ResponseGenerationEngine
 from ecommerce_ops.agents.customer_support.ticket_router import TicketClassifier
 from ecommerce_ops.config import settings
+from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.api.customer_support")
 
@@ -70,7 +70,7 @@ class BatchTicketRequest(BaseModel):
 @router.post("/tickets")
 async def create_ticket(req: TicketCreateRequest, background_tasks: BackgroundTasks):
     """Create a new support ticket."""
-    ticket_id = f"ticket_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    ticket_id = f"ticket_{utc_now().strftime('%Y%m%d%H%M%S')}"
 
     ticket_data = {
         "id": ticket_id,
@@ -83,7 +83,7 @@ async def create_ticket(req: TicketCreateRequest, background_tasks: BackgroundTa
         "order_id": req.order_id,
         "product_id": req.product_id,
         "metadata": req.metadata or {},
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": utc_now().isoformat(),
     }
 
     # Classify ticket
@@ -136,7 +136,7 @@ async def list_tickets(
             "priority": "high",
             "status": "open",
             "channel": "email",
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": utc_now().isoformat(),
         },
         {
             "id": "ticket_002",
@@ -147,7 +147,7 @@ async def list_tickets(
             "priority": "normal",
             "status": "in_progress",
             "channel": "chat",
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": utc_now().isoformat(),
         },
     ]
 
@@ -174,13 +174,13 @@ async def get_ticket(ticket_id: str):
         "status": "open",
         "channel": "email",
         "order_id": "12345",
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": utc_now().isoformat(),
         "messages": [
             {
                 "id": "msg_001",
                 "sender_type": "customer",
                 "content": "I placed my order 2 weeks ago and still haven't received it!",
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": utc_now().isoformat(),
             }
         ],
     }
@@ -203,7 +203,7 @@ async def update_ticket(ticket_id: str, req: TicketUpdateRequest):
     return {
         "ticket_id": ticket_id,
         "updates": updates,
-        "updated_at": datetime.utcnow().isoformat(),
+        "updated_at": utc_now().isoformat(),
     }
 
 
@@ -232,7 +232,7 @@ async def respond_to_ticket(
     return {
         "ticket_id": ticket_id,
         "status": "response_sent",
-        "sent_at": datetime.utcnow().isoformat(),
+        "sent_at": utc_now().isoformat(),
     }
 
 
@@ -356,7 +356,7 @@ async def customer_support_health():
         "agent": "CustomerSupportAgent",
         "response_engine": "ResponseGenerationEngine",
         "classifier": "TicketClassifier",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": utc_now().isoformat(),
     }
 
 

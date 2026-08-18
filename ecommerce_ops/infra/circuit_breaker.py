@@ -64,12 +64,16 @@ class CircuitBreaker:
                     self._state = CircuitState.OPEN
                     logger.warning(
                         "Circuit %s: %s → OPEN (%d failures)",
-                        self.name, self._state.value, self._failure_count,
+                        self.name,
+                        self._state.value,
+                        self._failure_count,
                     )
                 else:
                     logger.debug(
                         "Circuit %s: failure %d/%d",
-                        self.name, self._failure_count, self.failure_threshold,
+                        self.name,
+                        self._failure_count,
+                        self.failure_threshold,
                     )
             raise e
 

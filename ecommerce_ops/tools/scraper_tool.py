@@ -1,7 +1,8 @@
 import logging
 from typing import Optional
-from ecommerce_ops.tools.registry import Tool, ToolRegistry
+
 from ecommerce_ops.connectors.competitor_scraper import scrape_competitor_price
+from ecommerce_ops.tools.registry import Tool, ToolRegistry
 
 logger = logging.getLogger("ecommerce_ops.tools.scraper_tool")
 

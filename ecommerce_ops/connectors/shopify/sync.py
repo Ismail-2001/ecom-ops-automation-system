@@ -5,9 +5,11 @@ Synchronizes data between Shopify and our database.
 
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ecommerce_ops.connectors.shopify.client import ShopifyClient
@@ -15,8 +17,28 @@ from ecommerce_ops.connectors.shopify.models import (
     ShopifyCustomer,
     ShopifyOrder,
     ShopifyProduct,
-    ShopifyVariant,
 )
+from ecommerce_ops.models import (
+    ShopifyCustomerSnapshot,
+    ShopifyOrderSnapshot,
+    ShopifyProductSnapshot,
+)
+from ecommerce_ops.utils import utc_now
+
+logger = logging.getLogger("ecommerce_ops.connectors.shopify.sync")
+
+
+def _dialect_insert(table):
+    """Dialect-aware insert supporting ON CONFLICT DO UPDATE.
+
+    The generic ``sqlalchemy.insert`` does not expose ``on_conflict_do_update``;
+    only the PostgreSQL and SQLite dialect constructs do.  Index elements must
+    be passed as ``index_elements`` (not ``indexes``).
+    """
+    from ecommerce_ops.models.db import is_sqlite
+
+    return sqlite_insert(table) if is_sqlite else pg_insert(table)
+
 
 logger = logging.getLogger("ecommerce_ops.connectors.shopify.sync")
 
@@ -53,6 +75,7 @@ class ShopifySyncService:
 
     def __init__(self, client: ShopifyClient):
         self.client = client
+        self.shop_domain = getattr(client, "shop_domain", "") or ""
 
     async def sync_products(
         self,
@@ -151,9 +174,7 @@ class ShopifySyncService:
                     await self._upsert_customer(session, customer)
                     count += 1
                 except Exception as e:
-                    logger.error(
-                        "Failed to sync customer %s: %s", customer_data.get("id"), e
-                    )
+                    logger.error("Failed to sync customer %s: %s", customer_data.get("id"), e)
 
             page_info = response.get("page_info")
             if not page_info:
@@ -190,37 +211,96 @@ class ShopifySyncService:
         return result
 
     async def _upsert_product(self, session: AsyncSession, product: ShopifyProduct) -> None:
-        """Insert or update product in database."""
-        # TODO: Implement actual database upsert
-        # This is a placeholder that shows the data flow
-        logger.debug(
-            "Upsert product: %s (%s) - $%.2f-%.2f, %d variants, %d inventory",
-            product.title,
-            product.id,
-            product.min_price,
-            product.max_price,
-            len(product.variants),
-            product.total_inventory,
+        """Insert or update product snapshot in database (real persistence)."""
+        primary_sku = product.variants[0].sku if product.variants else None
+        values = {
+            "shopify_product_id": str(product.id),
+            "shop_domain": self.shop_domain,
+            "title": product.title,
+            "sku": primary_sku,
+            "min_price": float(product.min_price),
+            "max_price": float(product.max_price),
+            "total_inventory": int(product.total_inventory),
+            "raw_data": product.model_dump(),
+            "synced_at": utc_now(),
+        }
+        stmt = _dialect_insert(ShopifyProductSnapshot).values(**values)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["shop_domain", "shopify_product_id"],
+            set_={
+                "title": stmt.excluded.title,
+                "sku": stmt.excluded.sku,
+                "min_price": stmt.excluded.min_price,
+                "max_price": stmt.excluded.max_price,
+                "total_inventory": stmt.excluded.total_inventory,
+                "raw_data": stmt.excluded.raw_data,
+                "synced_at": stmt.excluded.synced_at,
+            },
         )
+        await session.execute(stmt)
 
     async def _upsert_order(self, session: AsyncSession, order: ShopifyOrder) -> None:
-        """Insert or update order in database."""
-        logger.debug(
-            "Upsert order: #%s (%s) - $%s %s [%s/%s]",
-            order.order_number,
-            order.id,
-            order.total_price,
-            order.currency,
-            order.financial_status.value,
-            order.fulfillment_status.value if order.fulfillment_status else "unfulfilled",
+        """Insert or update order snapshot in database (real persistence)."""
+        try:
+            total_price = float(order.total_price)
+        except (ValueError, TypeError):
+            total_price = 0.0
+        values = {
+            "shopify_order_id": str(order.id),
+            "shop_domain": self.shop_domain,
+            "order_number": order.order_number,
+            "total_price": total_price,
+            "currency": order.currency,
+            "financial_status": order.financial_status.value if order.financial_status else None,
+            "fulfillment_status": order.fulfillment_status.value
+            if order.fulfillment_status
+            else None,
+            "raw_data": order.model_dump(),
+            "synced_at": utc_now(),
+        }
+        stmt = _dialect_insert(ShopifyOrderSnapshot).values(**values)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["shop_domain", "shopify_order_id"],
+            set_={
+                "order_number": stmt.excluded.order_number,
+                "total_price": stmt.excluded.total_price,
+                "currency": stmt.excluded.currency,
+                "financial_status": stmt.excluded.financial_status,
+                "fulfillment_status": stmt.excluded.fulfillment_status,
+                "raw_data": stmt.excluded.raw_data,
+                "synced_at": stmt.excluded.synced_at,
+            },
         )
+        await session.execute(stmt)
 
     async def _upsert_customer(self, session: AsyncSession, customer: ShopifyCustomer) -> None:
-        """Insert or update customer in database."""
-        logger.debug(
-            "Upsert customer: %s (%s) - %d orders, $%s spent",
-            customer.full_name,
-            customer.id,
-            customer.orders_count,
-            customer.total_spent,
+        """Insert or update customer snapshot in database (real persistence)."""
+        try:
+            total_spent = float(customer.total_spent)
+        except (ValueError, TypeError):
+            total_spent = 0.0
+        values = {
+            "shopify_customer_id": str(customer.id),
+            "shop_domain": self.shop_domain,
+            "email": customer.email,
+            "first_name": customer.first_name,
+            "last_name": customer.last_name,
+            "orders_count": int(customer.orders_count),
+            "total_spent": total_spent,
+            "raw_data": customer.model_dump(),
+            "synced_at": utc_now(),
+        }
+        stmt = _dialect_insert(ShopifyCustomerSnapshot).values(**values)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["shop_domain", "shopify_customer_id"],
+            set_={
+                "email": stmt.excluded.email,
+                "first_name": stmt.excluded.first_name,
+                "last_name": stmt.excluded.last_name,
+                "orders_count": stmt.excluded.orders_count,
+                "total_spent": stmt.excluded.total_spent,
+                "raw_data": stmt.excluded.raw_data,
+                "synced_at": stmt.excluded.synced_at,
+            },
         )
+        await session.execute(stmt)

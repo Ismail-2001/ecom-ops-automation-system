@@ -4,7 +4,6 @@ Integrates vector memory with agent operations.
 """
 
 import logging
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from ecommerce_ops.memory.vector.models import (
@@ -13,7 +12,7 @@ from ecommerce_ops.memory.vector.models import (
     MemoryType,
 )
 from ecommerce_ops.memory.vector.retrieval import MemoryRetrievalService, memory_retrieval
-from ecommerce_ops.memory.vector.sessions import SessionManager, session_manager
+from ecommerce_ops.memory.vector.sessions import SessionManager
 
 logger = logging.getLogger("ecommerce_ops.memory.vector.agent_integration")
 
@@ -200,10 +199,7 @@ class AgentMemoryManager:
             context_parts.append("Relevant knowledge:\n" + semantic_context)
 
         if recent_memories:
-            recent_text = "\n".join([
-                f"- {m.entry.content[:100]}"
-                for m in recent_memories
-            ])
+            recent_text = "\n".join([f"- {m.entry.content[:100]}" for m in recent_memories])
             context_parts.append("Recent activity:\n" + recent_text)
 
         return "\n\n".join(context_parts) if context_parts else ""
@@ -263,9 +259,7 @@ class AgentMemoryManager:
             "similar_decisions_count": len(similar_decisions),
             "successful_count": len(successful),
             "unsuccessful_count": len(unsuccessful),
-            "recommendation": self._generate_recommendation(
-                successful, unsuccessful, reasoning
-            ),
+            "recommendation": self._generate_recommendation(successful, unsuccessful, reasoning),
         }
 
         return reflection

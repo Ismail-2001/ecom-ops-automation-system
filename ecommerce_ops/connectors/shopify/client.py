@@ -11,7 +11,6 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from ecommerce_ops.infra.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
-from ecommerce_ops.infra.retry import async_retry_decorator
 
 logger = logging.getLogger("ecommerce_ops.connectors.shopify.client")
 
@@ -27,9 +26,7 @@ class ShopifyRateLimitError(Exception):
 class ShopifyClient:
     """Async Shopify Admin API client with rate limiting and retry."""
 
-    _circuit_breaker = CircuitBreaker(
-        name="ShopifyAPI", failure_threshold=5, recovery_timeout=60.0
-    )
+    _circuit_breaker = CircuitBreaker(name="ShopifyAPI", failure_threshold=5, recovery_timeout=60.0)
 
     def __init__(self, shop_domain: str, access_token: str, api_version: str = "2024-01"):
         self.shop_domain = shop_domain
@@ -179,9 +176,7 @@ class ShopifyClient:
 
     async def update_order(self, order_id: str, order_data: Dict) -> Dict:
         """Update order."""
-        return await self._put_with_retry(
-            f"/orders/{order_id}.json", json={"order": order_data}
-        )
+        return await self._put_with_retry(f"/orders/{order_id}.json", json={"order": order_data})
 
     # ── Customers ───────────────────────────────────────────
 

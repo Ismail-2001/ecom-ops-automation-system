@@ -1,11 +1,28 @@
 import asyncio
 import logging
+from datetime import datetime, timezone
 from functools import wraps
 from typing import Any, Callable, TypeVar
 
 T = TypeVar("T")
 
 logger = logging.getLogger("ecommerce_ops.utils")
+
+
+def utc_now() -> datetime:
+    """Return the current time as a naive UTC ``datetime``.
+
+    We deliberately return a *naive* UTC datetime so it stays consistent
+    with SQLAlchemy's naive ``DateTime`` columns when read back from SQLite
+    (and other databases that do not preserve timezone info on read). This
+    avoids comparing an aware timestamp against a naive value from the DB.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def utc_now_iso() -> str:
+    """Return the current time as an ISO-8601 UTC string."""
+    return utc_now().isoformat()
 
 
 def retry_async(
@@ -27,9 +44,13 @@ def retry_async(
                 if attempt < max_retries:
                     logger.warning(
                         "Retry %d/%d for %s after error: %s",
-                        attempt, max_retries, func.__name__, e,
+                        attempt,
+                        max_retries,
+                        func.__name__,
+                        e,
                     )
                     await asyncio.sleep(delay)
                     delay *= backoff
         raise last_exc
+
     return wrapper

@@ -20,7 +20,9 @@ class BaseAgent(abc.ABC):  # noqa: B024
     def __init__(self, agent_name: str):
         self.agent_name = agent_name
         google_key = settings.GOOGLE_API_KEY.get_secret_value() if settings.GOOGLE_API_KEY else None
-        deepseek_key = settings.DEEPSEEK_API_KEY.get_secret_value() if settings.DEEPSEEK_API_KEY else None
+        deepseek_key = (
+            settings.DEEPSEEK_API_KEY.get_secret_value() if settings.DEEPSEEK_API_KEY else None
+        )
         if google_key:
             self.llm = ChatGoogleGenerativeAI(
                 model="gemini-2.0-flash",
@@ -38,7 +40,9 @@ class BaseAgent(abc.ABC):  # noqa: B024
             )
         else:
             if settings.ENV == Environment.PRODUCTION:
-                raise RuntimeError(f"No LLM API key configured for agent {agent_name}. Set GOOGLE_API_KEY or DEEPSEEK_API_KEY.")
+                raise RuntimeError(
+                    f"No LLM API key configured for agent {agent_name}. Set GOOGLE_API_KEY or DEEPSEEK_API_KEY."
+                )
             # Development fallback - uses settings.LLM_MODEL which defaults to gemini-2.0-flash
             # but requires a valid key. This will fail at first call if no key is set.
             self.llm = ChatOpenAI(

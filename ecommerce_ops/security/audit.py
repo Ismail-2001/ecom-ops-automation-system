@@ -12,12 +12,14 @@ from sqlalchemy import func, select
 
 from ecommerce_ops.models.db import SecurityAuditLog, async_session_factory
 from ecommerce_ops.security.models import SecurityEvent
+from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.security.audit")
 
 
 class AuditEntry(BaseModel):
     """Single audit log entry (read model)."""
+
     id: int
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     event_type: str
@@ -42,7 +44,12 @@ class AuditLogger:
     """Comprehensive audit logging service backed by PostgreSQL."""
 
     _sensitive_fields = {
-        "password", "api_key", "secret", "token", "credit_card", "ssn",
+        "password",
+        "api_key",
+        "secret",
+        "token",
+        "credit_card",
+        "ssn",
     }
 
     def log_event(self, event: SecurityEvent) -> AuditEntry:
@@ -78,6 +85,7 @@ class AuditLogger:
 
         # Persist asynchronously (fire-and-forget for non-blocking)
         import asyncio
+
         try:
             loop = asyncio.get_running_loop()
             loop.create_task(self._persist_entry(entry))
@@ -121,15 +129,17 @@ class AuditLogger:
         ip_address: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None,
     ) -> AuditEntry:
-        return self.log_event(SecurityEvent(
-            event_type="authentication",
-            action=action,
-            resource="auth",
-            user_id=user_id,
-            success=success,
-            ip_address=ip_address,
-            details=details or {},
-        ))
+        return self.log_event(
+            SecurityEvent(
+                event_type="authentication",
+                action=action,
+                resource="auth",
+                user_id=user_id,
+                success=success,
+                ip_address=ip_address,
+                details=details or {},
+            )
+        )
 
     def log_permission_event(
         self,
@@ -139,14 +149,16 @@ class AuditLogger:
         success: bool = True,
         details: Optional[Dict[str, Any]] = None,
     ) -> AuditEntry:
-        return self.log_event(SecurityEvent(
-            event_type="authorization",
-            action=action,
-            resource=resource,
-            user_id=user_id,
-            success=success,
-            details=details or {},
-        ))
+        return self.log_event(
+            SecurityEvent(
+                event_type="authorization",
+                action=action,
+                resource=resource,
+                user_id=user_id,
+                success=success,
+                details=details or {},
+            )
+        )
 
     def log_data_access(
         self,
@@ -156,15 +168,17 @@ class AuditLogger:
         user_id: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None,
     ) -> AuditEntry:
-        return self.log_event(SecurityEvent(
-            event_type="data_access",
-            action=action,
-            resource=resource,
-            resource_id=resource_id,
-            user_id=user_id,
-            success=True,
-            details=details or {},
-        ))
+        return self.log_event(
+            SecurityEvent(
+                event_type="data_access",
+                action=action,
+                resource=resource,
+                resource_id=resource_id,
+                user_id=user_id,
+                success=True,
+                details=details or {},
+            )
+        )
 
     def log_config_change(
         self,
@@ -172,14 +186,16 @@ class AuditLogger:
         user_id: Optional[str] = None,
         changes: Optional[Dict[str, Any]] = None,
     ) -> AuditEntry:
-        return self.log_event(SecurityEvent(
-            event_type="config_change",
-            action=action,
-            resource="config",
-            user_id=user_id,
-            success=True,
-            details={"changes": changes or {}},
-        ))
+        return self.log_event(
+            SecurityEvent(
+                event_type="config_change",
+                action=action,
+                resource="config",
+                user_id=user_id,
+                success=True,
+                details={"changes": changes or {}},
+            )
+        )
 
     def log_security_violation(
         self,
@@ -189,15 +205,17 @@ class AuditLogger:
         ip_address: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None,
     ) -> AuditEntry:
-        return self.log_event(SecurityEvent(
-            event_type="security_violation",
-            action=action,
-            resource=resource,
-            user_id=user_id,
-            success=False,
-            ip_address=ip_address,
-            details=details or {},
-        ))
+        return self.log_event(
+            SecurityEvent(
+                event_type="security_violation",
+                action=action,
+                resource=resource,
+                user_id=user_id,
+                success=False,
+                ip_address=ip_address,
+                details=details or {},
+            )
+        )
 
     # ── Query methods (PostgreSQL) ─────────────────────────
 
@@ -249,7 +267,7 @@ class AuditLogger:
 
     async def get_security_summary(self, hours: int = 24) -> Dict[str, Any]:
         """Get security summary for the last N hours from PostgreSQL."""
-        cutoff = datetime.utcnow() - timedelta(hours=hours)
+        cutoff = utc_now() - timedelta(hours=hours)
 
         async with async_session_factory() as session:
             base = select(SecurityAuditLog).where(SecurityAuditLog.timestamp >= cutoff)

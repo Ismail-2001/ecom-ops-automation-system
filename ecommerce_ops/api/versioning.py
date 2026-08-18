@@ -23,7 +23,7 @@ class APIVersionMiddleware(BaseHTTPMiddleware):
             response.headers["X-API-Version"] = "deprecated"
             response.headers["Deprecation"] = "true"
             response.headers["Sunset"] = "2026-12-31"
-            response.headers["Link"] = '</api/v1' + path[4:] + '>; rel="successor-version"'
+            response.headers["Link"] = "</api/v1" + path[4:] + '>; rel="successor-version"'
 
         if path.startswith("/api/v1"):
             response.headers["X-API-Version"] = "1.0"

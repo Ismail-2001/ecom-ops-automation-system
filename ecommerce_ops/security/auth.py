@@ -174,15 +174,9 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
     def _is_public_path(self, path: str) -> bool:
         if path in self.PUBLIC_PATHS:
             return True
-        if (
-            path in self.DEV_ONLY_PUBLIC_PATHS
-            and app_settings.ENV == Environment.DEVELOPMENT
-        ):
+        if path in self.DEV_ONLY_PUBLIC_PATHS and app_settings.ENV == Environment.DEVELOPMENT:
             return True
-        return (
-            path.startswith("/static/")
-            or path.endswith((".js", ".css", ".ico"))
-        )
+        return path.startswith("/static/") or path.endswith((".js", ".css", ".ico"))
 
     def _log_request(
         self,

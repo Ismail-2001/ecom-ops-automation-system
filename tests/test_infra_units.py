@@ -1,3 +1,4 @@
+from ecommerce_ops.utils import utc_now
 import os
 
 os.environ["ENV"] = "testing"
@@ -100,10 +101,11 @@ class TestTaskQueue:
         assert tq.get_task("nonexistent") is None
 
     def test_evict_expired(self):
-        from ecommerce_ops.infra.task_queue import Task, TaskQueue
+        from ecommerce_ops.infra.task_queue import Task, TaskQueue, TaskStatus
         tq = TaskQueue()
         old_task = Task("old", "test", lambda: None)
-        old_task.created_at = datetime.now(UTC) - timedelta(hours=25)
+        old_task.status = TaskStatus.COMPLETED
+        old_task.created_at = utc_now() - timedelta(hours=25)
         tq._tasks["old"] = old_task
         tq._evict_expired()
         assert "old" not in tq._tasks
@@ -117,19 +119,21 @@ class TestTaskQueue:
         assert "fresh" in tq._tasks
 
     def test_evict_expired_with_int_timestamp(self):
-        from ecommerce_ops.infra.task_queue import Task, TaskQueue
+        from ecommerce_ops.infra.task_queue import Task, TaskQueue, TaskStatus
         tq = TaskQueue()
         old_task = Task("old", "test", lambda: None)
-        old_task.created_at = (datetime.now(UTC) - timedelta(hours=25)).timestamp()
+        old_task.status = TaskStatus.COMPLETED
+        old_task.created_at = (utc_now() - timedelta(hours=25)).timestamp()
         tq._tasks["old"] = old_task
         tq._evict_expired()
         assert "old" not in tq._tasks
 
     def test_evict_expired_with_naive_datetime(self):
-        from ecommerce_ops.infra.task_queue import Task, TaskQueue
+        from ecommerce_ops.infra.task_queue import Task, TaskQueue, TaskStatus
         tq = TaskQueue()
         old_task = Task("old", "test", lambda: None)
-        old_task.created_at = datetime.utcnow() - timedelta(hours=25)
+        old_task.status = TaskStatus.COMPLETED
+        old_task.created_at = utc_now() - timedelta(hours=25)
         tq._tasks["old"] = old_task
         tq._evict_expired()
         assert "old" not in tq._tasks

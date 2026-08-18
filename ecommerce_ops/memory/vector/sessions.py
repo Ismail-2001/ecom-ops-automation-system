@@ -5,10 +5,10 @@ Manages conversation sessions and context.
 
 import logging
 import uuid
-from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from ecommerce_ops.memory.vector.models import MemoryType, SessionContext
+from ecommerce_ops.memory.vector.models import SessionContext
+from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.memory.vector.sessions")
 
@@ -70,7 +70,7 @@ class SessionManager:
                 session.is_active = False
                 logger.debug("Session %s expired", session_id)
             else:
-                session.last_activity = datetime.utcnow()
+                session.last_activity = utc_now()
         return session
 
     def end_session(self, session_id: str) -> bool:
@@ -80,7 +80,7 @@ class SessionManager:
             return False
 
         session.is_active = False
-        session.last_activity = datetime.utcnow()
+        session.last_activity = utc_now()
         logger.info("Ended session %s", session_id)
         return True
 
@@ -143,7 +143,7 @@ class SessionManager:
         if not session or not session.is_active:
             return False
 
-        session.last_activity = datetime.utcnow()
+        session.last_activity = utc_now()
         session.conversation_turns += 1
         session.memories_created += memories_created
         session.memories_accessed += memories_accessed
@@ -174,10 +174,7 @@ class SessionManager:
 
     def cleanup_expired(self) -> int:
         """Clean up expired sessions."""
-        expired_ids = [
-            sid for sid, session in self._sessions.items()
-            if self._is_expired(session)
-        ]
+        expired_ids = [sid for sid, session in self._sessions.items() if self._is_expired(session)]
 
         for sid in expired_ids:
             session = self._sessions[sid]
@@ -211,9 +208,7 @@ class SessionManager:
         if not session.is_active:
             return True
 
-        hours_since_activity = (
-            datetime.utcnow() - session.last_activity
-        ).total_seconds() / 3600
+        hours_since_activity = (utc_now() - session.last_activity).total_seconds() / 3600
 
         return hours_since_activity > self.max_session_duration_hours
 

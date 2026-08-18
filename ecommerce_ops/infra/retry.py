@@ -44,4 +44,5 @@ def async_retry_decorator(
             min_wait=min_wait,
             max_wait=max_wait,
         )(func)
+
     return decorator

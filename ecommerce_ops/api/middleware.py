@@ -77,15 +77,17 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         request_id = getattr(request.state, "request_id", "unknown")
-        logger.info(
-            "Request started: %s %s [%s]", request.method, request.url.path, request_id
-        )
+        logger.info("Request started: %s %s [%s]", request.method, request.url.path, request_id)
         start = time.monotonic()
         response = await call_next(request)
         duration = time.monotonic() - start
         logger.info(
             "Request completed: %s %s -> %s [%s] (%.3fs)",
-            request.method, request.url.path, response.status_code, request_id, duration,
+            request.method,
+            request.url.path,
+            response.status_code,
+            request_id,
+            duration,
         )
         return response
 
@@ -182,7 +184,9 @@ class ResponseCacheMiddleware(BaseHTTPMiddleware):
         if ttl == 0:
             return await call_next(request)
 
-        cached = await cache.get_cached_response(request.method, request.url.path, request.url.query)
+        cached = await cache.get_cached_response(
+            request.method, request.url.path, request.url.query
+        )
         if cached is not None:
             status_code, body = cached
             return Response(

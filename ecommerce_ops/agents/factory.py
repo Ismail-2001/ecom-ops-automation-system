@@ -222,7 +222,8 @@ class AgentFactory:
             "action_type": "DRAFT_MARKETING_CAMPAIGN",
             "reasoning": llm_result.get("reasoning", ""),
             "confidence": confidence,
-            "requires_approval": confidence < 0.95 or True,  # marketing campaigns always require approval
+            "requires_approval": confidence < 0.95
+            or True,  # marketing campaigns always require approval
             "data": {
                 "campaign_name": llm_result.get("campaign_name", ""),
                 "campaign_type": llm_result.get("campaign_type", "email"),
@@ -288,14 +289,16 @@ class UnifiedAgent:
                         elapsed = (time.monotonic() - start) * 1000
                         logger.info(
                             "Agent %s (LLM) completed in %.1fms",
-                            self.name, elapsed,
+                            self.name,
+                            elapsed,
                         )
                         return state
 
             except Exception as e:
                 logger.warning(
                     "Agent %s LLM failed (%s), falling back to rule-based",
-                    self.name, str(e),
+                    self.name,
+                    str(e),
                 )
 
         # Fallback: rule-based agent
@@ -304,7 +307,8 @@ class UnifiedAgent:
             elapsed = (time.monotonic() - start) * 1000
             logger.info(
                 "Agent %s (rule-based) completed in %.1fms",
-                self.name, elapsed,
+                self.name,
+                elapsed,
             )
             return result
         except Exception as e:

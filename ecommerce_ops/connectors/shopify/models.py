@@ -9,8 +9,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-
 # ── Enums ──────────────────────────────────────────────────
+
 
 class OrderFinancialStatus(str, Enum):
     PENDING = "pending"
@@ -47,6 +47,7 @@ class InventoryLevel(str, Enum):
 
 # ── Address ────────────────────────────────────────────────
 
+
 class ShopifyAddress(BaseModel):
     address1: Optional[str] = None
     address2: Optional[str] = None
@@ -63,6 +64,7 @@ class ShopifyAddress(BaseModel):
 
 # ── Money ──────────────────────────────────────────────────
 
+
 class Money(BaseModel):
     amount: str = "0.00"
     currency_code: str = "USD"
@@ -73,6 +75,7 @@ class Money(BaseModel):
 
 
 # ── Product ────────────────────────────────────────────────
+
 
 class ShopifyVariant(BaseModel):
     id: int
@@ -142,6 +145,7 @@ class ShopifyProduct(BaseModel):
 
 # ── Order ──────────────────────────────────────────────────
 
+
 class ShopifyLineItem(BaseModel):
     id: int
     title: Optional[str] = None
@@ -207,6 +211,7 @@ class ShopifyOrder(BaseModel):
 
 # ── Customer ───────────────────────────────────────────────
 
+
 class ShopifyCustomer(BaseModel):
     id: int
     email: Optional[str] = None
@@ -231,6 +236,7 @@ class ShopifyCustomer(BaseModel):
 
 # ── Inventory ──────────────────────────────────────────────
 
+
 class ShopifyInventoryItem(BaseModel):
     id: int
     sku: Optional[str] = None
@@ -246,6 +252,7 @@ class ShopifyInventoryItem(BaseModel):
 
 # ── Location ───────────────────────────────────────────────
 
+
 class ShopifyLocation(BaseModel):
     id: int
     name: str
@@ -259,6 +266,7 @@ class ShopifyLocation(BaseModel):
 
 
 # ── Shop ───────────────────────────────────────────────────
+
 
 class ShopifyShop(BaseModel):
     id: int
@@ -277,6 +285,7 @@ class ShopifyShop(BaseModel):
 
 # ── Webhook Registration ───────────────────────────────────
 
+
 class ShopifyWebhook(BaseModel):
     id: int
     topic: str
@@ -290,6 +299,7 @@ class ShopifyWebhook(BaseModel):
 
 
 # ── Paginated Response ─────────────────────────────────────
+
 
 class PaginatedResponse(BaseModel):
     data: List[Any] = Field(default_factory=list)

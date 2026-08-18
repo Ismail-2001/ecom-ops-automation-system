@@ -122,9 +122,7 @@ class RecoveryStrategyEngine:
         else:
             return RecoveryStrategy.DISCOUNT_PERCENT
 
-    def get_strategy_recommendation(
-        self, cart: AbandonedCart
-    ) -> Dict[str, Any]:
+    def get_strategy_recommendation(self, cart: AbandonedCart) -> Dict[str, Any]:
         """Get full strategy recommendation with reasoning."""
         risk_level = self.assess_risk(cart)
         strategy = self.select_strategy(cart)
@@ -134,7 +132,11 @@ class RecoveryStrategyEngine:
         reasoning = []
         reasoning.append(f"Cart value: ${cart.total_value:.2f}")
         reasoning.append(f"Items: {cart.items_count}")
-        reasoning.append(f"Time abandoned: {cart.time_abandoned_hours:.1f}h" if cart.time_abandoned_hours else "Unknown time")
+        reasoning.append(
+            f"Time abandoned: {cart.time_abandoned_hours:.1f}h"
+            if cart.time_abandoned_hours
+            else "Unknown time"
+        )
 
         if cart.customer:
             reasoning.append(f"Customer: {cart.customer.segment} tier")
@@ -165,9 +167,7 @@ class RecoveryStrategyEngine:
         except ValueError:
             return current_tier
 
-    def batch_analyze(
-        self, carts: List[AbandonedCart]
-    ) -> Dict[str, Any]:
+    def batch_analyze(self, carts: List[AbandonedCart]) -> Dict[str, Any]:
         """Analyze multiple carts and provide aggregate insights."""
         if not carts:
             return {"total": 0, "strategies": {}, "total_potential_revenue": 0}

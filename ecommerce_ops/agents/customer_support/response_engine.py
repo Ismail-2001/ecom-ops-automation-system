@@ -209,9 +209,7 @@ class ResponseGenerationEngine:
         else:
             return SentimentType.VERY_POSITIVE
 
-    def _assess_urgency(
-        self, ticket: SupportTicket, sentiment: SentimentType
-    ) -> TicketPriority:
+    def _assess_urgency(self, ticket: SupportTicket, sentiment: SentimentType) -> TicketPriority:
         """Assess ticket urgency based on content and sentiment."""
         text_lower = ticket.body.lower()
 
@@ -240,9 +238,7 @@ class ResponseGenerationEngine:
 
         return TicketPriority.NORMAL
 
-    def _find_relevant_articles(
-        self, ticket: SupportTicket
-    ) -> List[KnowledgeArticle]:
+    def _find_relevant_articles(self, ticket: SupportTicket) -> List[KnowledgeArticle]:
         """Find relevant knowledge base articles."""
         relevant = []
 
@@ -391,9 +387,7 @@ class ResponseGenerationEngine:
 
         return False
 
-    def _generate_follow_ups(
-        self, ticket: SupportTicket, response: Dict[str, Any]
-    ) -> List[str]:
+    def _generate_follow_ups(self, ticket: SupportTicket, response: Dict[str, Any]) -> List[str]:
         """Generate follow-up questions to gather more info."""
         follow_ups = []
 
@@ -413,9 +407,7 @@ class ResponseGenerationEngine:
 
         return follow_ups[:3]
 
-    def _estimate_resolution_time(
-        self, ticket: SupportTicket, priority: TicketPriority
-    ) -> float:
+    def _estimate_resolution_time(self, ticket: SupportTicket, priority: TicketPriority) -> float:
         """Estimate resolution time in hours."""
         base_times = {
             TicketPriority.LOW: 48,

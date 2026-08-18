@@ -1,25 +1,25 @@
 """Vector memory package."""
 
 from ecommerce_ops.memory.vector.models import (
-    MemoryType,
-    MemoryImportance,
+    MemoryConfig,
+    MemoryConsolidation,
     MemoryEntry,
+    MemoryImportance,
     MemoryQuery,
     MemorySearchResult,
-    MemoryConsolidation,
-    SessionContext,
     MemoryStats,
-    MemoryConfig,
+    MemoryType,
+    SessionContext,
 )
 
 __all__ = [
-    "MemoryType",
-    "MemoryImportance",
+    "MemoryConfig",
+    "MemoryConsolidation",
     "MemoryEntry",
+    "MemoryImportance",
     "MemoryQuery",
     "MemorySearchResult",
-    "MemoryConsolidation",
-    "SessionContext",
     "MemoryStats",
-    "MemoryConfig",
+    "MemoryType",
+    "SessionContext",
 ]

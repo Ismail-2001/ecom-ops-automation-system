@@ -6,7 +6,7 @@ Service for generating text embeddings using various providers.
 import logging
 import os
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -50,6 +50,7 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
             if not self.api_key:
                 raise RuntimeError("OpenAI API key not configured")
             from openai import AsyncOpenAI
+
             self._client = AsyncOpenAI(api_key=self.api_key)
         return self._client
 
@@ -137,6 +138,7 @@ class LocalEmbeddingProvider(EmbeddingProvider):
         if self._model is None:
             try:
                 from sentence_transformers import SentenceTransformer
+
                 self._model = SentenceTransformer(self.model_name)
             except ImportError:
                 raise RuntimeError("sentence-transformers not installed")
@@ -262,6 +264,7 @@ class MockEmbeddingProvider(EmbeddingProvider):
     async def embed_text(self, text: str) -> List[float]:
         # Generate deterministic pseudo-embedding based on text hash
         import hashlib
+
         hash_obj = hashlib.sha256(text.encode())
         seed = int(hash_obj.hexdigest()[:8], 16)
         rng = np.random.RandomState(seed)

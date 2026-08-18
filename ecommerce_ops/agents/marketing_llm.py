@@ -2,6 +2,7 @@
 LLM-Powered Marketing Automation Agent
 Uses LLM for campaign creation, audience segmentation, and content optimization.
 """
+
 import logging
 from typing import Any, Dict, List
 
@@ -19,6 +20,7 @@ logger = logging.getLogger("ecommerce_ops.agents.marketing_llm")
 
 class MarketingCampaignOutput(BaseModel):
     """Structured output for marketing campaign."""
+
     campaign_name: str = Field(description="Campaign name")
     campaign_type: str = Field(description="Type: email, sms, push, social, discount")
     target_audience: Dict[str, Any] = Field(description="Target audience segment")
@@ -79,19 +81,23 @@ class MarketingAutomationAgentLLM(BaseAgent):
         """Handle messages from other agents."""
         if message.topic == MessageTopics.CART_ABANDONED:
             cart_data = message.payload
-            result = await self.create_campaign({
-                "trigger": "cart_abandonment",
-                "customer": cart_data.get("customer"),
-                "cart_value": cart_data.get("total"),
-            })
+            result = await self.create_campaign(
+                {
+                    "trigger": "cart_abandonment",
+                    "customer": cart_data.get("customer"),
+                    "cart_value": cart_data.get("total"),
+                }
+            )
 
         elif message.topic == MessageTopics.ORDER_SHIPPED:
             order_data = message.payload
-            result = await self.create_campaign({
-                "trigger": "post_purchase",
-                "customer": order_data.get("customer"),
-                "order": order_data,
-            })
+            result = await self.create_campaign(
+                {
+                    "trigger": "post_purchase",
+                    "customer": order_data.get("customer"),
+                    "order": order_data,
+                }
+            )
 
     async def create_campaign(self, context_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a marketing campaign using LLM."""
@@ -121,7 +127,13 @@ class MarketingAutomationAgentLLM(BaseAgent):
             # Validate output
             output_check = guardrail_manager.validate_agent_output(
                 campaign,
-                required_fields=["campaign_name", "campaign_type", "target_audience", "content", "reasoning"],
+                required_fields=[
+                    "campaign_name",
+                    "campaign_type",
+                    "target_audience",
+                    "content",
+                    "reasoning",
+                ],
             )
             if not output_check.passed:
                 return self._rule_based_fallback(context_data)
@@ -151,13 +163,13 @@ class MarketingAutomationAgentLLM(BaseAgent):
 Create a marketing campaign based on this context:
 
 Trigger: {trigger}
-Customer Segment: {customer.get('segment', 'all')}
-Customer Name: {customer.get('name', 'Customer')}
-Customer Email: {customer.get('email', 'unknown')}
-Cart Value: ${context_data.get('cart_value', 0):.2f}
-Last Purchase: {customer.get('last_purchase_date', 'unknown')}
-Purchase Frequency: {customer.get('purchase_frequency', 'unknown')}
-Average Order Value: ${customer.get('avg_order_value', 0):.2f}
+Customer Segment: {customer.get("segment", "all")}
+Customer Name: {customer.get("name", "Customer")}
+Customer Email: {customer.get("email", "unknown")}
+Cart Value: ${context_data.get("cart_value", 0):.2f}
+Last Purchase: {customer.get("last_purchase_date", "unknown")}
+Purchase Frequency: {customer.get("purchase_frequency", "unknown")}
+Average Order Value: ${customer.get("avg_order_value", 0):.2f}
 
 Create an effective campaign that will drive conversions while respecting customer preferences.
 Include A/B test variants for optimization.

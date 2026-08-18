@@ -7,7 +7,10 @@ from ecommerce_ops.agents._base import BaseAgent
 logger = structlog.get_logger(__name__)
 
 FRAUD_RULES = {
-    "o_suspicious": {"score": 85, "factors": ["ip_shipping_mismatch", "velocity_threshold_breached"]},
+    "o_suspicious": {
+        "score": 85,
+        "factors": ["ip_shipping_mismatch", "velocity_threshold_breached"],
+    },
     "o_high_value": {"score": 60, "factors": ["amount_above_threshold"]},
 }
 

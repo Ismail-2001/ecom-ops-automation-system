@@ -9,9 +9,12 @@ from typing import Any, Dict, List, Optional, Set
 
 from pydantic import BaseModel, Field
 
+from ecommerce_ops.utils import utc_now
+
 
 class Permission(str, Enum):
     """System permissions."""
+
     # Dashboard
     DASHBOARD_VIEW = "dashboard:view"
     DASHBOARD_EDIT = "dashboard:edit"
@@ -77,6 +80,7 @@ class Permission(str, Enum):
 
 class Role(str, Enum):
     """Predefined roles."""
+
     SUPER_ADMIN = "super_admin"
     ADMIN = "admin"
     OPERATOR = "operator"
@@ -86,6 +90,7 @@ class Role(str, Enum):
 
 class RoleDefinition(BaseModel):
     """Definition of a role."""
+
     name: Role
     display_name: str
     description: str
@@ -97,6 +102,7 @@ class RoleDefinition(BaseModel):
 
 class User(BaseModel):
     """User model."""
+
     id: str
     email: str
     name: Optional[str] = None
@@ -123,6 +129,7 @@ class User(BaseModel):
 
 class APIKey(BaseModel):
     """API key model."""
+
     id: str
     key: str
     name: str
@@ -142,12 +149,13 @@ class APIKey(BaseModel):
     @property
     def is_expired(self) -> bool:
         if self.expires_at:
-            return datetime.utcnow() > self.expires_at
+            return utc_now() > self.expires_at
         return False
 
 
 class PermissionCheck(BaseModel):
     """Result of a permission check."""
+
     allowed: bool
     reason: Optional[str] = None
     role: Optional[Role] = None
@@ -156,6 +164,7 @@ class PermissionCheck(BaseModel):
 
 class AccessContext(BaseModel):
     """Context for access control decisions."""
+
     user_id: Optional[str] = None
     api_key_id: Optional[str] = None
     role: Optional[Role] = None
@@ -167,6 +176,7 @@ class AccessContext(BaseModel):
 
 class SecurityEvent(BaseModel):
     """Security event for audit logging."""
+
     event_type: str
     user_id: Optional[str] = None
     api_key_id: Optional[str] = None

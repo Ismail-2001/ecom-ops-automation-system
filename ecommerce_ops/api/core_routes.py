@@ -26,6 +26,7 @@ from ecommerce_ops.models import (
     get_db_session,
 )
 from ecommerce_ops.pipeline.runner import execute_shop_action, update_agent_streak
+from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.api.core_routes")
 
@@ -69,7 +70,7 @@ class SettingsUpdateBody(BaseModel):
 
 async def expire_stale_approvals(db: AsyncSession) -> int:
     """Flip pending approvals whose expiry has passed to 'expired'."""
-    now = datetime.utcnow()
+    now = utc_now()
     result = await db.execute(
         update(ApprovalAction)
         .where(
@@ -90,7 +91,7 @@ async def sweep_stale_executing(db: AsyncSession, stale_after_minutes: int = 60)
     without reaching a terminal status are marked 'failed' and an audit entry
     is written recording the abort.
     """
-    now = datetime.utcnow()
+    now = utc_now()
     cutoff = now - timedelta(minutes=stale_after_minutes)
 
     result = await db.execute(
@@ -231,7 +232,7 @@ async def approve_approval(
         raise HTTPException(status_code=404, detail="Approval action not found")
     if action.status != "pending":
         raise HTTPException(status_code=400, detail="Action already decided")
-    if action.expires_at and action.expires_at < datetime.utcnow():
+    if action.expires_at and action.expires_at < utc_now():
         action.status = "expired"
         await db.commit()
         raise HTTPException(status_code=400, detail="Action expired")
@@ -242,14 +243,14 @@ async def approve_approval(
         action.payload = new_payload
 
     action.reviewed_by = operator
-    action.reviewed_at = datetime.utcnow()
+    action.reviewed_at = utc_now()
     action.operator_notes = body.notes
     action.status = "approved"
 
     financial_impact = (action.impact or {}).get("financial_impact", 0.0)
     audit_entry = AuditEntry(
         action_id=action.id,
-        timestamp=datetime.utcnow(),
+        timestamp=utc_now(),
         agent=action.agent,
         action_type=action.action_type,
         decision="shadow" if action.shadow_mode else "approved",
@@ -317,13 +318,13 @@ async def reject_approval(
         raise HTTPException(status_code=404, detail="Approval action not found")
     if action.status != "pending":
         raise HTTPException(status_code=400, detail="Action already decided")
-    if action.expires_at and action.expires_at < datetime.utcnow():
+    if action.expires_at and action.expires_at < utc_now():
         action.status = "expired"
         await db.commit()
         raise HTTPException(status_code=400, detail="Action expired")
 
     action.reviewed_by = operator
-    action.reviewed_at = datetime.utcnow()
+    action.reviewed_at = utc_now()
     action.rejection_reason = body.reason
     action.operator_notes = body.notes
     action.status = "rejected"
@@ -331,7 +332,7 @@ async def reject_approval(
     financial_impact = (action.impact or {}).get("financial_impact", 0.0)
     audit_entry = AuditEntry(
         action_id=action.id,
-        timestamp=datetime.utcnow(),
+        timestamp=utc_now(),
         agent=action.agent,
         action_type=action.action_type,
         decision="rejected",
@@ -376,7 +377,7 @@ async def batch_approvals(
     for action in actions:
         if action.status != "pending":
             continue
-        if action.expires_at and action.expires_at < datetime.utcnow():
+        if action.expires_at and action.expires_at < utc_now():
             action.status = "expired"
             continue
 
@@ -385,14 +386,14 @@ async def batch_approvals(
                 if action.risk_level in ("high", "critical"):
                     continue
                 action.reviewed_by = operator
-                action.reviewed_at = datetime.utcnow()
+                action.reviewed_at = utc_now()
                 action.operator_notes = body.notes
                 action.status = "approved"
 
                 financial_impact = (action.impact or {}).get("financial_impact", 0.0)
                 audit_entry = AuditEntry(
                     action_id=action.id,
-                    timestamp=datetime.utcnow(),
+                    timestamp=utc_now(),
                     agent=action.agent,
                     action_type=action.action_type,
                     decision="shadow" if action.shadow_mode else "approved",
@@ -412,7 +413,7 @@ async def batch_approvals(
 
             elif body.action == "reject":
                 action.reviewed_by = operator
-                action.reviewed_at = datetime.utcnow()
+                action.reviewed_at = utc_now()
                 action.rejection_reason = body.reason or "Batch rejected"
                 action.operator_notes = body.notes
                 action.status = "rejected"
@@ -420,7 +421,7 @@ async def batch_approvals(
                 db.add(
                     AuditEntry(
                         action_id=action.id,
-                        timestamp=datetime.utcnow(),
+                        timestamp=utc_now(),
                         agent=action.agent,
                         action_type=action.action_type,
                         decision="rejected",
@@ -474,9 +475,7 @@ async def update_store_settings(
     operator: str = Depends(get_current_operator),
     db: AsyncSession = Depends(get_db_session),
 ):
-    res = await db.execute(
-        select(StoreSettings).where(StoreSettings.id == 1).with_for_update()
-    )
+    res = await db.execute(select(StoreSettings).where(StoreSettings.id == 1).with_for_update())
     store_settings = res.scalar_one_or_none()
     if not store_settings:
         raise HTTPException(status_code=404, detail="Settings not found")
@@ -505,7 +504,9 @@ async def update_store_settings(
     if body.reviews_rating_threshold is not None:
         if not (1 <= body.reviews_rating_threshold <= 5):
             raise HTTPException(status_code=400, detail="reviews_rating_threshold must be 1-5")
-        changes["reviews_rating_threshold"] = f"{store_settings.reviews_rating_threshold} -> {body.reviews_rating_threshold}"
+        changes["reviews_rating_threshold"] = (
+            f"{store_settings.reviews_rating_threshold} -> {body.reviews_rating_threshold}"
+        )
         store_settings.reviews_rating_threshold = body.reviews_rating_threshold
     if body.slack_channel is not None:
         changes["slack_channel"] = body.slack_channel
@@ -513,7 +514,7 @@ async def update_store_settings(
     db.add(
         AuditEntry(
             action_id=None,
-            timestamp=datetime.utcnow(),
+            timestamp=utc_now(),
             agent="System",
             action_type="settings_change",
             decision="approved",
@@ -524,9 +525,7 @@ async def update_store_settings(
         )
     )
     await db.commit()
-    await ws_manager.broadcast(
-        {"type": "agent_status", "payload": {"settings_updated": True}}
-    )
+    await ws_manager.broadcast({"type": "agent_status", "payload": {"settings_updated": True}})
     return store_settings
 
 
@@ -535,29 +534,19 @@ async def get_analytics(db: AsyncSession = Depends(get_db_session)):
     await expire_stale_approvals(db)
     approved = (
         await db.execute(
-            select(func.count(AuditEntry.id)).where(
-                AuditEntry.decision.in_(["approved", "shadow"])
-            )
+            select(func.count(AuditEntry.id)).where(AuditEntry.decision.in_(["approved", "shadow"]))
         )
     ).scalar() or 0
     rejected = (
-        await db.execute(
-            select(func.count(AuditEntry.id)).where(
-                AuditEntry.decision == "rejected"
-            )
-        )
+        await db.execute(select(func.count(AuditEntry.id)).where(AuditEntry.decision == "rejected"))
     ).scalar() or 0
     auto = (
         await db.execute(
-            select(func.count(AuditEntry.id)).where(
-                AuditEntry.decision == "auto-approved"
-            )
+            select(func.count(AuditEntry.id)).where(AuditEntry.decision == "auto-approved")
         )
     ).scalar() or 0
     total = approved + rejected + auto
-    approval_rate = (
-        (approved / (approved + rejected) * 100) if (approved + rejected) > 0 else 100.0
-    )
+    approval_rate = (approved / (approved + rejected) * 100) if (approved + rejected) > 0 else 100.0
     financial = (
         await db.execute(
             select(func.sum(AuditEntry.financial_impact)).where(
@@ -576,7 +565,7 @@ async def get_analytics(db: AsyncSession = Depends(get_db_session)):
     for level, cnt in risk_rows.all():
         risk_dist[level] = cnt
 
-    now = datetime.utcnow()
+    now = utc_now()
     day_start_7d = datetime(now.year, now.month, now.day) - timedelta(days=6)
 
     agent_ids = ["FraudAgent", "InventoryAgent", "PricingAgent", "ReviewsAgent", "MarketingAgent"]
@@ -640,14 +629,12 @@ async def get_analytics(db: AsyncSession = Depends(get_db_session)):
     dialect_name = dialect.name if dialect else "sqlite"
 
     if dialect_name == "postgresql":
-        epoch_diff = (
-            func.extract("epoch", ApprovalAction.reviewed_at)
-            - func.extract("epoch", ApprovalAction.created_at)
+        epoch_diff = func.extract("epoch", ApprovalAction.reviewed_at) - func.extract(
+            "epoch", ApprovalAction.created_at
         )
     else:
-        epoch_diff = (
-            func.strftime("%s", ApprovalAction.reviewed_at)
-            - func.strftime("%s", ApprovalAction.created_at)
+        epoch_diff = func.strftime("%s", ApprovalAction.reviewed_at) - func.strftime(
+            "%s", ApprovalAction.created_at
         )
 
     bucket_expr = case(
@@ -667,9 +654,7 @@ async def get_analytics(db: AsyncSession = Depends(get_db_session)):
 
     # Average decision time via SQL aggregate (avoid loading every row).
     avg_sec = (
-        await db.execute(
-            select(func.avg(epoch_diff)).where(ApprovalAction.reviewed_at.isnot(None))
-        )
+        await db.execute(select(func.avg(epoch_diff)).where(ApprovalAction.reviewed_at.isnot(None)))
     ).scalar()
     avg_decision_minutes = round(float(avg_sec) / 60.0, 2) if avg_sec is not None else 0.0
 
@@ -719,6 +704,7 @@ async def v1_health(operator: str = Depends(verify_auth_optional)):
 
     try:
         from ecommerce_ops.memory.cache import cache
+
         client = await cache.get_client()
         if client:
             await client.ping()
@@ -732,10 +718,12 @@ async def v1_health(operator: str = Depends(verify_auth_optional)):
 
     try:
         from ecommerce_ops.infra.redis_task_queue import RedisTaskQueue
+
         if RedisTaskQueue is not None:
             task_queue_size = 0
         else:
             from ecommerce_ops.infra.task_queue import task_queue
+
             task_queue_size = task_queue._queue.qsize() if hasattr(task_queue, "_queue") else 0
         deps["task_queue_depth"] = str(task_queue_size)
         deps["task_queue"] = "healthy"
@@ -746,6 +734,7 @@ async def v1_health(operator: str = Depends(verify_auth_optional)):
         from sqlalchemy import text
 
         from ecommerce_ops.models import async_session_factory
+
         async with async_session_factory() as session:
             result = await session.execute(
                 text("SELECT 1 FROM pg_extension WHERE extname = 'vector'")
@@ -764,6 +753,7 @@ async def v1_health(operator: str = Depends(verify_auth_optional)):
 
     try:
         from ecommerce_ops.agents.factory import agent_factory
+
         for name in ["fraud", "inventory", "pricing", "reviews", "marketing"]:
             agent_factory.get_agent(name)
         deps["agents"] = "loaded"
@@ -772,6 +762,7 @@ async def v1_health(operator: str = Depends(verify_auth_optional)):
 
     status_code = 200 if all_ok else 503
     from fastapi.responses import JSONResponse
+
     return JSONResponse(
         status_code=status_code,
         content={
@@ -780,8 +771,10 @@ async def v1_health(operator: str = Depends(verify_auth_optional)):
             "uptime_seconds": uptime_seconds,
             "version": app_settings.PROJECT_NAME,
             "version_number": "0.2.0",
-            "environment": app_settings.ENV.value if hasattr(app_settings.ENV, "value") else str(app_settings.ENV),
-            "timestamp": datetime.utcnow().isoformat(),
+            "environment": app_settings.ENV.value
+            if hasattr(app_settings.ENV, "value")
+            else str(app_settings.ENV),
+            "timestamp": utc_now().isoformat(),
             "checks": {
                 "database": deps.get("database", "unknown"),
                 "redis": deps.get("redis", "unknown"),

@@ -1,3 +1,3 @@
-from .cache import cache, RedisCache
+from .cache import RedisCache, cache
 
-__all__ = ["cache", "RedisCache"]
+__all__ = ["RedisCache", "cache"]

@@ -7,13 +7,14 @@ import hashlib
 import logging
 import secrets
 import string
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 from ecommerce_ops.agents.cart_recovery.models import (
     AbandonedCart,
     RecoveryStrategy,
 )
+from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.agents.cart_recovery.discounts")
 
@@ -72,7 +73,7 @@ class DiscountCodeGenerator:
         cart: AbandonedCart,
     ) -> dict[str, Any]:
         """Get discount configuration for Shopify price rule."""
-        now = datetime.utcnow()
+        now = utc_now()
         expires_at = now + timedelta(hours=24)
 
         config = {
@@ -81,7 +82,9 @@ class DiscountCodeGenerator:
                 "target_type": "line_item",
                 "target_selection": "all",
                 "allocation_method": "across",
-                "value_type": "percentage" if strategy == RecoveryStrategy.DISCOUNT_PERCENT else "fixed_amount",
+                "value_type": "percentage"
+                if strategy == RecoveryStrategy.DISCOUNT_PERCENT
+                else "fixed_amount",
             },
             "discount_code": {
                 "code": code,
@@ -115,9 +118,7 @@ class DiscountCodeGenerator:
         if cart.customer and cart.customer.first_name:
             customer_name = cart.customer.first_name
 
-        items_summary = ", ".join(
-            [f"{item.title} (x{item.quantity})" for item in cart.items[:3]]
-        )
+        items_summary = ", ".join([f"{item.title} (x{item.quantity})" for item in cart.items[:3]])
         if len(cart.items) > 3:
             items_summary += f" and {len(cart.items) - 3} more"
 
@@ -126,7 +127,9 @@ class DiscountCodeGenerator:
             "cart_items": items_summary,
             "cart_value": f"${cart.total_value:.2f}",
             "discount_code": code,
-            "discount_value": f"{discount_value}" if strategy == RecoveryStrategy.DISCOUNT_PERCENT else f"${discount_value:.2f}",
+            "discount_value": f"{discount_value}"
+            if strategy == RecoveryStrategy.DISCOUNT_PERCENT
+            else f"${discount_value:.2f}",
             "strategy": strategy.value,
             "checkout_url": cart.checkout_url or "",
             "cta_text": self._get_cta_text(strategy),

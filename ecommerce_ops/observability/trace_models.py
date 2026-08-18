@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 class TraceStatus(str, Enum):
     """Trace execution status."""
+
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -20,6 +21,7 @@ class TraceStatus(str, Enum):
 
 class SpanType(str, Enum):
     """Types of spans."""
+
     AGENT = "agent"
     LLM = "llm"
     TOOL = "tool"
@@ -31,6 +33,7 @@ class SpanType(str, Enum):
 
 class StoredSpan(BaseModel):
     """A stored span within a trace."""
+
     id: str
     trace_id: str
     parent_span_id: Optional[str] = None
@@ -58,6 +61,7 @@ class StoredSpan(BaseModel):
 
 class StoredScore(BaseModel):
     """A stored evaluation score."""
+
     id: str
     trace_id: str
     span_id: Optional[str] = None
@@ -74,6 +78,7 @@ class StoredScore(BaseModel):
 
 class StoredTrace(BaseModel):
     """A stored trace."""
+
     id: str
     name: str
     status: TraceStatus = TraceStatus.RUNNING
@@ -135,6 +140,7 @@ class StoredTrace(BaseModel):
 
 class TraceFilter(BaseModel):
     """Filter criteria for trace queries."""
+
     name: Optional[str] = None
     status: Optional[TraceStatus] = None
     user_id: Optional[str] = None
@@ -151,6 +157,7 @@ class TraceFilter(BaseModel):
 
 class TraceAggregation(BaseModel):
     """Aggregated trace metrics."""
+
     total_traces: int = 0
     successful_traces: int = 0
     failed_traces: int = 0
@@ -169,6 +176,7 @@ class TraceAggregation(BaseModel):
 
 class EvaluationReport(BaseModel):
     """Evaluation report for a set of traces."""
+
     period_start: datetime
     period_end: datetime
     total_evaluations: int = 0

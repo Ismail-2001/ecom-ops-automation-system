@@ -1,13 +1,19 @@
 """Expanded demo seed data for realistic dashboard population."""
 
-import uuid
 import random
-from datetime import datetime, timedelta
-from sqlalchemy import select, func
+import uuid
+from datetime import timedelta
+
+from sqlalchemy import func, select
+
 from ecommerce_ops.models.db import (
-    ApprovalAction, AuditEntry, AgentStatus, StoreSettings,
+    AgentStatus,
+    ApprovalAction,
+    AuditEntry,
+    StoreSettings,
     async_session_factory,
 )
+from ecommerce_ops.utils import utc_now
 
 AGENTS = ["FraudAgent", "InventoryAgent", "PricingAgent", "ReviewsAgent", "MarketingAgent"]
 AGENT_DISPLAY = {
@@ -48,7 +54,7 @@ async def seed_expanded_demo():
         if count >= 20:
             return {"status": "already_seeded", "actions": count}
 
-        now = datetime.utcnow()
+        now = utc_now()
         actions = []
         audits = []
 
@@ -78,8 +84,15 @@ async def seed_expanded_demo():
                 "order_total": order_total,
                 "fraud_score": random.randint(20, 98),
                 "risk_signals": random.sample(
-                    ["IP mismatch", "VPN detected", "New account", "Bulk order",
-                     "Velocity spike", "Address mismatch", "Card decline history"],
+                    [
+                        "IP mismatch",
+                        "VPN detected",
+                        "New account",
+                        "Bulk order",
+                        "Velocity spike",
+                        "Address mismatch",
+                        "Card decline history",
+                    ],
                     k=random.randint(1, 3),
                 ),
             }
@@ -98,48 +111,71 @@ async def seed_expanded_demo():
                 requires_hitl=risk in ("high", "critical"),
                 shadow_mode=random.random() > 0.3,
                 payload=payload,
-                evidence=[{"label": "Confidence", "value": str(confidence), "weight": "primary", "source": "AgentEngine"}],
+                evidence=[
+                    {
+                        "label": "Confidence",
+                        "value": str(confidence),
+                        "weight": "primary",
+                        "source": "AgentEngine",
+                    }
+                ],
                 impact={"financial_impact": impact_val, "affected_skus": [product[0]]},
                 reviewed_by="admin" if status in ("executed", "rejected") else None,
-                reviewed_at=created + timedelta(minutes=random.randint(5, 60)) if status in ("executed", "rejected") else None,
+                reviewed_at=created + timedelta(minutes=random.randint(5, 60))
+                if status in ("executed", "rejected")
+                else None,
             )
             actions.append(action)
 
             # Matching audit entry
-            audits.append(AuditEntry(
-                action_id=action.id,
-                timestamp=action.reviewed_at or created,
-                agent=agent,
-                action_type=action_type,
-                decision=random.choice(DECISIONS) if status != "pending" else "shadow",
-                operator=action.reviewed_by,
-                confidence_score=confidence,
-                financial_impact=impact_val,
-                details={"demo": True, "product": product[1]},
-            ))
+            audits.append(
+                AuditEntry(
+                    action_id=action.id,
+                    timestamp=action.reviewed_at or created,
+                    agent=agent,
+                    action_type=action_type,
+                    decision=random.choice(DECISIONS) if status != "pending" else "shadow",
+                    operator=action.reviewed_by,
+                    confidence_score=confidence,
+                    financial_impact=impact_val,
+                    details={"demo": True, "product": product[1]},
+                )
+            )
 
         # Ensure agent statuses exist
         for agent in AGENTS:
-            existing = await session.execute(select(AgentStatus).where(AgentStatus.agent_id == agent))
+            existing = await session.execute(
+                select(AgentStatus).where(AgentStatus.agent_id == agent)
+            )
             if not existing.scalar_one_or_none():
-                session.add(AgentStatus(
-                    agent_id=agent,
-                    status="active",
-                    streak=random.randint(0, 25),
-                    autonomy_level=random.choice(["shadow", "supervised", "autonomous"]),
-                    total_decisions=random.randint(50, 500),
-                    total_approvals=random.randint(30, 400),
-                    total_rejections=random.randint(5, 100),
-                    avg_confidence=round(random.uniform(0.80, 0.98), 2),
-                ))
+                session.add(
+                    AgentStatus(
+                        agent_id=agent,
+                        status="active",
+                        streak=random.randint(0, 25),
+                        autonomy_level=random.choice(["shadow", "supervised", "autonomous"]),
+                        total_decisions=random.randint(50, 500),
+                        total_approvals=random.randint(30, 400),
+                        total_rejections=random.randint(5, 100),
+                        avg_confidence=round(random.uniform(0.80, 0.98), 2),
+                    )
+                )
 
         # Ensure store settings exist
-        existing_settings = await session.execute(select(StoreSettings).where(StoreSettings.id == 1))
+        existing_settings = await session.execute(
+            select(StoreSettings).where(StoreSettings.id == 1)
+        )
         if not existing_settings.scalar_one_or_none():
-            session.add(StoreSettings(
-                id=1, shadow_mode=True, fraud_threshold=70,
-                po_limit=1000.0, pricing_limit=5.0, reviews_rating_threshold=4,
-            ))
+            session.add(
+                StoreSettings(
+                    id=1,
+                    shadow_mode=True,
+                    fraud_threshold=70,
+                    po_limit=1000.0,
+                    pricing_limit=5.0,
+                    reviews_rating_threshold=4,
+                )
+            )
 
         session.add_all(actions)
         session.add_all(audits)

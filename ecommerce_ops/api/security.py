@@ -4,7 +4,6 @@ Endpoints for RBAC, API keys, and security management.
 """
 
 import logging
-from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -18,6 +17,7 @@ from ecommerce_ops.security.models import (
     User,
 )
 from ecommerce_ops.security.role_manager import role_manager
+from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.api.security")
 
@@ -422,5 +422,5 @@ async def security_health():
         "rbac": "enabled",
         "audit_logging": "enabled",
         "rate_limiting": "enabled",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": utc_now().isoformat(),
     }

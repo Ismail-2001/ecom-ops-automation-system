@@ -4,7 +4,6 @@ Endpoints for cart recovery operations and analytics.
 """
 
 import logging
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Query
@@ -19,6 +18,7 @@ from ecommerce_ops.agents.cart_recovery.models import (
 )
 from ecommerce_ops.agents.cart_recovery.strategy import RecoveryStrategyEngine
 from ecommerce_ops.config import settings
+from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.api.cart_recovery")
 
@@ -122,13 +122,15 @@ async def analyze_carts_batch(carts: List[CartAnalysisRequest]):
         }
         cart = AbandonedCart(**cart_data)
         recommendation = _strategy_engine.get_strategy_recommendation(cart)
-        results.append({
-            "cart_id": req.cart_id,
-            "strategy": recommendation["strategy"].value,
-            "risk_level": recommendation["risk_level"].value,
-            "recovery_probability": round(recommendation["recovery_probability"], 3),
-            "estimated_revenue": round(recommendation["estimated_revenue"], 2),
-        })
+        results.append(
+            {
+                "cart_id": req.cart_id,
+                "strategy": recommendation["strategy"].value,
+                "risk_level": recommendation["risk_level"].value,
+                "recovery_probability": round(recommendation["recovery_probability"], 3),
+                "estimated_revenue": round(recommendation["estimated_revenue"], 2),
+            }
+        )
 
     # Aggregate stats
     total_value = sum(r.total_value for r in carts)
@@ -189,11 +191,13 @@ async def trigger_batch_recovery(
             discount_code=code,
             discount_value=req.min_value,
         )
-        results.append({
-            "cart_id": cart_id,
-            "discount_code": code,
-            "status": "initiated",
-        })
+        results.append(
+            {
+                "cart_id": cart_id,
+                "discount_code": code,
+                "status": "initiated",
+            }
+        )
 
     return {
         "status": "batch_recovery_initiated",
@@ -293,7 +297,7 @@ async def cart_recovery_health():
         "agent": "AbandonedCartAgent",
         "strategy_engine": "RecoveryStrategyEngine",
         "discount_generator": "DiscountCodeGenerator",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": utc_now().isoformat(),
     }
 
 

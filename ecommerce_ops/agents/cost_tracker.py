@@ -28,7 +28,7 @@ MODEL_PRICING = {
 
 def track_llm_cost(response, agent: str, model: str = "gemini-2.0-flash") -> dict:
     """Extract token usage from LangChain response and record cost metrics.
-    
+
     Returns dict with tokens_input, tokens_output, cost_usd.
     """
     try:
@@ -54,6 +54,7 @@ def track_llm_cost(response, agent: str, model: str = "gemini-2.0-flash") -> dic
                 METRIC_LLM_TOKENS_INPUT,
                 METRIC_LLM_TOKENS_OUTPUT,
             )
+
             METRIC_LLM_TOKENS_INPUT.labels(agent=agent, model=model).inc(tokens_input)
             METRIC_LLM_TOKENS_OUTPUT.labels(agent=agent, model=model).inc(tokens_output)
             METRIC_LLM_COST_DOLLARS.labels(agent=agent, model=model).inc(cost_usd)
@@ -64,7 +65,11 @@ def track_llm_cost(response, agent: str, model: str = "gemini-2.0-flash") -> dic
         if cost_usd > 0.01:
             logger.info(
                 "LLM cost: agent=%s model=%s in=%d out=%d cost=$%.4f",
-                agent, model, tokens_input, tokens_output, cost_usd,
+                agent,
+                model,
+                tokens_input,
+                tokens_output,
+                cost_usd,
             )
 
         return {

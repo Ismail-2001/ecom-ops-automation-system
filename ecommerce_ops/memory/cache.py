@@ -37,9 +37,7 @@ def _get_ttl(path: str) -> int:
 
 
 class RedisCache:
-    _circuit_breaker = CircuitBreaker(
-        name="Redis", failure_threshold=3, recovery_timeout=15.0
-    )
+    _circuit_breaker = CircuitBreaker(name="Redis", failure_threshold=3, recovery_timeout=15.0)
 
     async def get_client(self) -> Optional[redis.Redis]:
         if self._redis is None:
@@ -99,7 +97,9 @@ class RedisCache:
             logger.warning("Redis error during SET %s: %s", key, e)
             return False
 
-    async def get_cached_response(self, method: str, path: str, query: str = "") -> Optional[tuple[int, dict]]:
+    async def get_cached_response(
+        self, method: str, path: str, query: str = ""
+    ) -> Optional[tuple[int, dict]]:
         ttl = _get_ttl(path)
         if ttl == 0 or method != "GET":
             return None
@@ -109,7 +109,9 @@ class RedisCache:
             return None
         return raw["status_code"], raw["body"]
 
-    async def set_cached_response(self, method: str, path: str, query: str, status_code: int, body: dict) -> None:
+    async def set_cached_response(
+        self, method: str, path: str, query: str, status_code: int, body: dict
+    ) -> None:
         ttl = _get_ttl(path)
         if ttl == 0 or method != "GET":
             return

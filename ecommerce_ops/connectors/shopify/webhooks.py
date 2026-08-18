@@ -3,15 +3,10 @@ Shopify Webhook Validator and Router
 Validates HMAC signatures and routes events to handlers.
 """
 
-import asyncio
-import hashlib
-import hmac
 import json
 import logging
 import time
 from typing import Any, Callable, Coroutine, Dict, List, Optional
-
-from ecommerce_ops.config import settings
 
 logger = logging.getLogger("ecommerce_ops.connectors.shopify.webhooks")
 
@@ -57,6 +52,7 @@ class ShopifyWebhookRouter:
         """Lazy import to avoid circular dependencies."""
         if self._shopify_oauth is None:
             from ecommerce_ops.connectors.shopify.oauth import shopify_oauth
+
             self._shopify_oauth = shopify_oauth
         return self._shopify_oauth
 

@@ -5,7 +5,6 @@ Falls back to httpx if Playwright is unavailable.
 """
 
 import asyncio
-import hashlib
 import logging
 import re
 from typing import Optional
@@ -26,11 +25,9 @@ USER_AGENT = (
 async def scrape_competitor_price(sku: str) -> Optional[float]:
     """Scrape competitor price for a given SKU using Google Shopping."""
     try:
-        result = await asyncio.wait_for(
-            _fetch_price(sku), timeout=SCRAPE_TIMEOUT_SECONDS
-        )
+        result = await asyncio.wait_for(_fetch_price(sku), timeout=SCRAPE_TIMEOUT_SECONDS)
         return result
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning("Timeout scraping competitor for SKU: %s", sku)
         return None
     except Exception as e:
@@ -54,13 +51,18 @@ async def _fetch_price(sku: str) -> Optional[float]:
             return None
 
         median_price = sorted(prices)[len(prices) // 2]
-        logger.info("Scraped competitor price for %s: $%.2f (from %d results)", sku, median_price, len(prices))
+        logger.info(
+            "Scraped competitor price for %s: $%.2f (from %d results)",
+            sku,
+            median_price,
+            len(prices),
+        )
         return round(median_price, 2)
 
 
 def _extract_prices(html: str) -> list[float]:
     """Extract price values from Google Shopping HTML."""
-    price_pattern = re.compile(r'\$(\d{1,5}(?:\.\d{2})?)')
+    price_pattern = re.compile(r"\$(\d{1,5}(?:\.\d{2})?)")
     matches = price_pattern.findall(html)
 
     prices = []

@@ -1,6 +1,7 @@
 """Integration tests for the LangGraph supervisor pipeline."""
+from ecommerce_ops.utils import utc_now
 
-from datetime import datetime
+from datetime import datetime, UTC
 from unittest.mock import patch
 
 import pytest
@@ -36,7 +37,7 @@ async def test_pipeline_with_partial_data():
         "messages": [],
         "errors": [],
         "run_id": "test-partial",
-        "timestamp": datetime.utcnow(),
+        "timestamp": utc_now(),
         "step_index": 0,
     }
     supervisor = Supervisor()
@@ -60,7 +61,7 @@ async def test_pipeline_with_only_reviews():
         "messages": [],
         "errors": [],
         "run_id": "test-reviews-only",
-        "timestamp": datetime.utcnow(),
+        "timestamp": utc_now(),
         "step_index": 0,
     }
     supervisor = Supervisor()
@@ -82,7 +83,7 @@ async def test_pipeline_propagates_errors():
         "messages": [],
         "errors": [],
         "run_id": "test-error",
-        "timestamp": datetime.utcnow(),
+        "timestamp": utc_now(),
         "step_index": 0,
     }
 
@@ -115,7 +116,7 @@ async def test_reflection_corrects_low_confidence():
         "messages": [],
         "errors": [],
         "run_id": "test-reflection",
-        "timestamp": datetime.utcnow(),
+        "timestamp": utc_now(),
         "step_index": 0,
     }
     supervisor = Supervisor()
@@ -136,7 +137,7 @@ async def test_planner_dynamic_routing():
         "messages": [],
         "errors": [],
         "run_id": "test-routing",
-        "timestamp": datetime.utcnow(),
+        "timestamp": utc_now(),
         "step_index": 0,
     }
     supervisor = Supervisor()
@@ -158,7 +159,7 @@ async def test_supervisor_runs_idempotent():
         "messages": [],
         "errors": [],
         "run_id": "test-idempotent",
-        "timestamp": datetime.utcnow(),
+        "timestamp": utc_now(),
         "step_index": 0,
     }
     supervisor = Supervisor()

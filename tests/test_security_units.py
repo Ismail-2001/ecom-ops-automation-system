@@ -1,3 +1,4 @@
+from ecommerce_ops.utils import utc_now
 import os
 
 os.environ["ENV"] = "testing"
@@ -6,7 +7,7 @@ os.environ["API_KEY"] = "test-key"
 os.environ["DEEPSEEK_API_KEY"] = "sk-test-key"
 
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -58,7 +59,7 @@ class TestSecurityModels:
         key = APIKey(
             id="1", key="raw", name="test", user_id="u1",
             role=Role.VIEWER,
-            expires_at=datetime.utcnow() - timedelta(days=1),
+            expires_at=utc_now() - timedelta(days=1),
         )
         assert key.is_expired is True
 
@@ -67,7 +68,7 @@ class TestSecurityModels:
         key = APIKey(
             id="1", key="raw", name="test", user_id="u1",
             role=Role.VIEWER,
-            expires_at=datetime.utcnow() + timedelta(days=1),
+            expires_at=utc_now() + timedelta(days=1),
         )
         assert key.is_expired is False
 
@@ -177,7 +178,7 @@ class TestRoleManager:
         rm = RoleManager()
         rm._roles["custom_role"] = RoleDefinition(
             name=Role.VIEWER, display_name="Custom", description="Custom role", permissions=set(), is_system=False,
-            created_at=datetime.utcnow(), updated_at=datetime.utcnow()
+            created_at=utc_now(), updated_at=utc_now()
         )
         result = rm.update_role_permissions("custom_role", {Permission.AGENTS_VIEW})
         assert result is True

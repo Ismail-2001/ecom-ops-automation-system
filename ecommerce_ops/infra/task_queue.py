@@ -10,9 +10,11 @@ Hardening (H5):
 import asyncio
 import logging
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Callable, Optional
+
+from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.infra.task_queue")
 
@@ -41,7 +43,7 @@ class Task:
         self.status = TaskStatus.PENDING
         self.result: Any = None
         self.error: Optional[str] = None
-        self.created_at = datetime.now(UTC)
+        self.created_at = utc_now()
         self.started_at: Optional[datetime] = None
         self.completed_at: Optional[datetime] = None
 
@@ -94,15 +96,13 @@ class TaskQueue:
         return self._tasks.get(task_id)
 
     def _evict_expired(self):
-        now = datetime.now(UTC)
+        now = utc_now()
         cutoff = now - timedelta(hours=TASK_EXPIRY_HOURS)
         expired = []
         for tid, t in self._tasks.items():
             ca = t.created_at
             if isinstance(ca, (int, float)):
-                ca = datetime.fromtimestamp(ca, tz=UTC)
-            elif ca.tzinfo is None:
-                ca = ca.replace(tzinfo=UTC)
+                ca = datetime.fromtimestamp(ca)
             if ca < cutoff and t.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
                 expired.append(tid)
         for tid in expired:
@@ -119,7 +119,7 @@ class TaskQueue:
                 break
             try:
                 task.status = TaskStatus.RUNNING
-                task.started_at = datetime.utcnow()
+                task.started_at = utc_now()
                 logger.info("Worker %d executing task %s (%s)", worker_id, task.id, task.name)
                 coro = task.coro_factory(*task.args, **task.kwargs)
                 task.result = await coro
@@ -129,6 +129,6 @@ class TaskQueue:
                 task.error = str(e)
                 logger.exception("Worker %d task %s (%s) failed", worker_id, task.id, task.name)
             finally:
-                task.completed_at = datetime.utcnow()
+                task.completed_at = utc_now()
                 self._queue.task_done()
         logger.debug("Worker %d stopped", worker_id)

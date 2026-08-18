@@ -2,10 +2,12 @@
 ROI Calculator Engine
 Calculates Return on Investment for e-commerce operations automation.
 """
+
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
+
+from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.roi")
 
@@ -13,6 +15,7 @@ logger = logging.getLogger("ecommerce_ops.roi")
 @dataclass
 class CostBreakdown:
     """Cost breakdown for a specific area."""
+
     labor_hours_saved: float = 0.0
     labor_cost_per_hour: float = 25.0
     tools_cost_monthly: float = 0.0
@@ -36,6 +39,7 @@ class CostBreakdown:
 @dataclass
 class SavingsEstimate:
     """Savings estimate for a specific use case."""
+
     area: str
     description: str
     labor_hours_saved_per_month: float
@@ -49,6 +53,7 @@ class SavingsEstimate:
 @dataclass
 class ROIReport:
     """Complete ROI report."""
+
     generated_at: str
     period_months: int
     total_investment: float
@@ -154,11 +159,7 @@ class ROICalculator:
             error_savings = labor_savings * (uc["error_reduction"] / 100)
             total_uc_savings = labor_savings + revenue_increase + error_savings
             net_uc_savings = total_uc_savings - uc["monthly_cost"]
-            roi = (
-                (net_uc_savings / uc["monthly_cost"] * 100)
-                if uc["monthly_cost"] > 0
-                else 0
-            )
+            roi = (net_uc_savings / uc["monthly_cost"] * 100) if uc["monthly_cost"] > 0 else 0
 
             breakdown = SavingsEstimate(
                 area=uc["area"],
@@ -176,22 +177,14 @@ class ROICalculator:
             total_monthly_cost += uc["monthly_cost"]
             total_savings += total_uc_savings
 
-        total_investment = (
-            self.one_time_setup_cost + (total_monthly_cost * period_months)
-        )
+        total_investment = self.one_time_setup_cost + (total_monthly_cost * period_months)
         total_savings_period = total_savings * period_months
         net_benefit = total_savings_period - total_investment
-        roi_pct = (
-            (net_benefit / total_investment * 100) if total_investment > 0 else 0
-        )
-        payback = (
-            (total_investment / total_savings)
-            if total_savings > 0
-            else float("inf")
-        )
+        roi_pct = (net_benefit / total_investment * 100) if total_investment > 0 else 0
+        payback = (total_investment / total_savings) if total_savings > 0 else float("inf")
 
         report = ROIReport(
-            generated_at=datetime.utcnow().isoformat(),
+            generated_at=utc_now().isoformat(),
             period_months=period_months,
             total_investment=round(total_investment, 2),
             total_savings=round(total_savings_period, 2),
@@ -223,17 +216,13 @@ class ROICalculator:
                 "Excellent ROI! Consider scaling implementation to all use cases."
             )
         elif roi_pct > 100:
-            recommendations.append(
-                "Good ROI. Focus on high-impact use cases first."
-            )
+            recommendations.append("Good ROI. Focus on high-impact use cases first.")
         elif roi_pct > 50:
             recommendations.append(
                 "Moderate ROI. Consider optimizing costs or increasing adoption."
             )
         else:
-            recommendations.append(
-                "Low ROI. Review implementation strategy and cost structure."
-            )
+            recommendations.append("Low ROI. Review implementation strategy and cost structure.")
 
         if breakdowns:
             best = max(breakdowns, key=lambda x: x.roi_percent)
@@ -270,7 +259,5 @@ class ROICalculator:
             "annual_savings": report.total_savings,
             "roi_percent": report.roi_percent,
             "payback_months": report.payback_period_months,
-            "labor_hours_saved_monthly": report.summary[
-                "total_labor_hours_saved_monthly"
-            ],
+            "labor_hours_saved_monthly": report.summary["total_labor_hours_saved_monthly"],
         }

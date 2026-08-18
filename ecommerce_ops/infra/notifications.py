@@ -19,18 +19,20 @@ async def notify_hitl_request(
     )
     logger.info("NOTIFY: %s", msg)
     await _send_slack(msg) if settings.SLACK_BOT_TOKEN else None
-    await ws_manager.broadcast({
-        "type": "notification",
-        "payload": {
-            "kind": "hitl_request",
-            "agent": agent,
-            "action_id": action_id,
-            "action_type": action_type,
-            "risk_level": risk_level,
-            "confidence": confidence,
-            "message": msg,
-        },
-    })
+    await ws_manager.broadcast(
+        {
+            "type": "notification",
+            "payload": {
+                "kind": "hitl_request",
+                "agent": agent,
+                "action_id": action_id,
+                "action_type": action_type,
+                "risk_level": risk_level,
+                "confidence": confidence,
+                "message": msg,
+            },
+        }
+    )
 
 
 async def notify_pipeline_failed(
@@ -40,10 +42,17 @@ async def notify_pipeline_failed(
     msg = f"[FAIL] Pipeline {run_id} failed: {error}"
     logger.error("NOTIFY: %s", msg)
     await _send_slack(msg) if settings.SLACK_BOT_TOKEN else None
-    await ws_manager.broadcast({
-        "type": "notification",
-        "payload": {"kind": "pipeline_failed", "run_id": run_id, "error": error, "message": msg},
-    })
+    await ws_manager.broadcast(
+        {
+            "type": "notification",
+            "payload": {
+                "kind": "pipeline_failed",
+                "run_id": run_id,
+                "error": error,
+                "message": msg,
+            },
+        }
+    )
 
 
 async def notify_agent_graduated(
@@ -54,16 +63,18 @@ async def notify_agent_graduated(
     msg = f"[GRADUATE] {agent} promoted to {new_level} (streak: {streak})"
     logger.info("NOTIFY: %s", msg)
     await _send_slack(msg) if settings.SLACK_BOT_TOKEN else None
-    await ws_manager.broadcast({
-        "type": "notification",
-        "payload": {
-            "kind": "agent_graduated",
-            "agent": agent,
-            "new_level": new_level,
-            "streak": streak,
-            "message": msg,
-        },
-    })
+    await ws_manager.broadcast(
+        {
+            "type": "notification",
+            "payload": {
+                "kind": "agent_graduated",
+                "agent": agent,
+                "new_level": new_level,
+                "streak": streak,
+                "message": msg,
+            },
+        }
+    )
 
 
 async def notify_daily_summary(stats: dict):
@@ -83,6 +94,7 @@ async def _send_slack(message: str):
         token = settings.SLACK_BOT_TOKEN.get_secret_value()
         channel = settings.SLACK_CHANNEL or "#general"
         import httpx
+
         async with httpx.AsyncClient(timeout=10) as client:
             await client.post(
                 "https://slack.com/api/chat.postMessage",

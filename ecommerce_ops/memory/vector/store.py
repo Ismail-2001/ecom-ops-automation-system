@@ -4,22 +4,20 @@ In-memory vector store with cosine similarity search.
 """
 
 import logging
-import math
-import uuid
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import timedelta
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from ecommerce_ops.memory.vector.embeddings import EmbeddingService, embedding_service
+from ecommerce_ops.memory.vector.embeddings import EmbeddingService
 from ecommerce_ops.memory.vector.models import (
     MemoryEntry,
     MemoryImportance,
     MemoryQuery,
     MemorySearchResult,
     MemoryStats,
-    MemoryType,
 )
+from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.memory.vector.store")
 
@@ -93,28 +91,30 @@ class VectorStore:
                 # Calculate combined score
                 score = self._calculate_score(entry, similarity)
 
-                results.append(MemorySearchResult(
-                    entry=entry,
-                    similarity=similarity,
-                    rank=0,  # Will be set after sorting
-                    score=score,
-                    explanation=f"similarity={similarity:.3f}, recency={entry.recency_score:.3f}",
-                ))
+                results.append(
+                    MemorySearchResult(
+                        entry=entry,
+                        similarity=similarity,
+                        rank=0,  # Will be set after sorting
+                        score=score,
+                        explanation=f"similarity={similarity:.3f}, recency={entry.recency_score:.3f}",
+                    )
+                )
 
         # Sort by score
         results.sort(key=lambda x: x.score, reverse=True)
 
         # Set ranks and limit
-        for i, result in enumerate(results[:query.max_results]):
+        for i, result in enumerate(results[: query.max_results]):
             result.rank = i + 1
 
-        return results[:query.max_results]
+        return results[: query.max_results]
 
     async def get(self, memory_id: str) -> Optional[MemoryEntry]:
         """Get a memory by ID."""
         entry = self._memories.get(memory_id)
         if entry:
-            entry.last_accessed = datetime.utcnow()
+            entry.last_accessed = utc_now()
             entry.access_count += 1
         return entry
 
@@ -148,10 +148,7 @@ class VectorStore:
 
     async def delete_expired(self) -> int:
         """Delete expired memories."""
-        expired_ids = [
-            id for id, entry in self._memories.items()
-            if entry.is_expired
-        ]
+        expired_ids = [id for id, entry in self._memories.items() if entry.is_expired]
 
         for id in expired_ids:
             await self.delete(id)
@@ -182,10 +179,7 @@ class VectorStore:
                 by_agent[entry.agent_name] = by_agent.get(entry.agent_name, 0) + 1
 
         # Average access count
-        avg_access = (
-            sum(e.access_count for e in memories) / len(memories)
-            if memories else 0
-        )
+        avg_access = sum(e.access_count for e in memories) / len(memories) if memories else 0
 
         return MemoryStats(
             total_memories=len(memories),
@@ -218,10 +212,7 @@ class VectorStore:
 
         # Filter by tags
         if query.tags:
-            candidates = [
-                e for e in candidates
-                if any(tag in e.tags for tag in query.tags)
-            ]
+            candidates = [e for e in candidates if any(tag in e.tags for tag in query.tags)]
 
         # Filter by importance
         if query.min_importance:
@@ -232,10 +223,7 @@ class VectorStore:
                 MemoryImportance.CRITICAL,
             ]
             min_idx = importance_order.index(query.min_importance)
-            candidates = [
-                e for e in candidates
-                if importance_order.index(e.importance) >= min_idx
-            ]
+            candidates = [e for e in candidates if importance_order.index(e.importance) >= min_idx]
 
         # Filter by expiry
         if not query.include_expired:
@@ -243,11 +231,8 @@ class VectorStore:
 
         # Filter by time window
         if query.time_window_hours:
-            cutoff = datetime.utcnow() - timedelta(hours=query.time_window_hours)
-            candidates = [
-                e for e in candidates
-                if e.created_at >= cutoff
-            ]
+            cutoff = utc_now() - timedelta(hours=query.time_window_hours)
+            candidates = [e for e in candidates if e.created_at >= cutoff]
 
         return candidates
 
@@ -259,9 +244,9 @@ class VectorStore:
         IMPORTANCE_WEIGHT = 0.2
 
         score = (
-            similarity * SIMILARITY_WEIGHT +
-            entry.recency_score * RECENCY_WEIGHT +
-            entry.importance_weight * IMPORTANCE_WEIGHT
+            similarity * SIMILARITY_WEIGHT
+            + entry.recency_score * RECENCY_WEIGHT
+            + entry.importance_weight * IMPORTANCE_WEIGHT
         )
 
         return score

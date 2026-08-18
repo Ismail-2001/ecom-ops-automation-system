@@ -4,7 +4,6 @@ OAuth flow, webhooks, and sync endpoints.
 """
 
 import logging
-from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -17,6 +16,7 @@ from ecommerce_ops.connectors.shopify.oauth_state import oauth_state_store
 from ecommerce_ops.connectors.shopify.sync import ShopifySyncService
 from ecommerce_ops.connectors.shopify.webhooks import webhook_router
 from ecommerce_ops.models import ShopifyShopCredential, async_session_factory
+from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.api.shopify")
 
@@ -98,7 +98,7 @@ async def oauth_callback(
         if cred:
             cred.access_token = session.access_token
             cred.scope = session.scope
-            cred.updated_at = datetime.utcnow()
+            cred.updated_at = utc_now()
             cred.is_active = True
         else:
             db_session.add(
@@ -106,7 +106,7 @@ async def oauth_callback(
                     shop_domain=session.shop_domain,
                     access_token=session.access_token,
                     scope=session.scope,
-                    installed_at=datetime.utcnow(),
+                    installed_at=utc_now(),
                     is_active=True,
                 )
             )

@@ -2,6 +2,7 @@
 Demo and ROI API Routes
 Endpoints for demo environment and ROI calculations.
 """
+
 import logging
 from typing import List, Optional
 
@@ -242,5 +243,6 @@ async def run_demo_scenario(
 async def seed_demo_data(user: dict = Depends(require_auth)):
     """Seed the database with expanded demo data for a rich dashboard."""
     from ecommerce_ops.demo.seed_data import seed_expanded_demo
+
     result = await seed_expanded_demo()
     return result

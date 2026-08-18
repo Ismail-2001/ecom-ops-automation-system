@@ -20,6 +20,7 @@ from ecommerce_ops.agents.cart_recovery.models import (
 )
 from ecommerce_ops.agents.cart_recovery.strategy import RecoveryStrategyEngine
 from ecommerce_ops.graph.state import AgentDecision
+from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.agents.cart_recovery")
 
@@ -159,18 +160,20 @@ class AbandonedCartAgent(BaseAgent):
         # Parse items
         items = []
         for item_data in cart_data.get("items", []):
-            items.append(CartItem(
-                product_id=item_data.get("product_id", 0),
-                variant_id=item_data.get("variant_id", 0),
-                title=item_data.get("title", "Unknown"),
-                sku=item_data.get("sku"),
-                quantity=item_data.get("quantity", 1),
-                price=item_data.get("price", 0.0),
-                total=item_data.get("total", 0.0),
-                image_url=item_data.get("image_url"),
-                product_type=item_data.get("product_type"),
-                vendor=item_data.get("vendor"),
-            ))
+            items.append(
+                CartItem(
+                    product_id=item_data.get("product_id", 0),
+                    variant_id=item_data.get("variant_id", 0),
+                    title=item_data.get("title", "Unknown"),
+                    sku=item_data.get("sku"),
+                    quantity=item_data.get("quantity", 1),
+                    price=item_data.get("price", 0.0),
+                    total=item_data.get("total", 0.0),
+                    image_url=item_data.get("image_url"),
+                    product_type=item_data.get("product_type"),
+                    vendor=item_data.get("vendor"),
+                )
+            )
 
         # Parse customer
         customer = None
@@ -209,7 +212,7 @@ class AbandonedCartAgent(BaseAgent):
             currency=cart_data.get("currency", "USD"),
             items_count=cart_data.get("items_count", len(items)),
             status=CartStatus(cart_data.get("status", "abandoned")),
-            created_at=created_at or datetime.utcnow(),
+            created_at=created_at or utc_now(),
             abandoned_at=abandoned_at,
             checkout_url=cart_data.get("checkout_url"),
             metadata=cart_data.get("metadata", {}),
@@ -232,9 +235,7 @@ class AbandonedCartAgent(BaseAgent):
         # Low confidence needs approval
         return recommendation["recovery_probability"] < 0.3
 
-    async def generate_recovery_report(
-        self, results: list[dict[str, Any]]
-    ) -> dict[str, Any]:
+    async def generate_recovery_report(self, results: list[dict[str, Any]]) -> dict[str, Any]:
         """Generate aggregate recovery report."""
         total_carts = len(results)
         total_value = sum(r.get("total_value", 0) for r in results)
@@ -258,9 +259,9 @@ class AbandonedCartAgent(BaseAgent):
                 "recovery_rate": round(recovered / total_carts * 100, 1) if total_carts > 0 else 0,
                 "total_value_abandoned": round(total_value, 2),
                 "total_revenue_recovered": round(revenue_recovered, 2),
-                "recovery_rate_value": round(
-                    revenue_recovered / total_value * 100, 1
-                ) if total_value > 0 else 0,
+                "recovery_rate_value": round(revenue_recovered / total_value * 100, 1)
+                if total_value > 0
+                else 0,
             },
             "strategies": strategies,
         }

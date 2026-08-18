@@ -96,8 +96,10 @@ class Supervisor:
         builder.add_node("reflection", reflection_node)
 
         for name in DEFAULT_PLAN:
+
             async def make_node(state, n=name):
                 return await run_agent(n, state)
+
             builder.add_node(name, make_node)
 
         all_nodes = list(DEFAULT_PLAN) + ["reflection", END]
@@ -116,8 +118,6 @@ class Supervisor:
             )
 
         builder.add_edge("reflection", END)
-
-        self.graph = self.builder.compile()
 
     async def run(self, input_state: Dict[str, Any]) -> Dict[str, Any]:
         if "memory_context" not in input_state:

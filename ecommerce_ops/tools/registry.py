@@ -1,6 +1,6 @@
 import abc
 import logging
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("ecommerce_ops.tools.registry")
 
@@ -10,8 +10,7 @@ class Tool(abc.ABC):
     description: str
 
     @abc.abstractmethod
-    async def run(self, **kwargs) -> Any:
-        ...
+    async def run(self, **kwargs) -> Any: ...
 
 
 class ToolRegistry:
@@ -28,10 +27,7 @@ class ToolRegistry:
 
     @classmethod
     def list_tools(cls) -> List[Dict[str, str]]:
-        return [
-            {"name": t.name, "description": t.description}
-            for t in cls._tools.values()
-        ]
+        return [{"name": t.name, "description": t.description} for t in cls._tools.values()]
 
     @classmethod
     async def run_tool(cls, name: str, **kwargs) -> Any:

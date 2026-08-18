@@ -9,9 +9,12 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from ecommerce_ops.utils import utc_now
+
 
 class MemoryType(str, Enum):
     """Types of memory entries."""
+
     EPISODIC = "episodic"  # Specific events/interactions
     SEMANTIC = "semantic"  # Facts and knowledge
     PROCEDURAL = "procedural"  # How to do things
@@ -21,6 +24,7 @@ class MemoryType(str, Enum):
 
 class MemoryImportance(str, Enum):
     """Importance levels for memory entries."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -29,6 +33,7 @@ class MemoryImportance(str, Enum):
 
 class MemoryEntry(BaseModel):
     """A single memory entry with vector embedding."""
+
     id: str
     memory_type: MemoryType
     content: str
@@ -53,7 +58,7 @@ class MemoryEntry(BaseModel):
     @property
     def is_expired(self) -> bool:
         if self.expiry:
-            return datetime.utcnow() > self.expiry
+            return utc_now() > self.expiry
         return False
 
     @property
@@ -61,7 +66,7 @@ class MemoryEntry(BaseModel):
         """Calculate recency score (0-1, higher is more recent)."""
         if not self.last_accessed:
             return 0.5
-        hours_since = (datetime.utcnow() - self.last_accessed).total_seconds() / 3600
+        hours_since = (utc_now() - self.last_accessed).total_seconds() / 3600
         # Decay over 7 days
         return max(0, 1.0 - (hours_since / 168))
 
@@ -79,6 +84,7 @@ class MemoryEntry(BaseModel):
 
 class MemoryQuery(BaseModel):
     """Query for memory retrieval."""
+
     query: str
     query_embedding: Optional[List[float]] = None
     memory_type: Optional[MemoryType] = None
@@ -95,6 +101,7 @@ class MemoryQuery(BaseModel):
 
 class MemorySearchResult(BaseModel):
     """Result from memory search."""
+
     entry: MemoryEntry
     similarity: float
     rank: int
@@ -104,6 +111,7 @@ class MemorySearchResult(BaseModel):
 
 class MemoryConsolidation(BaseModel):
     """Result of memory consolidation."""
+
     id: str
     original_memories: List[str]  # IDs of memories that were consolidated
     consolidated_content: str
@@ -116,6 +124,7 @@ class MemoryConsolidation(BaseModel):
 
 class SessionContext(BaseModel):
     """Context for a memory session."""
+
     session_id: str
     user_id: Optional[str] = None
     agent_name: Optional[str] = None
@@ -137,6 +146,7 @@ class SessionContext(BaseModel):
 
 class MemoryStats(BaseModel):
     """Statistics for memory system."""
+
     total_memories: int = 0
     memories_by_type: Dict[str, int] = Field(default_factory=dict)
     memories_by_importance: Dict[str, int] = Field(default_factory=dict)
@@ -151,6 +161,7 @@ class MemoryStats(BaseModel):
 
 class MemoryConfig(BaseModel):
     """Configuration for memory system."""
+
     max_memories: int = 10000
     max_memories_per_agent: int = 1000
     max_session_duration_hours: int = 24

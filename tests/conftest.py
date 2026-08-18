@@ -1,8 +1,9 @@
 """Shared fixtures and configuration for all tests."""
+from ecommerce_ops.utils import utc_now
 
 import os
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import Any, AsyncGenerator
 
 import pytest
@@ -84,7 +85,7 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 @pytest_asyncio.fixture
 async def seeded_db_session(db_session: AsyncSession) -> AsyncSession:
     """Pre-populate the database with seed data."""
-    now = datetime.utcnow()
+    now = utc_now()
 
     db_session.add(StoreSettings(
         id=1, shadow_mode=True, fraud_threshold=70,
@@ -158,7 +159,7 @@ def mock_inventory_state() -> dict[str, Any]:
         "messages": [],
         "errors": [],
         "run_id": str(uuid.uuid4()),
-        "timestamp": datetime.utcnow(),
+        "timestamp": utc_now(),
         "step_index": 0,
     }
 

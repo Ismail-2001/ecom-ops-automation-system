@@ -14,6 +14,7 @@ logger = logging.getLogger("ecommerce_ops.observability.langfuse")
 
 class LangfuseConfig(BaseModel):
     """Langfuse configuration."""
+
     public_key: Optional[str] = None
     secret_key: Optional[str] = None
     host: str = "https://cloud.langfuse.com"
@@ -35,6 +36,7 @@ class LangfuseConfig(BaseModel):
 
 class TraceContext(BaseModel):
     """Context for a trace."""
+
     trace_id: str
     name: Optional[str] = None
     user_id: Optional[str] = None
@@ -68,6 +70,7 @@ class LangfuseClient:
 
         try:
             from langfuse import Langfuse
+
             self._client = Langfuse(
                 public_key=self.config.public_key,
                 secret_key=self.config.secret_key,

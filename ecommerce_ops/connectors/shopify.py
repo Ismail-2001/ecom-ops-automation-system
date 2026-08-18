@@ -1,22 +1,24 @@
 import asyncio
 import logging
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List
 
 from ecommerce_ops.config import settings
-from ecommerce_ops.infra.retry import async_retry_decorator
 from ecommerce_ops.infra.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
+from ecommerce_ops.infra.retry import async_retry_decorator
 
 logger = logging.getLogger("ecommerce_ops.connectors.shopify")
 
 
 class ShopifyConnector:
-    _circuit_breaker = CircuitBreaker(
-        name="Shopify", failure_threshold=3, recovery_timeout=30.0
-    )
+    _circuit_breaker = CircuitBreaker(name="Shopify", failure_threshold=3, recovery_timeout=30.0)
 
     def __init__(self):
-        self.api_key = settings.SHOPIFY_API_KEY.get_secret_value() if settings.SHOPIFY_API_KEY else None
-        self.password = settings.SHOPIFY_PASSWORD.get_secret_value() if settings.SHOPIFY_PASSWORD else None
+        self.api_key = (
+            settings.SHOPIFY_API_KEY.get_secret_value() if settings.SHOPIFY_API_KEY else None
+        )
+        self.password = (
+            settings.SHOPIFY_PASSWORD.get_secret_value() if settings.SHOPIFY_PASSWORD else None
+        )
         self.store_url = settings.SHOPIFY_STORE_URL
         self.api_version = settings.SHOPIFY_API_VERSION
 
@@ -29,6 +31,7 @@ class ShopifyConnector:
             logger.warning("Shopify credentials not configured")
             return False
         import shopify
+
         session = shopify.Session(self.store_url, self.api_version, self.password)
         shopify.ShopifyResource.activate_session(session)
         return True
@@ -64,6 +67,7 @@ class ShopifyConnector:
     )
     async def _get_inventory_with_retry(self) -> List[Dict[str, Any]]:
         import shopify
+
         await self._ensure_session()
 
         def _fetch():
@@ -71,14 +75,16 @@ class ShopifyConnector:
             inventory = []
             for p in products:
                 for v in p.variants:
-                    inventory.append({
-                        "sku": v.sku,
-                        "variant_id": v.id,
-                        "product_title": p.title,
-                        "inventory_item_id": v.inventory_item_id,
-                        "stock": v.inventory_quantity,
-                        "price": v.price,
-                    })
+                    inventory.append(
+                        {
+                            "sku": v.sku,
+                            "variant_id": v.id,
+                            "product_title": p.title,
+                            "inventory_item_id": v.inventory_item_id,
+                            "stock": v.inventory_quantity,
+                            "price": v.price,
+                        }
+                    )
             return inventory
 
         return await self._run_sync(_fetch)
@@ -91,6 +97,7 @@ class ShopifyConnector:
     )
     async def _get_orders_with_retry(self, limit: int) -> List[Dict[str, Any]]:
         import shopify
+
         await self._ensure_session()
 
         def _fetch():
@@ -107,6 +114,7 @@ class ShopifyConnector:
     )
     async def _update_price_with_retry(self, variant_id: str, new_price: float):
         import shopify
+
         await self._ensure_session()
 
         def _update():

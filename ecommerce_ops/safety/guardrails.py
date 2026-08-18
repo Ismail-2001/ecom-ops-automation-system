@@ -1,6 +1,7 @@
 """
 Guardrails - Prompt injection protection and hallucination detection.
 """
+
 import logging
 import re
 from dataclasses import dataclass, field
@@ -12,6 +13,7 @@ logger = logging.getLogger("ecommerce_ops.safety.guardrails")
 @dataclass
 class GuardrailResult:
     """Result of a guardrail check."""
+
     passed: bool
     violations: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
@@ -110,10 +112,10 @@ class HallucinationDetector:
                 warnings.extend([f"Potentially unsupported claim: {c}" for c in unsupported])
 
         # Check for fabricated numbers not in source
-        response_numbers = set(re.findall(r'\b\d+\.?\d*%?\b', response))
+        response_numbers = set(re.findall(r"\b\d+\.?\d*%?\b", response))
         if source_data:
             source_text = str(source_data)
-            source_numbers = set(re.findall(r'\b\d+\.?\d*%?\b', source_text))
+            source_numbers = set(re.findall(r"\b\d+\.?\d*%?\b", source_text))
             fabricated = response_numbers - source_numbers
             if fabricated and len(fabricated) > 3:
                 warnings.append(f"Numbers in response not found in source: {fabricated}")
@@ -153,7 +155,7 @@ class HallucinationDetector:
         """Check for claims not supported by source data."""
         unsupported = []
         source_text = str(source_data).lower()
-        response_sentences = re.split(r'[.!?]+', response)
+        response_sentences = re.split(r"[.!?]+", response)
 
         for sentence in response_sentences:
             sentence = sentence.strip()
@@ -212,7 +214,9 @@ class OutputValidator:
             if key not in data:
                 violations.append(f"Missing key: {key}")
             elif not isinstance(data[key], expected_type):
-                violations.append(f"Key '{key}' has type {type(data[key])}, expected {expected_type}")
+                violations.append(
+                    f"Key '{key}' has type {type(data[key])}, expected {expected_type}"
+                )
 
         return GuardrailResult(
             passed=len(violations) == 0,

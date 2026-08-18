@@ -4,7 +4,7 @@ Endpoints for traces, evaluations, and metrics backed by real DB queries.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -26,6 +26,7 @@ from ecommerce_ops.observability.trace_models import (
     TraceAggregation,
     TraceStatus,
 )
+from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.api.observability")
 
@@ -63,17 +64,19 @@ async def list_traces(
 
         traces = []
         for run in runs:
-            traces.append({
-                "trace_id": run.run_id,
-                "status": run.status,
-                "data_source": run.data_source,
-                "decisions_count": run.decisions_count,
-                "actions_count": run.actions_count,
-                "evaluation_avg_score": run.evaluation_avg_score,
-                "started_at": run.started_at.isoformat() if run.started_at else None,
-                "finished_at": run.finished_at.isoformat() if run.finished_at else None,
-                "error": run.error,
-            })
+            traces.append(
+                {
+                    "trace_id": run.run_id,
+                    "status": run.status,
+                    "data_source": run.data_source,
+                    "decisions_count": run.decisions_count,
+                    "actions_count": run.actions_count,
+                    "evaluation_avg_score": run.evaluation_avg_score,
+                    "started_at": run.started_at.isoformat() if run.started_at else None,
+                    "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+                    "error": run.error,
+                }
+            )
         return {"traces": traces, "total": len(traces)}
 
 
@@ -81,9 +84,7 @@ async def list_traces(
 async def get_trace(trace_id: str):
     """Get trace details from PipelineRun table."""
     async with async_session_factory() as session:
-        result = await session.execute(
-            select(PipelineRun).where(PipelineRun.run_id == trace_id)
-        )
+        result = await session.execute(select(PipelineRun).where(PipelineRun.run_id == trace_id))
         run = result.scalar_one_or_none()
         if not run:
             raise HTTPException(status_code=404, detail="Trace not found")
@@ -105,9 +106,7 @@ async def get_trace(trace_id: str):
 async def get_trace_spans(trace_id: str):
     """Get spans for a trace from ApprovalAction table."""
     async with async_session_factory() as session:
-        result = await session.execute(
-            select(PipelineRun).where(PipelineRun.run_id == trace_id)
-        )
+        result = await session.execute(select(PipelineRun).where(PipelineRun.run_id == trace_id))
         run = result.scalar_one_or_none()
         if not run:
             raise HTTPException(status_code=404, detail="Trace not found")
@@ -116,7 +115,7 @@ async def get_trace_spans(trace_id: str):
         actions_result = await session.execute(
             select(ApprovalAction).where(
                 ApprovalAction.created_at >= run.started_at,
-                ApprovalAction.created_at <= (run.finished_at or datetime.utcnow()),
+                ApprovalAction.created_at <= (run.finished_at or utc_now()),
             )
         )
         actions = actions_result.scalars().all()
@@ -138,9 +137,7 @@ async def get_trace_spans(trace_id: str):
 async def get_trace_scores(trace_id: str):
     """Get scores for a trace from evaluation results."""
     async with async_session_factory() as session:
-        result = await session.execute(
-            select(PipelineRun).where(PipelineRun.run_id == trace_id)
-        )
+        result = await session.execute(select(PipelineRun).where(PipelineRun.run_id == trace_id))
         run = result.scalar_one_or_none()
         if not run:
             raise HTTPException(status_code=404, detail="Trace not found")
@@ -216,7 +213,7 @@ async def get_evaluation_history(
     days: int = Query(7, ge=1, le=90),
 ):
     """Get evaluation history from AuditEntry table."""
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = utc_now() - timedelta(days=days)
     async with async_session_factory() as session:
         stmt = select(AuditEntry).where(AuditEntry.timestamp >= cutoff)
         if agent_name:
@@ -252,13 +249,15 @@ async def get_metrics_summary(
     days: int = Query(7, ge=1, le=90),
 ):
     """Get aggregated metrics summary from PipelineRun and ApprovalAction tables."""
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = utc_now() - timedelta(days=days)
     async with async_session_factory() as session:
         # Pipeline run stats
         run_result = await session.execute(
             select(
                 func.count(PipelineRun.id).label("total_traces"),
-                func.count(PipelineRun.id).filter(PipelineRun.status == "completed").label("successful"),
+                func.count(PipelineRun.id)
+                .filter(PipelineRun.status == "completed")
+                .label("successful"),
                 func.count(PipelineRun.id).filter(PipelineRun.status == "failed").label("failed"),
                 func.avg(PipelineRun.evaluation_avg_score).label("avg_score"),
             ).where(PipelineRun.started_at >= cutoff)
@@ -325,7 +324,7 @@ async def get_cost_metrics(
     days: int = Query(30, ge=1, le=90),
 ):
     """Get cost breakdown metrics from PipelineRun table."""
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = utc_now() - timedelta(days=days)
     async with async_session_factory() as session:
         result = await session.execute(
             select(
@@ -355,5 +354,5 @@ async def observability_health():
         "status": "healthy",
         "langfuse_enabled": langfuse_client.is_enabled,
         "evaluation_framework": "loaded",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": utc_now().isoformat(),
     }

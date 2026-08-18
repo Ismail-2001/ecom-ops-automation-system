@@ -39,17 +39,23 @@ def init_tracing():
         from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
         # Set W3C Trace Context + Baggage propagators
-        set_global_textmap(CompositePropagator([
-            TraceContextTextMapPropagator(),
-            W3CBaggagePropagator(),
-        ]))
+        set_global_textmap(
+            CompositePropagator(
+                [
+                    TraceContextTextMapPropagator(),
+                    W3CBaggagePropagator(),
+                ]
+            )
+        )
 
         # Resource
-        resource = Resource.create({
-            SERVICE_NAME: OTEL_SERVICE_NAME,
-            "deployment.environment": os.getenv("ENV", "development"),
-            "service.version": "0.2.0",
-        })
+        resource = Resource.create(
+            {
+                SERVICE_NAME: OTEL_SERVICE_NAME,
+                "deployment.environment": os.getenv("ENV", "development"),
+                "service.version": "0.2.0",
+            }
+        )
 
         # Tracer Provider
         tracer_provider = TracerProvider(
@@ -70,6 +76,7 @@ def init_tracing():
             metric_readers=[prometheus_reader],
         )
         from opentelemetry import metrics
+
         metrics.set_meter_provider(meter_provider)
 
         # Auto-instrument httpx (outgoing HTTP calls)
@@ -77,8 +84,10 @@ def init_tracing():
 
         logger.info(
             "OpenTelemetry tracing initialized: service=%s, endpoint=%s, sampler=%s=%s",
-            OTEL_SERVICE_NAME, OTEL_EXPORTER_OTLP_ENDPOINT,
-            OTEL_TRACES_SAMPLER, OTEL_TRACES_SAMPLER_ARG,
+            OTEL_SERVICE_NAME,
+            OTEL_EXPORTER_OTLP_ENDPOINT,
+            OTEL_TRACES_SAMPLER,
+            OTEL_TRACES_SAMPLER_ARG,
         )
 
         return tracer_provider
@@ -113,6 +122,7 @@ def _get_sampler():
 def get_tracer(name: str = "ecommerce_ops"):
     """Get a tracer instance for manual instrumentation."""
     from opentelemetry import trace
+
     return trace.get_tracer(name)
 
 
@@ -123,6 +133,7 @@ def instrument_app(app):
 
     try:
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
         FastAPIInstrumentor.instrument_app(
             app,
             excluded_urls="health,ready,live,metrics",

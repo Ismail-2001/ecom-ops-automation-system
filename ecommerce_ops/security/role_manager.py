@@ -9,7 +9,7 @@ import hmac
 import logging
 import secrets
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any, Dict, List, Optional, Set
 
 from sqlalchemy import select
@@ -24,6 +24,7 @@ from ecommerce_ops.security.models import (
     RoleDefinition,
     User,
 )
+from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.security.role_manager")
 
@@ -70,9 +71,7 @@ def _verify_api_key_hash(key: str, stored: str) -> bool:
         _prefix, iterations, salt_b64, expected_b64 = stored.split("$")
         salt = base64.b64decode(salt_b64)
         expected = base64.b64decode(expected_b64)
-        dk = hashlib.pbkdf2_hmac(
-            "sha256", key.encode("utf-8"), salt, int(iterations)
-        )
+        dk = hashlib.pbkdf2_hmac("sha256", key.encode("utf-8"), salt, int(iterations))
         return hmac.compare_digest(dk, expected)
     except (ValueError, TypeError) as e:
         logger.warning("Unable to parse stored API key hash: %s", e)
@@ -127,7 +126,7 @@ class RoleManager:
             logger.warning("Cannot modify system role: %s", role)
             return False
         definition.permissions = permissions
-        definition.updated_at = datetime.utcnow()
+        definition.updated_at = utc_now()
         return True
 
     def delete_role(self, role) -> bool:
@@ -152,9 +151,7 @@ class RoleManager:
     ) -> User:
         async with async_session_factory() as session:
             # Check duplicate email
-            existing = await session.execute(
-                select(RBACUser).where(RBACUser.email == email)
-            )
+            existing = await session.execute(select(RBACUser).where(RBACUser.email == email))
             if existing.scalar_one_or_none():
                 raise ValueError(f"User with email {email} already exists")
 
@@ -183,9 +180,7 @@ class RoleManager:
 
     async def get_user(self, user_id: str) -> Optional[User]:
         async with async_session_factory() as session:
-            result = await session.execute(
-                select(RBACUser).where(RBACUser.id == user_id)
-            )
+            result = await session.execute(select(RBACUser).where(RBACUser.id == user_id))
             db_user = result.scalar_one_or_none()
             if not db_user:
                 return None
@@ -193,9 +188,7 @@ class RoleManager:
 
     async def get_user_by_email(self, email: str) -> Optional[User]:
         async with async_session_factory() as session:
-            result = await session.execute(
-                select(RBACUser).where(RBACUser.email == email)
-            )
+            result = await session.execute(select(RBACUser).where(RBACUser.email == email))
             db_user = result.scalar_one_or_none()
             if not db_user:
                 return None
@@ -224,9 +217,7 @@ class RoleManager:
         permissions: Optional[Set[Permission]] = None,
     ) -> bool:
         async with async_session_factory() as session:
-            result = await session.execute(
-                select(RBACUser).where(RBACUser.id == user_id)
-            )
+            result = await session.execute(select(RBACUser).where(RBACUser.id == user_id))
             db_user = result.scalar_one_or_none()
             if not db_user:
                 return False
@@ -239,7 +230,7 @@ class RoleManager:
                 db_user.is_active = is_active
             if permissions is not None:
                 db_user.permissions = [p.value for p in permissions]
-            db_user.updated_at = datetime.utcnow()
+            db_user.updated_at = utc_now()
 
             await session.commit()
             logger.info("Updated user: %s", user_id)
@@ -247,9 +238,7 @@ class RoleManager:
 
     async def delete_user(self, user_id: str) -> bool:
         async with async_session_factory() as session:
-            result = await session.execute(
-                select(RBACUser).where(RBACUser.id == user_id)
-            )
+            result = await session.execute(select(RBACUser).where(RBACUser.id == user_id))
             db_user = result.scalar_one_or_none()
             if not db_user:
                 return False
@@ -260,13 +249,11 @@ class RoleManager:
 
     async def record_login(self, user_id: str) -> bool:
         async with async_session_factory() as session:
-            result = await session.execute(
-                select(RBACUser).where(RBACUser.id == user_id)
-            )
+            result = await session.execute(select(RBACUser).where(RBACUser.id == user_id))
             db_user = result.scalar_one_or_none()
             if not db_user:
                 return False
-            db_user.last_login = datetime.utcnow()
+            db_user.last_login = utc_now()
             db_user.login_count = (db_user.login_count or 0) + 1
             await session.commit()
             return True
@@ -326,9 +313,7 @@ class RoleManager:
         permissions: Optional[Set[Permission]] = None,
     ) -> APIKey:
         async with async_session_factory() as session:
-            result = await session.execute(
-                select(RBACUser).where(RBACUser.id == user_id)
-            )
+            result = await session.execute(select(RBACUser).where(RBACUser.id == user_id))
             if not result.scalar_one_or_none():
                 raise ValueError(f"User {user_id} not found")
 
@@ -339,7 +324,7 @@ class RoleManager:
 
             expires_at = None
             if expires_days:
-                expires_at = datetime.utcnow() + timedelta(days=expires_days)
+                expires_at = utc_now() + timedelta(days=expires_days)
 
             db_key = RBACApiKey(
                 id=key_id,
@@ -382,10 +367,10 @@ class RoleManager:
                 return None
             if not _verify_api_key_hash(key, db_key.key_hash):
                 return None
-            if db_key.expires_at and datetime.utcnow() > db_key.expires_at:
+            if db_key.expires_at and utc_now() > db_key.expires_at:
                 return None
 
-            db_key.last_used = datetime.utcnow()
+            db_key.last_used = utc_now()
             db_key.usage_count = (db_key.usage_count or 0) + 1
             await session.commit()
 
@@ -409,13 +394,11 @@ class RoleManager:
         Returns None if the key to rotate does not exist or is already inactive.
         """
         async with async_session_factory() as session:
-            result = await session.execute(
-                select(RBACApiKey).where(RBACApiKey.id == key_id)
-            )
+            result = await session.execute(select(RBACApiKey).where(RBACApiKey.id == key_id))
             db_key = result.scalar_one_or_none()
             if not db_key or not db_key.is_active:
                 return None
-            if db_key.expires_at and datetime.utcnow() > db_key.expires_at:
+            if db_key.expires_at and utc_now() > db_key.expires_at:
                 return None
 
             # Issue replacement first, then revoke the old one so there is
@@ -430,14 +413,14 @@ class RoleManager:
             db_key.is_active = False
             db_key.metadata_json = {**(db_key.metadata_json or {}), "rotated_from": True}
             await session.commit()
-            logger.info("Rotated API key %s -> %s for user %s", key_id, replacement.id, db_key.user_id)
+            logger.info(
+                "Rotated API key %s -> %s for user %s", key_id, replacement.id, db_key.user_id
+            )
             return replacement
 
     async def revoke_api_key(self, key_id: str) -> bool:
         async with async_session_factory() as session:
-            result = await session.execute(
-                select(RBACApiKey).where(RBACApiKey.id == key_id)
-            )
+            result = await session.execute(select(RBACApiKey).where(RBACApiKey.id == key_id))
             db_key = result.scalar_one_or_none()
             if not db_key:
                 return False

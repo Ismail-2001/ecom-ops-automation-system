@@ -1,4 +1,5 @@
 """Tests for Rate Limiter and Task Queue."""
+from ecommerce_ops.utils import utc_now
 
 import asyncio
 import time
@@ -169,7 +170,7 @@ async def test_task_queue_evicts_expired():
 
     tq = TaskQueue(num_workers=0)
     old_task = Task("old", "test", AsyncMock)
-    old_task.created_at = datetime.utcnow() - timedelta(hours=25)
+    old_task.created_at = utc_now() - timedelta(hours=25)
     old_task.status = TaskStatus.COMPLETED
     tq._tasks["old"] = old_task
 

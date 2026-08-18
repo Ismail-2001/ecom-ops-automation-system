@@ -1,11 +1,10 @@
 """
 Tool Executor - Permission-checked tool execution with audit logging.
 """
+
 import logging
 import time
 from typing import Any, Dict, List, Optional
-
-from langchain_core.tools import StructuredTool
 
 from ecommerce_ops.tools.definitions import tool_registry
 
@@ -71,9 +70,7 @@ class ToolExecutor:
             }
             self._execution_history.append(entry)
 
-            logger.info(
-                f"Tool executed: {tool_name} by {agent_id} in {execution_time:.1f}ms"
-            )
+            logger.info(f"Tool executed: {tool_name} by {agent_id} in {execution_time:.1f}ms")
 
             return {
                 "success": True,
@@ -161,7 +158,9 @@ class ToolExecutor:
             "successful_calls": len(successful),
             "failed_calls": len(history) - len(successful),
             "success_rate": len(successful) / len(history) if history else 0,
-            "avg_execution_time_ms": sum(execution_times) / len(execution_times) if execution_times else 0,
+            "avg_execution_time_ms": sum(execution_times) / len(execution_times)
+            if execution_times
+            else 0,
         }
 
 

@@ -2,6 +2,7 @@
 LLM-Powered Fraud Detection Agent
 Uses LLM for advanced fraud pattern recognition and risk assessment.
 """
+
 import logging
 from typing import Any, Dict, List
 
@@ -19,6 +20,7 @@ logger = logging.getLogger("ecommerce_ops.agents.fraud_llm")
 
 class FraudAnalysisOutput(BaseModel):
     """Structured output for fraud analysis."""
+
     risk_score: float = Field(description="Risk score from 0.0 to 1.0")
     decision: str = Field(description="Decision: approve, flag, reject")
     confidence: float = Field(description="Confidence from 0.0 to 1.0")
@@ -110,7 +112,13 @@ class FraudDetectionAgentLLM(BaseAgent):
             # Guardrail: validate output
             output_check = guardrail_manager.validate_agent_output(
                 analysis,
-                required_fields=["risk_score", "decision", "confidence", "risk_factors", "reasoning"],
+                required_fields=[
+                    "risk_score",
+                    "decision",
+                    "confidence",
+                    "risk_factors",
+                    "reasoning",
+                ],
                 valid_decisions=["approve", "flag", "reject"],
             )
             if not output_check.passed:
@@ -143,15 +151,15 @@ class FraudDetectionAgentLLM(BaseAgent):
         return f"""
 Analyze this order for fraud:
 
-Order ID: {order_data.get('id', 'unknown')}
-Customer: {order_data.get('customer_email', 'unknown')}
-Total: ${order_data.get('total', 0):.2f}
-Items: {order_data.get('item_count', 0)} items
-Payment: {order_data.get('payment_method', 'unknown')}
-Shipping Address: {order_data.get('shipping_address', {})}
-Customer Account Age: {order_data.get('account_age_days', 0)} days
-Previous Orders: {order_data.get('previous_orders', 0)}
-Order Time: {order_data.get('created_at', 'unknown')}
+Order ID: {order_data.get("id", "unknown")}
+Customer: {order_data.get("customer_email", "unknown")}
+Total: ${order_data.get("total", 0):.2f}
+Items: {order_data.get("item_count", 0)} items
+Payment: {order_data.get("payment_method", "unknown")}
+Shipping Address: {order_data.get("shipping_address", {})}
+Customer Account Age: {order_data.get("account_age_days", 0)} days
+Previous Orders: {order_data.get("previous_orders", 0)}
+Order Time: {order_data.get("created_at", "unknown")}
 
 Provide your fraud analysis with risk score, decision, and reasoning.
 """

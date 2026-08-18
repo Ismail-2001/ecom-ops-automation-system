@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any, Dict, Optional
 
 from sqlalchemy import func, select, update
@@ -35,6 +35,7 @@ from ecommerce_ops.observability.evaluation import evaluation_framework
 from ecommerce_ops.observability.langfuse_client import langfuse_client
 from ecommerce_ops.pipeline.builder import build_payload_and_evidence
 from ecommerce_ops.safety.safety_rules import evaluate_action_safety
+from ecommerce_ops.utils import utc_now
 
 # ── Locked batch guard ─────────────────────────────────────────
 # In-process asyncio lock per run_id (prevents concurrent runs in same process).
@@ -61,9 +62,7 @@ def _get_pipeline_lock(run_id: str) -> asyncio.Lock:
     return _pipeline_locks[run_id]
 
 
-async def _try_register_pipeline_run(
-    run_id: str, session: AsyncSession
-) -> PipelineRun | None:
+async def _try_register_pipeline_run(run_id: str, session: AsyncSession) -> PipelineRun | None:
     """Attempt to register a pipeline run idempotently.
 
     Uses ``INSERT … ON CONFLICT DO NOTHING`` against the ``pipeline_runs``
@@ -81,16 +80,14 @@ async def _try_register_pipeline_run(
 
         stmt = (
             dialect_insert(PipelineRun)
-            .values(run_id=run_id, status="running", started_at=datetime.utcnow())
+            .values(run_id=run_id, status="running", started_at=utc_now())
             .on_conflict_do_nothing(index_elements=[PipelineRun.run_id])
         )
         result = await session.execute(stmt)
         if result.rowcount == 0:
             return None
         # Fetch the row we just inserted to get the ORM object
-        row = await session.execute(
-            select(PipelineRun).where(PipelineRun.run_id == run_id)
-        )
+        row = await session.execute(select(PipelineRun).where(PipelineRun.run_id == run_id))
         return row.scalar_one()
     except Exception:
         return None
@@ -136,7 +133,7 @@ async def fetch_shopify_data() -> Optional[Dict[str, Any]]:
         orders_response = await client.get_orders(
             status="any",
             limit=50,
-            created_at_min=(datetime.utcnow() - timedelta(hours=24)).isoformat(),
+            created_at_min=(utc_now() - timedelta(hours=24)).isoformat(),
         )
         active_orders = []
         for order in orders_response.get("orders", []):
@@ -519,7 +516,7 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                 "body": "I placed my order 2 weeks ago and still haven't received it! This is unacceptable. I want a refund immediately!",
                 "channel": "email",
                 "order_id": "12345",
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": utc_now().isoformat(),
                 "metadata": {"total_spent": 250.0, "total_orders": 5},
             },
             {
@@ -531,7 +528,7 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                 "body": "Hi, what sizes does the blue t-shirt come in? Also, is it machine washable?",
                 "channel": "chat",
                 "product_id": "101",
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": utc_now().isoformat(),
                 "metadata": {"total_spent": 50.0, "total_orders": 1},
             },
         ]
@@ -541,9 +538,7 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
     # Update PipelineRun with data source
     async with async_session_factory() as session:
         await session.execute(
-            update(PipelineRun)
-            .where(PipelineRun.run_id == run_id)
-            .values(data_source=data_source)
+            update(PipelineRun).where(PipelineRun.run_id == run_id).values(data_source=data_source)
         )
         await session.commit()
 
@@ -558,7 +553,7 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
         "messages": [],
         "errors": [],
         "run_id": run_id,
-        "timestamp": datetime.utcnow(),
+        "timestamp": utc_now(),
     }
 
     try:
@@ -653,8 +648,8 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                     status="executing" if auto_attempt else "pending",
                     risk_level=risk_level,
                     confidence_score=d.confidence_score,
-                    created_at=datetime.utcnow(),
-                    expires_at=datetime.utcnow() + timedelta(days=2),
+                    created_at=utc_now(),
+                    expires_at=utc_now() + timedelta(days=2),
                     requires_hitl=requires_hitl,
                     shadow_mode=settings.shadow_mode,
                     payload=payload,
@@ -682,7 +677,7 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                         outbox.error = execution_msg
                     else:
                         outbox.status = "sent"
-                        outbox.sent_at = datetime.utcnow()
+                        outbox.sent_at = utc_now()
                         METRIC_DECISIONS_AUTO_APPROVED.labels(agent=d.agent_id).inc()
 
                 session.add(action)
@@ -696,7 +691,7 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                     session.add(
                         AuditEntry(
                             action_id=action_id,
-                            timestamp=datetime.utcnow(),
+                            timestamp=utc_now(),
                             agent=d.agent_id,
                             action_type=mapped_type,
                             decision=("auto-approved" if executed_ok else "auto-approval-failed"),
@@ -785,12 +780,10 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                     decisions_count=len(decisions_list),
                     actions_count=new_actions_count,
                     evaluation_avg_score=round(avg_score, 3),
-                    evaluation_pass_rate=round(
-                        passed_count / len(evaluation_results), 3
-                    )
+                    evaluation_pass_rate=round(passed_count / len(evaluation_results), 3)
                     if evaluation_results
                     else 0,
-                    finished_at=datetime.utcnow(),
+                    finished_at=utc_now(),
                 )
             )
             await session.commit()
@@ -808,7 +801,7 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                     .values(
                         status="failed",
                         error=str(e)[:500],
-                        finished_at=datetime.utcnow(),
+                        finished_at=utc_now(),
                     )
                 )
                 await session.commit()

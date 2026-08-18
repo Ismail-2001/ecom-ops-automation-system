@@ -14,6 +14,7 @@ Hardening (H3):
 - Budget-aligned timeout: per-task timeout is capped to the pipeline budget
   (max 300 s) so a single slow task cannot stall a worker indefinitely.
 """
+
 import asyncio
 import json
 import logging
@@ -59,6 +60,7 @@ class TaskPriority(str, Enum):
 @dataclass
 class Task:
     """Task definition."""
+
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = ""
     payload: Dict[str, Any] = field(default_factory=dict)
@@ -385,10 +387,10 @@ class RedisTaskQueue:
                     continue  # lease still valid
 
                 # Lease expired — requeue
-                priority_str = await self.redis.hget(
-                    f"{self.TASK_PREFIX}{task_id}", "priority"
+                priority_str = await self.redis.hget(f"{self.TASK_PREFIX}{task_id}", "priority")
+                priority_str = (
+                    priority_str.decode() if isinstance(priority_str, bytes) else priority_str
                 )
-                priority_str = priority_str.decode() if isinstance(priority_str, bytes) else priority_str
                 try:
                     priority = TaskPriority(priority_str)
                 except ValueError:
@@ -402,14 +404,10 @@ class RedisTaskQueue:
                         "lease_expires_at": "",
                     },
                 )
-                await self.redis.zadd(
-                    self.QUEUE_KEY, {task_id: self._priority_score(priority)}
-                )
+                await self.redis.zadd(self.QUEUE_KEY, {task_id: self._priority_score(priority)})
                 await self.redis.srem(self.PROCESSING_KEY, task_id)
                 requeued += 1
-                logger.warning(
-                    "Requeued stale task %s (expired lease)", task_id
-                )
+                logger.warning("Requeued stale task %s (expired lease)", task_id)
             except Exception as e:
                 logger.error(f"Error requeuing stale task {task_id}: {e}")
 
@@ -479,9 +477,7 @@ class RedisTaskQueue:
                     timeout=drain_timeout,
                 )
             except TimeoutError:
-                logger.warning(
-                    "Drain timeout (%.1fs) exceeded; cancelling workers", drain_timeout
-                )
+                logger.warning("Drain timeout (%.1fs) exceeded; cancelling workers", drain_timeout)
 
         for worker in self._workers:
             if not worker.done():
@@ -521,9 +517,7 @@ class RedisTaskQueue:
                     )
                     await self.complete_task(task.id, result)
                 except TimeoutError:
-                    await self.fail_task(
-                        task.id, f"Task timed out after {effective_timeout}s"
-                    )
+                    await self.fail_task(task.id, f"Task timed out after {effective_timeout}s")
                 except Exception as e:
                     await self.fail_task(task.id, str(e))
 
@@ -538,9 +532,7 @@ class RedisTaskQueue:
     async def _execute_with_lease_heartbeat(self, task: Task, handler: Callable, timeout: float):
         """Execute a task handler with periodic lease heartbeats."""
         heartbeat_interval = min(LEASE_TTL_SECONDS / 3, 20.0)
-        heartbeat_task = asyncio.create_task(
-            self._periodic_heartbeat(task.id, heartbeat_interval)
-        )
+        heartbeat_task = asyncio.create_task(self._periodic_heartbeat(task.id, heartbeat_interval))
         try:
             return await asyncio.wait_for(handler(task.payload), timeout=timeout)
         finally:
@@ -592,6 +584,7 @@ class RedisTaskQueue:
     @staticmethod
     def _dict_to_task(data: Dict[str, Any]) -> Task:
         """Convert Redis hash to Task."""
+
         def get(key, default=""):
             val = data.get(key, default)
             return val.decode() if isinstance(val, bytes) else val

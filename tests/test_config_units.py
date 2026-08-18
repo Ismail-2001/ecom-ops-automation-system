@@ -71,6 +71,50 @@ class TestConfig:
                 DATABASE_URL="sqlite:///db.sqlite",
             )
 
+    def test_production_validation_missing_redis_url(self):
+        from ecommerce_ops.config import Environment, Settings
+        with pytest.raises(ValueError, match="REDIS_URL must be a valid"):
+            Settings(
+                ENV=Environment.PRODUCTION,
+                API_KEY="test-key",
+                DEEPSEEK_API_KEY="sk-test",
+                DATABASE_URL="postgresql+asyncpg://user:pass@localhost/db",
+                REDIS_URL="",
+            )
+
+    def test_production_validation_shopify_missing_creds(self):
+        from ecommerce_ops.config import Environment, Settings
+        with pytest.raises(ValueError, match="Shopify is enabled in production"):
+            Settings(
+                ENV=Environment.PRODUCTION,
+                API_KEY="test-key",
+                DEEPSEEK_API_KEY="sk-test",
+                DATABASE_URL="postgresql+asyncpg://user:pass@localhost/db",
+                REDIS_URL="redis://localhost:6379/0",
+                SHOPIFY_SHOP_DOMAIN="acme.myshopify.com",
+                SHOPIFY_CLIENT_ID=None,
+                SHOPIFY_CLIENT_SECRET=None,
+                SHOPIFY_ACCESS_TOKEN=None,
+                SHOPIFY_APP_URL=None,
+            )
+
+    def test_production_validation_shopify_with_creds(self):
+        from ecommerce_ops.config import Environment, Settings
+        from pydantic import SecretStr
+
+        settings = Settings(
+            ENV=Environment.PRODUCTION,
+            API_KEY="test-key",
+            DEEPSEEK_API_KEY="sk-test",
+            DATABASE_URL="postgresql+asyncpg://user:pass@localhost/db",
+            REDIS_URL="redis://localhost:6379/0",
+            SHOPIFY_SHOP_DOMAIN="acme.myshopify.com",
+            SHOPIFY_CLIENT_ID="cid",
+            SHOPIFY_CLIENT_SECRET=SecretStr("sec"),
+            SHOPIFY_ACCESS_TOKEN=SecretStr("tok"),
+        )
+        assert settings.SHOPIFY_CLIENT_ID == "cid"
+
     def test_non_production_validation_passes(self):
         from ecommerce_ops.config import Environment, Settings
         settings = Settings(

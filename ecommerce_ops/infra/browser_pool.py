@@ -28,7 +28,8 @@ class BrowserPool:
         self._closed = False
         logger.info(
             "BrowserPool started (max_contexts=%d, headless=%s)",
-            self._max_contexts, self._headless,
+            self._max_contexts,
+            self._headless,
         )
 
     async def get_context(self):

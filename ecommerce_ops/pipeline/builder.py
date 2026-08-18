@@ -32,14 +32,30 @@ def build_payload_and_evidence(d, reviews_data: List[Dict]) -> tuple:
             "customer_email": d.action_data.get("customer_email") or None,
             "order_total": _try_float(d.action_data.get("order_total")),
             "fraud_score": _try_float(d.action_data.get("risk_score")),
-            "risk_signals": d.action_data.get("risk_factors") or d.action_data.get("risk_signals") or [],
+            "risk_signals": d.action_data.get("risk_factors")
+            or d.action_data.get("risk_signals")
+            or [],
             "recommended_action": "hold",
         }
-        risk_value = f"{payload['fraud_score']:.0f}/100" if payload["fraud_score"] is not None else UNKNOWN
-        signals_value = ", ".join(payload["risk_signals"]) if payload["risk_signals"] else "None detected"
+        risk_value = (
+            f"{payload['fraud_score']:.0f}/100" if payload["fraud_score"] is not None else UNKNOWN
+        )
+        signals_value = (
+            ", ".join(payload["risk_signals"]) if payload["risk_signals"] else "None detected"
+        )
         evidence = [
-            {"label": "Risk Score", "value": risk_value, "weight": "primary", "source": "FraudHeuristics"},
-            {"label": "Risk Signals", "value": signals_value, "weight": "supporting", "source": "FraudAgent"},
+            {
+                "label": "Risk Score",
+                "value": risk_value,
+                "weight": "primary",
+                "source": "FraudHeuristics",
+            },
+            {
+                "label": "Risk Signals",
+                "value": signals_value,
+                "weight": "supporting",
+                "source": "FraudAgent",
+            },
         ]
         return payload, evidence
 
@@ -56,13 +72,25 @@ def build_payload_and_evidence(d, reviews_data: List[Dict]) -> tuple:
             "reorder_quantity": qty if qty is not None else 75,
             "supplier_name": d.action_data.get("supplier_name") or None,
             "unit_cost": unit_cost,
-            "total_po_value": qty * unit_cost if qty is not None and unit_cost is not None else None,
+            "total_po_value": qty * unit_cost
+            if qty is not None and unit_cost is not None
+            else None,
         }
         stockout = d.action_data.get("predicted_stockout_days")
         stockout_value = f"~{float(stockout):.1f}d" if stockout is not None else UNKNOWN
         evidence = [
-            {"label": "Reorder Qty", "value": str(payload["reorder_quantity"]), "weight": "primary", "source": "InventoryAgent"},
-            {"label": "Stockout", "value": stockout_value, "weight": "supporting", "source": "Forecaster"},
+            {
+                "label": "Reorder Qty",
+                "value": str(payload["reorder_quantity"]),
+                "weight": "primary",
+                "source": "InventoryAgent",
+            },
+            {
+                "label": "Stockout",
+                "value": stockout_value,
+                "weight": "supporting",
+                "source": "Forecaster",
+            },
         ]
         return payload, evidence
 
@@ -72,15 +100,28 @@ def build_payload_and_evidence(d, reviews_data: List[Dict]) -> tuple:
             "product_name": d.action_data.get("product_name") or None,
             "current_price": _try_float(d.action_data.get("old_price")),
             "proposed_price": _try_float(d.action_data.get("new_price")),
-            "change_percent": _change_percent(d.action_data.get("old_price"), d.action_data.get("new_price")),
+            "change_percent": _change_percent(
+                d.action_data.get("old_price"), d.action_data.get("new_price")
+            ),
             "reasoning": d.reasoning,
             "competitor_prices": d.action_data.get("competitor_prices") or [],
         }
-        old_value = f"${payload['current_price']:.2f}" if payload["current_price"] is not None else UNKNOWN
-        new_value = f"${payload['proposed_price']:.2f}" if payload["proposed_price"] is not None else UNKNOWN
+        old_value = (
+            f"${payload['current_price']:.2f}" if payload["current_price"] is not None else UNKNOWN
+        )
+        new_value = (
+            f"${payload['proposed_price']:.2f}"
+            if payload["proposed_price"] is not None
+            else UNKNOWN
+        )
         evidence = [
             {"label": "Old Price", "value": old_value, "weight": "supporting", "source": "Shopify"},
-            {"label": "New Price", "value": new_value, "weight": "primary", "source": "PricingAgent"},
+            {
+                "label": "New Price",
+                "value": new_value,
+                "weight": "primary",
+                "source": "PricingAgent",
+            },
         ]
         return payload, evidence
 
@@ -104,7 +145,12 @@ def build_payload_and_evidence(d, reviews_data: List[Dict]) -> tuple:
         rating_value = f"{payload['rating']:.0f}/5" if payload["rating"] is not None else UNKNOWN
         evidence = [
             {"label": "Rating", "value": rating_value, "weight": "primary", "source": "Shopify"},
-            {"label": "Response", "value": payload["draft_response"][:80], "weight": "supporting", "source": "ReviewsAgent"},
+            {
+                "label": "Response",
+                "value": payload["draft_response"][:80],
+                "weight": "supporting",
+                "source": "ReviewsAgent",
+            },
         ]
         return payload, evidence
 
@@ -118,7 +164,17 @@ def build_payload_and_evidence(d, reviews_data: List[Dict]) -> tuple:
         "draft_message": d.action_data.get("draft_copy") or "Draft...",
     }
     evidence = [
-        {"label": "Message", "value": payload["draft_message"][:80], "weight": "primary", "source": "MarketingAgent"},
-        {"label": "Reason", "value": d.reasoning[:80], "weight": "supporting", "source": "MarketingAgent"},
+        {
+            "label": "Message",
+            "value": payload["draft_message"][:80],
+            "weight": "primary",
+            "source": "MarketingAgent",
+        },
+        {
+            "label": "Reason",
+            "value": d.reasoning[:80],
+            "weight": "supporting",
+            "source": "MarketingAgent",
+        },
     ]
     return payload, evidence

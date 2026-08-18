@@ -12,9 +12,8 @@ Design:
 """
 
 import hashlib
-import json
 import logging
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -105,7 +104,7 @@ class SemanticLLMCache:
         best_score = self.threshold
         try:
             index: List[str] = await self.backend.get(_INDEX_KEY) or []
-            for entry_hash in index[-self.max_entries:]:
+            for entry_hash in index[-self.max_entries :]:
                 entry = await self.backend.get(f"{_KEY_PREFIX}:{namespace}:{entry_hash}")
                 if not entry:
                     continue
@@ -120,9 +119,7 @@ class SemanticLLMCache:
 
         if best is not None:
             self._track(True)
-            logger.info(
-                "LLM semantic cache hit (sim=%.3f) namespace=%s", best_score, namespace
-            )
+            logger.info("LLM semantic cache hit (sim=%.3f) namespace=%s", best_score, namespace)
         else:
             self._track(False)
         return best
@@ -158,7 +155,7 @@ class SemanticLLMCache:
             index: List[str] = await self.backend.get(_INDEX_KEY) or []
             if entry_hash not in index:
                 index.append(entry_hash)
-            index = index[-self.max_entries:]
+            index = index[-self.max_entries :]
             await self.backend.set(_INDEX_KEY, index, ttl=ttl)
         except Exception as e:
             logger.warning("LLM cache write failed: %s", e)

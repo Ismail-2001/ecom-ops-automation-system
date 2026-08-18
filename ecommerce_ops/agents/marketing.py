@@ -34,8 +34,7 @@ class MarketingAgent(BaseAgent):
                         "channel": "Email",
                         "urgency": urgency,
                         "draft_copy": (
-                            f"Hurry! Only {stock} left of {sku}. "
-                            f"Get yours before they are gone!"
+                            f"Hurry! Only {stock} left of {sku}. Get yours before they are gone!"
                         ),
                     },
                     confidence=conf,

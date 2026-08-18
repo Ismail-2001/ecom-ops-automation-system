@@ -68,7 +68,9 @@ async def _persist_event(event: WebhookEvent, error: Optional[str] = None) -> Op
         logger.info("Persisted webhook event topic=%s shop=%s", event.topic, event.shop_domain)
         return row.id
     except Exception:
-        logger.exception("Failed to persist webhook event topic=%s shop=%s", event.topic, event.shop_domain)
+        logger.exception(
+            "Failed to persist webhook event topic=%s shop=%s", event.topic, event.shop_domain
+        )
         return None
 
 
@@ -94,8 +96,12 @@ async def _run_pipeline_for_event(run_id: str) -> None:
         db_settings = res.scalar_one_or_none()
         if not db_settings:
             db_settings = StoreSettings(
-                id=1, shadow_mode=True, fraud_threshold=70,
-                po_limit=1000.0, pricing_limit=5.0, reviews_rating_threshold=4,
+                id=1,
+                shadow_mode=True,
+                fraud_threshold=70,
+                po_limit=1000.0,
+                pricing_limit=5.0,
+                reviews_rating_threshold=4,
             )
             session.add(db_settings)
             await session.commit()
@@ -115,9 +121,7 @@ async def process_shopify_event(payload: Dict[str, Any]) -> None:
     shop_domain = payload.get("shop_domain", "unknown")
     error = None
     try:
-        logger.info(
-            "Processing Shopify event topic=%s shop=%s", topic, shop_domain
-        )
+        logger.info("Processing Shopify event topic=%s shop=%s", topic, shop_domain)
         await _run_pipeline_for_event(str(uuid.uuid4()))
     except Exception as e:
         error = str(e)
@@ -167,7 +171,9 @@ async def _enqueue_agent_work(
         logger.exception("Failed to enqueue %s for shop=%s", task_name, event.shop_domain)
 
 
-async def _handle(event: WebhookEvent, task_name: str, payload: Dict[str, Any], error: Optional[str] = None) -> None:
+async def _handle(
+    event: WebhookEvent, task_name: str, payload: Dict[str, Any], error: Optional[str] = None
+) -> None:
     """Common pipeline: persist then enqueue."""
     event_row_id = await _persist_event(event, error=error)
     await _enqueue_agent_work(event, task_name, payload, event_row_id)
@@ -289,7 +295,9 @@ async def handle_product_created(event: WebhookEvent) -> None:
             "title": title,
             "product_type": product_type,
             "vendor": vendor,
-            "price": product.get("variants", [{}])[0].get("price") if product.get("variants") else None,
+            "price": product.get("variants", [{}])[0].get("price")
+            if product.get("variants")
+            else None,
         },
     )
 
@@ -308,7 +316,9 @@ async def handle_product_updated(event: WebhookEvent) -> None:
         payload={
             "product_id": product_id,
             "title": title,
-            "price": product.get("variants", [{}])[0].get("price") if product.get("variants") else None,
+            "price": product.get("variants", [{}])[0].get("price")
+            if product.get("variants")
+            else None,
         },
     )
 

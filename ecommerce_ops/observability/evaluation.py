@@ -15,6 +15,7 @@ logger = logging.getLogger("ecommerce_ops.observability.evaluation")
 
 class MetricType(str, Enum):
     """Types of evaluation metrics."""
+
     BINARY = "binary"  # 0 or 1
     SCALE = "scale"  # 1-5
     CONTINUOUS = "continuous"  # 0.0-1.0
@@ -23,6 +24,7 @@ class MetricType(str, Enum):
 
 class EvaluationDimension(str, Enum):
     """Evaluation dimensions for agent decisions."""
+
     ACCURACY = "accuracy"
     COMPLETENESS = "completeness"
     TIMELINESS = "timeliness"
@@ -35,6 +37,7 @@ class EvaluationDimension(str, Enum):
 
 class MetricDefinition(BaseModel):
     """Definition of an evaluation metric."""
+
     name: str
     dimension: EvaluationDimension
     metric_type: MetricType
@@ -47,6 +50,7 @@ class MetricDefinition(BaseModel):
 
 class EvaluationResult(BaseModel):
     """Result of a single metric evaluation."""
+
     metric_name: str
     dimension: EvaluationDimension
     value: float
@@ -57,6 +61,7 @@ class EvaluationResult(BaseModel):
 
 class AgentEvaluation(BaseModel):
     """Complete evaluation of an agent decision."""
+
     agent_name: str
     decision_id: str
     trace_id: Optional[str] = None
@@ -169,53 +174,63 @@ class EvaluationFramework:
 
         # Evaluate accuracy
         accuracy = self._evaluate_accuracy(decision, context)
-        metrics.append(EvaluationResult(
-            metric_name="decision_accuracy",
-            dimension=EvaluationDimension.ACCURACY,
-            value=accuracy,
-            confidence=0.9,
-            reasoning="Based on decision validation rules",
-        ))
+        metrics.append(
+            EvaluationResult(
+                metric_name="decision_accuracy",
+                dimension=EvaluationDimension.ACCURACY,
+                value=accuracy,
+                confidence=0.9,
+                reasoning="Based on decision validation rules",
+            )
+        )
 
         # Evaluate completeness
         completeness = self._evaluate_completeness(decision, context)
-        metrics.append(EvaluationResult(
-            metric_name="response_completeness",
-            dimension=EvaluationDimension.COMPLETENESS,
-            value=completeness,
-            confidence=0.85,
-            reasoning="Based on required fields coverage",
-        ))
+        metrics.append(
+            EvaluationResult(
+                metric_name="response_completeness",
+                dimension=EvaluationDimension.COMPLETENESS,
+                value=completeness,
+                confidence=0.85,
+                reasoning="Based on required fields coverage",
+            )
+        )
 
         # Evaluate safety
         safety = self._evaluate_safety(decision, context)
-        metrics.append(EvaluationResult(
-            metric_name="safety_score",
-            dimension=EvaluationDimension.SAFETY,
-            value=safety,
-            confidence=0.95,
-            reasoning="Based on safety rule compliance",
-        ))
+        metrics.append(
+            EvaluationResult(
+                metric_name="safety_score",
+                dimension=EvaluationDimension.SAFETY,
+                value=safety,
+                confidence=0.95,
+                reasoning="Based on safety rule compliance",
+            )
+        )
 
         # Evaluate reasoning quality
         reasoning_quality = self._evaluate_reasoning(decision, context)
-        metrics.append(EvaluationResult(
-            metric_name="reasoning_quality",
-            dimension=EvaluationDimension.REASONING_QUALITY,
-            value=reasoning_quality,
-            confidence=0.8,
-            reasoning="Based on reasoning completeness and logic",
-        ))
+        metrics.append(
+            EvaluationResult(
+                metric_name="reasoning_quality",
+                dimension=EvaluationDimension.REASONING_QUALITY,
+                value=reasoning_quality,
+                confidence=0.8,
+                reasoning="Based on reasoning completeness and logic",
+            )
+        )
 
         # Evaluate cost efficiency
         cost_efficiency = self._evaluate_cost_efficiency(decision, context)
-        metrics.append(EvaluationResult(
-            metric_name="cost_efficiency",
-            dimension=EvaluationDimension.COST_EFFICIENCY,
-            value=cost_efficiency,
-            confidence=0.85,
-            reasoning="Based on financial impact vs benefit",
-        ))
+        metrics.append(
+            EvaluationResult(
+                metric_name="cost_efficiency",
+                dimension=EvaluationDimension.COST_EFFICIENCY,
+                value=cost_efficiency,
+                confidence=0.85,
+                reasoning="Based on financial impact vs benefit",
+            )
+        )
 
         # Calculate overall score
         overall_score = self._calculate_overall_score(metrics)

@@ -6,7 +6,7 @@ Requires PostgreSQL with pgvector extension for production use.
 import json
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
 from pgvector.sqlalchemy import Vector
@@ -22,9 +22,9 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from ecommerce_ops.models import Base
+from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.memory.vector.persistent")
 
@@ -34,6 +34,7 @@ EMBEDDING_DIMENSIONS = 1536
 
 class VectorMemory(Base):
     """Persistent vector memory entry in PostgreSQL with pgvector."""
+
     __tablename__ = "vector_memories"
 
     id = Column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -48,10 +49,10 @@ class VectorMemory(Base):
     metadata_json = Column(JSONB().with_variant(JSON(), "sqlite"), default={})
     session_id = Column(String(100), index=True, nullable=True)
     agent_id = Column(String(100), index=True, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    accessed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    accessed_at = Column(DateTime, default=utc_now, nullable=False)
     access_count = Column(Float, default=0)
-    last_decay_at = Column(DateTime, default=datetime.utcnow)
+    last_decay_at = Column(DateTime, default=utc_now)
 
     __table_args__ = (
         Index("idx_vector_memories_importance", "importance"),
@@ -132,7 +133,9 @@ class PersistentVectorStore:
             session.add(entry)
             await session.commit()
 
-        logger.info("Stored memory %s (type=%s, importance=%.2f)", memory_id, memory_type, importance)
+        logger.info(
+            "Stored memory %s (type=%s, importance=%.2f)", memory_id, memory_type, importance
+        )
         return memory_id
 
     async def search(
@@ -209,7 +212,7 @@ class PersistentVectorStore:
                         accessed_at = :now
                     WHERE id = :memory_id
                 """),
-                {"memory_id": memory_id, "now": datetime.utcnow()},
+                {"memory_id": memory_id, "now": utc_now()},
             )
             await session.commit()
 
@@ -221,7 +224,7 @@ class PersistentVectorStore:
                     SET importance = GREATEST(0.01, importance - :decay_rate)
                     WHERE last_decay_at < :threshold
                 """),
-                {"decay_rate": decay_rate, "threshold": datetime.utcnow() - timedelta(days=1)},
+                {"decay_rate": decay_rate, "threshold": utc_now() - timedelta(days=1)},
             )
             await session.commit()
 
@@ -254,7 +257,9 @@ class PersistentVectorStore:
     async def get_stats(self) -> Dict[str, Any]:
         async with self.session_factory() as session:
             result = await session.execute(
-                text("SELECT COUNT(*) as total, AVG(importance) as avg_importance FROM vector_memories")
+                text(
+                    "SELECT COUNT(*) as total, AVG(importance) as avg_importance FROM vector_memories"
+                )
             )
             row = result.fetchone()
             return {

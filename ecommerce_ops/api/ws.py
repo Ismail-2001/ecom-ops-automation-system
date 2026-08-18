@@ -265,7 +265,9 @@ class ConnectionManager:
 
         return None
 
-    async def connect(self, websocket: WebSocket, token: Optional[str] = None) -> Optional[AuthenticatedConnection]:
+    async def connect(
+        self, websocket: WebSocket, token: Optional[str] = None
+    ) -> Optional[AuthenticatedConnection]:
         """
         Authenticate and accept a WebSocket connection.
         Returns AuthenticatedConnection on success, None on rejection.
@@ -285,7 +287,9 @@ class ConnectionManager:
         # 2. Check per-IP connection limit
         async with self._lock:
             if self._ip_counts[client_ip] >= MAX_CONNECTIONS_PER_IP:
-                logger.warning("WS per-IP limit reached for %s (%d)", client_ip, self._ip_counts[client_ip])
+                logger.warning(
+                    "WS per-IP limit reached for %s (%d)", client_ip, self._ip_counts[client_ip]
+                )
                 await websocket.accept()
                 await websocket.close(
                     code=CLOSE_TOO_MANY_CONNECTIONS,
@@ -309,7 +313,9 @@ class ConnectionManager:
 
         logger.info(
             "WS client connected: operator=%s ip=%s total=%d",
-            operator, client_ip, len(self._connections),
+            operator,
+            client_ip,
+            len(self._connections),
         )
         return conn
 
@@ -323,7 +329,9 @@ class ConnectionManager:
                     del self._ip_counts[conn.client_ip]
                 logger.info(
                     "WS client disconnected: operator=%s ip=%s total=%d",
-                    conn.operator, conn.client_ip, len(self._connections),
+                    conn.operator,
+                    conn.client_ip,
+                    len(self._connections),
                 )
 
     async def broadcast(self, message: dict):

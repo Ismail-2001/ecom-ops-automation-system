@@ -1,6 +1,7 @@
 """
 Webhook Verification - Shopify HMAC signature verification.
 """
+
 import hashlib
 import hmac
 import logging
@@ -38,6 +39,7 @@ class WebhookVerifier:
             ).digest()
 
             import base64
+
             computed_b64 = base64.b64encode(computed).decode("utf-8")
 
             is_valid = hmac.compare_digest(computed_b64, hmac_header)
@@ -82,8 +84,10 @@ class InputSanitizer:
                 sanitized[key] = InputSanitizer.sanitize_dict(value, max_depth - 1)
             elif isinstance(value, list):
                 sanitized[key] = [
-                    InputSanitizer.sanitize_dict(item, max_depth - 1) if isinstance(item, dict)
-                    else str(item)[:1000] if isinstance(item, str)
+                    InputSanitizer.sanitize_dict(item, max_depth - 1)
+                    if isinstance(item, dict)
+                    else str(item)[:1000]
+                    if isinstance(item, str)
                     else item
                     for item in value[:100]
                 ]
@@ -97,10 +101,19 @@ class InputSanitizer:
     def detect_injection(value: str) -> bool:
         """Detect potential injection attempts."""
         dangerous_patterns = [
-            "<script", "javascript:", "onerror=", "onload=",
-            "UNION SELECT", "DROP TABLE", "INSERT INTO",
-            "{{", "{%", "${", "<%",
-            "\\x00", "\\n\\r",
+            "<script",
+            "javascript:",
+            "onerror=",
+            "onload=",
+            "UNION SELECT",
+            "DROP TABLE",
+            "INSERT INTO",
+            "{{",
+            "{%",
+            "${",
+            "<%",
+            "\\x00",
+            "\\n\\r",
         ]
         value_lower = value.lower()
         for pattern in dangerous_patterns:

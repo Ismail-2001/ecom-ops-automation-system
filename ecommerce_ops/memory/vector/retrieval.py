@@ -5,10 +5,9 @@ High-level memory operations with consolidation.
 
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
-from ecommerce_ops.memory.vector.embeddings import embedding_service
 from ecommerce_ops.memory.vector.models import (
     MemoryConsolidation,
     MemoryEntry,
@@ -18,6 +17,7 @@ from ecommerce_ops.memory.vector.models import (
     MemoryType,
 )
 from ecommerce_ops.memory.vector.store import VectorStore, vector_store
+from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.memory.vector.retrieval")
 
@@ -125,13 +125,15 @@ class MemoryRetrievalService:
 
         results = []
         for entry in candidates[:max_results]:
-            results.append(MemorySearchResult(
-                entry=entry,
-                similarity=1.0,
-                rank=len(results) + 1,
-                score=entry.recency_score,
-                explanation=f"recent memory from {entry.created_at.isoformat()}",
-            ))
+            results.append(
+                MemorySearchResult(
+                    entry=entry,
+                    similarity=1.0,
+                    rank=len(results) + 1,
+                    score=entry.recency_score,
+                    explanation=f"recent memory from {entry.created_at.isoformat()}",
+                )
+            )
 
         return results
 
@@ -157,13 +159,15 @@ class MemoryRetrievalService:
 
         results = []
         for entry in candidates[:max_results]:
-            results.append(MemorySearchResult(
-                entry=entry,
-                similarity=1.0,
-                rank=len(results) + 1,
-                score=entry.importance_weight,
-                explanation=f"importance={entry.importance.value}",
-            ))
+            results.append(
+                MemorySearchResult(
+                    entry=entry,
+                    similarity=1.0,
+                    rank=len(results) + 1,
+                    score=entry.importance_weight,
+                    explanation=f"importance={entry.importance.value}",
+                )
+            )
 
         return results
 
@@ -281,7 +285,7 @@ class MemoryRetrievalService:
         candidates.sort(key=lambda m: m.created_at)
 
         # Consolidate oldest memories
-        to_consolidate = candidates[:self.consolidation_threshold]
+        to_consolidate = candidates[: self.consolidation_threshold]
 
         return await self.consolidate_memories(to_consolidate, agent_name)
 
@@ -312,7 +316,7 @@ class MemoryRetrievalService:
 
         # Apply additional filters
         if older_than_days:
-            cutoff = datetime.utcnow() - timedelta(days=older_than_days)
+            cutoff = utc_now() - timedelta(days=older_than_days)
             candidates = [m for m in candidates if m.created_at < cutoff]
 
         if importance_below:
@@ -323,10 +327,7 @@ class MemoryRetrievalService:
                 MemoryImportance.CRITICAL,
             ]
             max_idx = importance_order.index(importance_below)
-            candidates = [
-                m for m in candidates
-                if importance_order.index(m.importance) < max_idx
-            ]
+            candidates = [m for m in candidates if importance_order.index(m.importance) < max_idx]
 
         # Delete
         for memory in candidates:

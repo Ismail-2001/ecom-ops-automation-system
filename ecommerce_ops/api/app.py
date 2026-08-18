@@ -4,7 +4,6 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager, suppress
-from datetime import datetime
 from typing import Any, Dict, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -47,6 +46,7 @@ from ecommerce_ops.observability.tracing_otel import init_tracing, instrument_ap
 from ecommerce_ops.pipeline.runner import run_pipeline_task
 from ecommerce_ops.security.auth import AuthenticationMiddleware
 from ecommerce_ops.telemetry import configure_logger
+from ecommerce_ops.utils import utc_now
 
 configure_logger()
 logger = logging.getLogger("ecommerce_ops.api")
@@ -408,7 +408,7 @@ async def health(operator: str = Depends(verify_auth_optional)):
             "environment": app_settings.ENV.value
             if hasattr(app_settings.ENV, "value")
             else str(app_settings.ENV),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utc_now().isoformat(),
             "checks": {
                 "database": deps.get("database", "unknown"),
                 "redis": deps.get("redis", "unknown"),

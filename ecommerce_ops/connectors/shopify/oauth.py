@@ -73,9 +73,7 @@ class ShopifyOAuth:
         logger.info("Generated install URL for shop: %s", shop_domain)
         return url
 
-    async def exchange_code(
-        self, shop_domain: str, code: str
-    ) -> Optional[OAuthSession]:
+    async def exchange_code(self, shop_domain: str, code: str) -> Optional[OAuthSession]:
         """Exchange authorization code for access token."""
         shop_domain = self._clean_shop_domain(shop_domain)
 

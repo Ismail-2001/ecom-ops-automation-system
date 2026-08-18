@@ -3,10 +3,11 @@ Comprehensive async tests for the FastAPI application endpoints.
 Covers health, auth, approvals, agents, audit, settings, memory,
 shopify, demo, websocket, metrics, analytics, and task endpoints.
 """
+from ecommerce_ops.utils import utc_now
 
 import os
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -98,7 +99,7 @@ def _seed_basic(session: AsyncSession):
     session.add(ApprovalAction(
         id="act-1", agent="FraudAgent", action_type="fraud_hold",
         status="pending", risk_level="high", confidence_score=0.92,
-        created_at=datetime.utcnow(), expires_at=datetime.utcnow() + timedelta(hours=24),
+        created_at=utc_now(), expires_at=utc_now() + timedelta(hours=24),
         requires_hitl=True, shadow_mode=True,
         payload={"order_id": "ORD-001"},
         evidence=[{"label": "score", "value": "85"}],
@@ -107,13 +108,13 @@ def _seed_basic(session: AsyncSession):
     session.add(ApprovalAction(
         id="act-2", agent="InventoryAgent", action_type="purchase_order",
         status="pending", risk_level="low", confidence_score=0.85,
-        created_at=datetime.utcnow(), expires_at=datetime.utcnow() + timedelta(days=2),
+        created_at=utc_now(), expires_at=utc_now() + timedelta(days=2),
         requires_hitl=False, shadow_mode=True,
         payload={"sku": "MUG-WHITE", "reorder_quantity": 100},
         evidence=[], impact={"financial_impact": -500.0},
     ))
     session.add(AuditEntry(
-        action_id="act-1", timestamp=datetime.utcnow(),
+        action_id="act-1", timestamp=utc_now(),
         agent="FraudAgent", action_type="fraud_hold",
         decision="approved", operator="admin",
         confidence_score=0.92, financial_impact=450.0,
@@ -868,7 +869,7 @@ class TestPipeline:
         task_id = str(uuid.uuid4())
         dummy = Task(task_id, "test-task", lambda: None)
         dummy.status = TaskStatus.COMPLETED
-        dummy.completed_at = datetime.utcnow()
+        dummy.completed_at = utc_now()
         tq._tasks[task_id] = dummy
 
         with patch("ecommerce_ops.api.app.task_queue", tq):
@@ -1023,7 +1024,7 @@ class TestMemory:
         mock_entry.id = "mem-1"
         mock_entry.memory_type.value = "episodic"
         mock_entry.importance.value = "medium"
-        mock_entry.created_at = datetime.utcnow()
+        mock_entry.created_at = utc_now()
         with patch("ecommerce_ops.api.memory.memory_retrieval") as mock_mr:
             mock_mr.remember = AsyncMock(return_value=mock_entry)
             transport = ASGITransport(app=app)
@@ -1043,7 +1044,7 @@ class TestMemory:
         mock_result.entry.content = "Found it"
         mock_result.entry.memory_type.value = "episodic"
         mock_result.entry.importance.value = "high"
-        mock_result.entry.created_at = datetime.utcnow()
+        mock_result.entry.created_at = utc_now()
         mock_result.similarity = 0.95
         mock_result.score = 0.9
         with patch("ecommerce_ops.api.memory.memory_retrieval") as mock_mr:
@@ -1078,7 +1079,7 @@ class TestMemory:
         mock_entry.agent_name = "agent"
         mock_entry.session_id = "s1"
         mock_entry.tags = ["tag1"]
-        mock_entry.created_at = datetime.utcnow()
+        mock_entry.created_at = utc_now()
         mock_entry.access_count = 3
         with patch("ecommerce_ops.api.memory.vector_store") as mock_vs:
             mock_vs.get = AsyncMock(return_value=mock_entry)
@@ -1115,7 +1116,7 @@ class TestMemory:
         mock_sess.session_id = "sess-1"
         mock_sess.user_id = "u1"
         mock_sess.agent_name = "agent"
-        mock_sess.start_time = datetime.utcnow()
+        mock_sess.start_time = utc_now()
         with patch("ecommerce_ops.api.memory.session_manager") as mock_sm:
             mock_sm.create_session.return_value = mock_sess
             transport = ASGITransport(app=app)
@@ -1289,8 +1290,8 @@ class TestEdgeCases:
         expired = ApprovalAction(
             id="expired-1", agent="FraudAgent", action_type="fraud_hold",
             status="pending", risk_level="medium", confidence_score=0.8,
-            created_at=datetime.utcnow() - timedelta(days=2),
-            expires_at=datetime.utcnow() - timedelta(hours=1),
+            created_at=utc_now() - timedelta(days=2),
+            expires_at=utc_now() - timedelta(hours=1),
             requires_hitl=True, shadow_mode=True,
             payload={"order_id": "ORD-999"},
             evidence=[], impact={"financial_impact": 0.0},

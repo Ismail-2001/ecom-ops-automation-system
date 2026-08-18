@@ -42,7 +42,7 @@ class PricingAgent(BaseAgent):
                         action_type="UPDATE_PRICE",
                         reasoning=(
                             f"SKU {sku}: competitor ${competitor_price:.2f} vs current ${current_price:.2f}. "
-                            f"Adjusting to ${new_price:.2f} (change: {change_pct*100:.1f}%). "
+                            f"Adjusting to ${new_price:.2f} (change: {change_pct * 100:.1f}%). "
                             f"Floor=${floor:.2f} Ceiling=${ceiling:.2f}."
                         ),
                         data={

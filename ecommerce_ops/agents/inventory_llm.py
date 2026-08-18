@@ -2,6 +2,7 @@
 LLM-Powered Inventory Management Agent
 Uses LLM for demand forecasting, reorder optimization, and stock analysis.
 """
+
 import logging
 from typing import Any, Dict
 
@@ -19,6 +20,7 @@ logger = logging.getLogger("ecommerce_ops.agents.inventory_llm")
 
 class InventoryAnalysisOutput(BaseModel):
     """Structured output for inventory analysis."""
+
     product_id: str = Field(description="Product ID")
     sku: str = Field(description="Product SKU")
     current_stock: int = Field(description="Current stock level")
@@ -118,7 +120,15 @@ class InventoryManagementAgentLLM(BaseAgent):
             # Validate output
             output_check = guardrail_manager.validate_agent_output(
                 analysis,
-                required_fields=["product_id", "sku", "current_stock", "recommended_action", "confidence", "urgency", "reasoning"],
+                required_fields=[
+                    "product_id",
+                    "sku",
+                    "current_stock",
+                    "recommended_action",
+                    "confidence",
+                    "urgency",
+                    "reasoning",
+                ],
                 valid_decisions=["maintain", "reorder", "clearance", "discontinue"],
             )
             if not output_check.passed:
@@ -137,16 +147,16 @@ class InventoryManagementAgentLLM(BaseAgent):
         return f"""
 Analyze inventory for this product:
 
-Product ID: {product_data.get('product_id', 'unknown')}
-Product Name: {product_data.get('name', 'unknown')}
-Current Stock: {product_data.get('current_stock', 0)} units
-Daily Sales (avg): {product_data.get('daily_sales', 0):.1f} units
-Lead Time: {product_data.get('lead_time_days', 7)} days
-Supplier MOQ: {product_data.get('supplier_moq', 1)} units
-Storage Cost/Day: ${product_data.get('storage_cost_per_day', 0.50):.2f}
-Unit Cost: ${product_data.get('unit_cost', 0):.2f}
-Category: {product_data.get('category', 'unknown')}
-Last Restock: {product_data.get('last_restock_date', 'unknown')}
+Product ID: {product_data.get("product_id", "unknown")}
+Product Name: {product_data.get("name", "unknown")}
+Current Stock: {product_data.get("current_stock", 0)} units
+Daily Sales (avg): {product_data.get("daily_sales", 0):.1f} units
+Lead Time: {product_data.get("lead_time_days", 7)} days
+Supplier MOQ: {product_data.get("supplier_moq", 1)} units
+Storage Cost/Day: ${product_data.get("storage_cost_per_day", 0.50):.2f}
+Unit Cost: ${product_data.get("unit_cost", 0):.2f}
+Category: {product_data.get("category", "unknown")}
+Last Restock: {product_data.get("last_restock_date", "unknown")}
 
 Provide your inventory analysis with recommended action, reorder quantity, and urgency.
 """
