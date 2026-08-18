@@ -37,9 +37,3 @@ a41fe5271af4b85fefe60e3894174e821d8af84f:frontend/src/app/settings/page.tsx:gene
 73d17e6ce820c7a9a86feced9d30b09267367bbd:.github/workflows/cd-staging.yml:curl-auth-header:136
 73d17e6ce820c7a9a86feced9d30b09267367bbd:scripts/disaster-recovery.sh:curl-auth-header:95
 7645fb54941c33245e6fd4d7a50ae47688c74b6d:Makefile:curl-auth-header:107
-d7c158366bf2d492465cd613a5f2cb893f98be4e:cart-recovery-agent/README.md:curl-auth-header:32
-d7c158366bf2d492465cd613a5f2cb893f98be4e:fraud-agent/README.md:curl-auth-header:33
-d7c158366bf2d492465cd613a5f2cb893f98be4e:inventory-agent/README.md:curl-auth-header:41
-d7c158366bf2d492465cd613a5f2cb893f98be4e:marketing-agent/README.md:curl-auth-header:32
-d7c158366bf2d492465cd613a5f2cb893f98be4e:pricing-agent/README.md:curl-auth-header:32
-d7c158366bf2d492465cd613a5f2cb893f98be4e:reviews-agent/README.md:curl-auth-header:33

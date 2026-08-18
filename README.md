@@ -383,7 +383,6 @@ ecom-ops-automation-system/
 ├── alembic/                    # Database migrations
 ├── docs/                       # API.md, DEPLOYMENT.md, PERFORMANCE.md, DR_POLICY.md
 ├── docker-compose.yml          # Production stack (13 services)
-├── docker-compose.agents.yml   # Standalone agents orchestration
 ├── Dockerfile                  # Multi-stage Python build
 ├── Makefile                    # Common commands
 └── pyproject.toml              # Project metadata + tooling config
@@ -749,24 +748,6 @@ docker compose down
 | `otel-collector` | 4317 | Telemetry routing |
 | `postgres-exporter` | 9187 | PG metrics |
 | `redis-exporter` | 9121 | Redis metrics |
-
-### Standalone Agents
-
-Deploy the 7 agents independently for selling to clients:
-
-```bash
-# Deploy all agents
-docker compose -f docker-compose.agents.yml up -d
-
-# Agent endpoints
-# http://localhost:8001 - Customer Support
-# http://localhost:8002 - Inventory
-# http://localhost:8003 - Pricing
-# http://localhost:8004 - Reviews
-# http://localhost:8005 - Marketing
-# http://localhost:8006 - Cart Recovery
-# http://localhost:8007 - Fraud Detection
-```
 
 ---
 
