@@ -5,7 +5,7 @@ OAuth flow, webhooks, and sync endpoints.
 
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 
@@ -16,6 +16,8 @@ from ecommerce_ops.connectors.shopify.oauth_state import oauth_state_store
 from ecommerce_ops.connectors.shopify.sync import ShopifySyncService
 from ecommerce_ops.connectors.shopify.webhooks import webhook_router
 from ecommerce_ops.models import ShopifyShopCredential, async_session_factory
+from ecommerce_ops.security.auth import require_permission
+from ecommerce_ops.security.models import Permission, User
 from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.api.shopify")
@@ -46,7 +48,10 @@ class SyncResponse(BaseModel):
 
 
 @router.post("/install")
-async def install_shopify(req: InstallRequest):
+async def install_shopify(
+    req: InstallRequest,
+    _: User = Depends(require_permission(Permission.SHOPIFY_CONFIGURE)),
+):
     """Start Shopify OAuth installation flow."""
     state = await oauth_state_store.create(req.shop_domain)
 
@@ -172,6 +177,7 @@ async def shopify_webhook(
 async def sync_shopify_data(
     background_tasks: BackgroundTasks,
     full: bool = Query(False, description="Full sync or incremental"),
+    _: User = Depends(require_permission(Permission.SHOPIFY_SYNC)),
 ):
     """Trigger data synchronization from Shopify."""
     from ecommerce_ops.config import settings as app_settings

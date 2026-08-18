@@ -5,6 +5,10 @@ from typing import Any
 import structlog
 
 from ecommerce_ops.config import settings
+from ecommerce_ops.security.secrets_redact import (
+    SecretRedactingFilter,
+    redact_secrets,
+)
 
 
 def configure_logger() -> None:
@@ -25,6 +29,7 @@ def configure_logger() -> None:
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
+        redact_secrets,
     ]
 
     renderer: Any = (
@@ -40,6 +45,7 @@ def configure_logger() -> None:
 
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(formatter)
+    handler.addFilter(SecretRedactingFilter())
 
     root = logging.getLogger()
     root.handlers = [handler]

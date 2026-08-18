@@ -5,12 +5,12 @@ import time
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import String, case, cast, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ecommerce_ops.api.auth import verify_auth, verify_auth_optional
+from ecommerce_ops.api.auth import verify_auth_optional
 from ecommerce_ops.api.metrics import (
     METRIC_AGENT_CONFIDENCE_AVG,
     METRIC_DECISIONS_APPROVED,
@@ -26,6 +26,8 @@ from ecommerce_ops.models import (
     get_db_session,
 )
 from ecommerce_ops.pipeline.runner import execute_shop_action, update_agent_streak
+from ecommerce_ops.security.auth import require_admin, require_permission
+from ecommerce_ops.security.models import Permission, User
 from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.api.core_routes")
@@ -35,8 +37,11 @@ router = APIRouter()
 SERVER_START_TIME = time.time()
 
 
-async def get_current_operator(identity: str = Depends(verify_auth)) -> str:
-    return identity or "unknown-operator"
+async def get_current_operator(request: Request) -> str:
+    user = getattr(request.state, "user", None)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return user.name or user.email or user.id or "unknown-operator"
 
 
 class DecisionActionBody(BaseModel):
@@ -221,6 +226,7 @@ async def get_approval(id: str, db: AsyncSession = Depends(get_db_session)):
 async def approve_approval(
     id: str,
     body: DecisionActionBody,
+    _: User = Depends(require_permission(Permission.APPROVALS_APPROVE)),
     operator: str = Depends(get_current_operator),
     db: AsyncSession = Depends(get_db_session),
 ):
@@ -307,6 +313,7 @@ async def approve_approval(
 async def reject_approval(
     id: str,
     body: RejectActionBody,
+    _: User = Depends(require_permission(Permission.APPROVALS_REJECT)),
     operator: str = Depends(get_current_operator),
     db: AsyncSession = Depends(get_db_session),
 ):
@@ -362,6 +369,7 @@ async def reject_approval(
 @router.post("/approvals/batch")
 async def batch_approvals(
     body: BatchActionBody,
+    _: User = Depends(require_admin),
     operator: str = Depends(get_current_operator),
     db: AsyncSession = Depends(get_db_session),
 ):
@@ -472,6 +480,7 @@ async def get_store_settings(db: AsyncSession = Depends(get_db_session)):
 @router.patch("/settings")
 async def update_store_settings(
     body: SettingsUpdateBody,
+    _: User = Depends(require_admin),
     operator: str = Depends(get_current_operator),
     db: AsyncSession = Depends(get_db_session),
 ):

@@ -8,8 +8,7 @@ import logging
 import time
 from typing import ClassVar, Optional, Set
 
-from fastapi import Depends, HTTPException, Request, Security
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
 
@@ -24,9 +23,6 @@ from ecommerce_ops.security.models import (
 from ecommerce_ops.security.role_manager import role_manager
 
 logger = logging.getLogger("ecommerce_ops.security.auth")
-
-# Security scheme
-security = HTTPBearer(auto_error=False)
 
 
 class AuthenticationMiddleware(BaseHTTPMiddleware):
@@ -51,12 +47,12 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
     # Paths that authenticate inside the handler (no bearer precondition):
     #  - /api/auth/login     verifies the API key from the request body
-    #  - /shopify/install    OAuth install URL generation
-    #  - /shopify/callback   OAuth callback (HMAC + single-use state)
+    #  - /shopify/callback   OAuth callback (HMAC + single-use state), called by Shopify
     #  - /ws/queue           WebSocket handshake (ticket/API key validated in ws.py)
+    # Note: /shopify/install is NOT here — generating the OAuth install URL is an
+    # operator action and is gated by SHOPIFY_CONFIGURE at the route layer.
     SELF_AUTH_PATHS: ClassVar[Set[str]] = {
         "/api/auth/login",
-        "/shopify/install",
         "/shopify/callback",
         "/ws/queue",
     }
@@ -80,6 +76,22 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         if not expected:
             return False
         return hmac.compare_digest(token, expected)
+
+    def _operator_user(self) -> "User":
+        """Synthetic SUPER_ADMIN principal for the configured operator key.
+
+        The operator (master) API key is granted full privileges so that
+        per-route RBAC checks work uniformly for both the operator key and
+        RBAC-issued keys.
+        """
+        return User(
+            id="operator",
+            email="operator@local",
+            name="Operator",
+            role=Role.SUPER_ADMIN,
+            is_active=True,
+            permissions=set(Permission),
+        )
 
     async def dispatch(
         self,
@@ -107,6 +119,8 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             try:
                 if self._matches_configured_key(api_key):
                     authenticated = True
+                    user = self._operator_user()
+                    api_key_id = "operator-master"
                 else:
                     api_key_obj = await role_manager.validate_api_key(api_key)
                     if api_key_obj:
@@ -119,7 +133,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                             content={"detail": "Invalid API key"},
                         )
             except Exception:
-                logger.error("Auth failed: API key validation error", exc_info=True)
+                logger.error("Auth failed: API key validation error")
                 return JSONResponse(
                     status_code=503,
                     content={"detail": "Authentication service unavailable"},
@@ -129,6 +143,8 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             try:
                 if self._matches_configured_key(token):
                     authenticated = True
+                    user = self._operator_user()
+                    api_key_id = "operator-master"
                 else:
                     api_key_obj = await role_manager.validate_api_key(token)
                     if api_key_obj:
@@ -141,7 +157,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                             content={"detail": "Invalid bearer token"},
                         )
             except Exception:
-                logger.error("Auth failed: Bearer token validation error", exc_info=True)
+                logger.error("Auth failed: Bearer token validation error")
                 return JSONResponse(
                     status_code=503,
                     content={"detail": "Authentication service unavailable"},
@@ -195,84 +211,67 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         )
 
 
-async def require_auth(
-    credentials: Optional[HTTPAuthorizationCredentials] = Security(security),
-) -> Optional[User]:
-    """Dependency for requiring authentication."""
-    if not credentials:
-        return None
+async def get_authenticated_user(request: Request) -> User:
+    """Return the authenticated principal set by ``AuthenticationMiddleware``.
 
-    api_key_obj = await role_manager.validate_api_key(credentials.credentials)
-    if not api_key_obj:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-
-    user = await role_manager.get_user(api_key_obj.user_id)
-    if not user or not user.is_active:
+    Works for both the operator (master) key and RBAC-issued keys because the
+    middleware populates ``request.state.user`` for every authenticated request.
+    """
+    user = getattr(request.state, "user", None)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if not user.is_active:
         raise HTTPException(status_code=401, detail="User not found or inactive")
-
     return user
 
 
+async def require_auth(request: Request) -> User:
+    """Dependency requiring authentication (returns the principal)."""
+    return await get_authenticated_user(request)
+
+
 def require_permission(permission: Permission):
-    """Dependency factory for requiring specific permission."""
+    """Dependency factory enforcing a specific permission (RBAC)."""
 
-    async def dependency(user: Optional[User] = Depends(require_auth)) -> User:
-        if not user:
-            raise HTTPException(status_code=401, detail="Authentication required")
-
+    async def dependency(request: Request) -> User:
+        user = await get_authenticated_user(request)
         result = role_manager.check_permission(user, permission)
         if not result.allowed:
             raise HTTPException(
                 status_code=403,
                 detail=f"Permission denied: {permission.value}",
             )
-
         return user
 
     return dependency
 
 
 def require_role(role: Role):
-    """Dependency factory for requiring specific role."""
+    """Dependency factory enforcing a specific role (or super admin)."""
 
-    async def dependency(user: Optional[User] = Depends(require_auth)) -> User:
-        if not user:
-            raise HTTPException(status_code=401, detail="Authentication required")
-
-        if user.role != role and user.role != Role.SUPER_ADMIN:
+    async def dependency(request: Request) -> User:
+        user = await get_authenticated_user(request)
+        if user.role != role and not user.is_super_admin:
             raise HTTPException(
                 status_code=403,
                 detail=f"Role required: {role.value}",
             )
-
         return user
 
     return dependency
 
 
-async def require_admin(user: Optional[User] = Depends(require_auth)) -> User:
-    """Dependency for requiring admin role."""
-    if not user:
-        raise HTTPException(status_code=401, detail="Authentication required")
-
+async def require_admin(request: Request) -> User:
+    """Dependency requiring an admin or super-admin role."""
+    user = await get_authenticated_user(request)
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-
     return user
 
 
-async def get_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Security(security),
-) -> Optional[User]:
-    """Dependency for getting current user (optional auth)."""
-    if not credentials:
-        return None
-
-    api_key_obj = await role_manager.validate_api_key(credentials.credentials)
-    if not api_key_obj:
-        return None
-
-    return await role_manager.get_user(api_key_obj.user_id)
+async def get_current_user(request: Request) -> Optional[User]:
+    """Dependency returning the current principal (optional auth)."""
+    return getattr(request.state, "user", None)
 
 
 async def get_access_context(request: Request) -> AccessContext:

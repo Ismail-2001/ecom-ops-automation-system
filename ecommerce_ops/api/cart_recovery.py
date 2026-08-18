@@ -6,7 +6,7 @@ Endpoints for cart recovery operations and analytics.
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from pydantic import BaseModel
 
 from ecommerce_ops.agents.cart_recovery.agent import AbandonedCartAgent
@@ -18,6 +18,8 @@ from ecommerce_ops.agents.cart_recovery.models import (
 )
 from ecommerce_ops.agents.cart_recovery.strategy import RecoveryStrategyEngine
 from ecommerce_ops.config import settings
+from ecommerce_ops.security.auth import require_permission
+from ecommerce_ops.security.models import Permission, User
 from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.api.cart_recovery")
@@ -148,7 +150,11 @@ async def analyze_carts_batch(carts: List[CartAnalysisRequest]):
 
 
 @router.post("/recover")
-async def trigger_recovery(req: RecoveryActionRequest, background_tasks: BackgroundTasks):
+async def trigger_recovery(
+    req: RecoveryActionRequest,
+    background_tasks: BackgroundTasks,
+    _: User = Depends(require_permission(Permission.CART_RECOVERY_EXECUTE)),
+):
     """Trigger recovery for a single cart."""
     # Generate discount code
     code = _discount_generator.generate_simple()
@@ -179,6 +185,7 @@ async def trigger_recovery(req: RecoveryActionRequest, background_tasks: Backgro
 async def trigger_batch_recovery(
     req: BatchRecoveryRequest,
     background_tasks: BackgroundTasks,
+    _: User = Depends(require_permission(Permission.CART_RECOVERY_EXECUTE)),
 ):
     """Trigger recovery for multiple carts."""
     results = []

@@ -10,7 +10,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ecommerce_ops.demo.roi_calculator import ROICalculator
-from ecommerce_ops.security.auth import require_auth
+from ecommerce_ops.security.auth import require_admin, require_auth
+from ecommerce_ops.security.models import User
 
 logger = logging.getLogger("ecommerce_ops.api.demo")
 
@@ -240,7 +241,7 @@ async def run_demo_scenario(
 
 
 @router.post("/demo/seed")
-async def seed_demo_data(user: dict = Depends(require_auth)):
+async def seed_demo_data(user: User = Depends(require_admin)):
     """Seed the database with expanded demo data for a rich dashboard."""
     from ecommerce_ops.demo.seed_data import seed_expanded_demo
 

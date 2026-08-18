@@ -332,7 +332,6 @@ class TestApprovals:
     @pytest.mark.asyncio
     async def test_approve_action(self, seeded_session):
         app.dependency_overrides.update(_overrides(seeded_session))
-        app.dependency_overrides[verify_auth] = lambda: "test-operator"
         transport = ASGITransport(app=app)
         with patch("ecommerce_ops.api.core_routes.ws_manager") as mock_ws, \
              patch("ecommerce_ops.api.core_routes.execute_shop_action", new_callable=AsyncMock) as mock_exec, \
@@ -349,7 +348,7 @@ class TestApprovals:
         assert r.status_code == 200
         body = r.json()
         assert body["status"] in ("executing", "executed")
-        assert body["reviewed_by"] == "test-operator"
+        assert body["reviewed_by"] == "Operator"
 
     @pytest.mark.asyncio
     async def test_approve_nonexistent_returns_404(self, seeded_session):

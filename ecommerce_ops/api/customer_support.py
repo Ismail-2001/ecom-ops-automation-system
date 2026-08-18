@@ -6,7 +6,7 @@ Endpoints for ticket management, responses, and analytics.
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from pydantic import BaseModel
 
 from ecommerce_ops.agents.customer_support.agent import CustomerSupportAgent
@@ -22,6 +22,8 @@ from ecommerce_ops.agents.customer_support.models import (
 from ecommerce_ops.agents.customer_support.response_engine import ResponseGenerationEngine
 from ecommerce_ops.agents.customer_support.ticket_router import TicketClassifier
 from ecommerce_ops.config import settings
+from ecommerce_ops.security.auth import require_auth
+from ecommerce_ops.security.models import User
 from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.api.customer_support")
@@ -68,7 +70,11 @@ class BatchTicketRequest(BaseModel):
 
 
 @router.post("/tickets")
-async def create_ticket(req: TicketCreateRequest, background_tasks: BackgroundTasks):
+async def create_ticket(
+    req: TicketCreateRequest,
+    background_tasks: BackgroundTasks,
+    _: User = Depends(require_auth),
+):
     """Create a new support ticket."""
     ticket_id = f"ticket_{utc_now().strftime('%Y%m%d%H%M%S')}"
 
@@ -187,7 +193,11 @@ async def get_ticket(ticket_id: str):
 
 
 @router.patch("/tickets/{ticket_id}")
-async def update_ticket(ticket_id: str, req: TicketUpdateRequest):
+async def update_ticket(
+    ticket_id: str,
+    req: TicketUpdateRequest,
+    _: User = Depends(require_auth),
+):
     """Update ticket status/assignment."""
     updates = {}
     if req.status:
@@ -215,6 +225,7 @@ async def respond_to_ticket(
     ticket_id: str,
     req: ResponseRequest,
     background_tasks: BackgroundTasks,
+    _: User = Depends(require_auth),
 ):
     """Send response to ticket."""
     # In production:

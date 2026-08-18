@@ -6,7 +6,7 @@ Endpoints for vector memory and session management.
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ecommerce_ops.memory.vector.agent_integration import agent_memory_manager
@@ -17,6 +17,8 @@ from ecommerce_ops.memory.vector.models import (
 from ecommerce_ops.memory.vector.retrieval import memory_retrieval
 from ecommerce_ops.memory.vector.sessions import session_manager
 from ecommerce_ops.memory.vector.store import vector_store
+from ecommerce_ops.security.auth import require_permission
+from ecommerce_ops.security.models import Permission, User
 from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.api.memory")
@@ -55,7 +57,10 @@ class SessionCreateRequest(BaseModel):
 
 
 @router.post("/memories")
-async def create_memory(req: MemoryCreateRequest):
+async def create_memory(
+    req: MemoryCreateRequest,
+    _: User = Depends(require_permission(Permission.MEMORY_EDIT)),
+):
     """Create a new memory entry."""
     entry = await memory_retrieval.remember(
         content=req.content,
@@ -128,7 +133,10 @@ async def get_memory(memory_id: str):
 
 
 @router.delete("/memories/{memory_id}")
-async def delete_memory(memory_id: str):
+async def delete_memory(
+    memory_id: str,
+    _: User = Depends(require_permission(Permission.MEMORY_DELETE)),
+):
     """Delete a memory."""
     success = await vector_store.delete(memory_id)
     return {"deleted": success}
@@ -184,7 +192,10 @@ async def get_memory_stats():
 
 
 @router.post("/sessions")
-async def create_session(req: SessionCreateRequest):
+async def create_session(
+    req: SessionCreateRequest,
+    _: User = Depends(require_permission(Permission.MEMORY_EDIT)),
+):
     """Create a new session."""
     session = session_manager.create_session(
         user_id=req.user_id,
@@ -256,7 +267,10 @@ async def get_session(session_id: str):
 
 
 @router.delete("/sessions/{session_id}")
-async def end_session(session_id: str):
+async def end_session(
+    session_id: str,
+    _: User = Depends(require_permission(Permission.MEMORY_EDIT)),
+):
     """End a session."""
     success = session_manager.end_session(session_id)
     return {"ended": success}
@@ -298,6 +312,7 @@ async def store_agent_decision(
     reasoning: str,
     outcome: Optional[str] = None,
     confidence: float = 0.0,
+    _: User = Depends(require_permission(Permission.MEMORY_EDIT)),
 ):
     """Store an agent decision."""
     entry = await agent_memory_manager.store_decision(
@@ -319,6 +334,7 @@ async def reflect_on_decision(
     agent_name: str,
     decision_type: str,
     reasoning: str,
+    _: User = Depends(require_permission(Permission.MEMORY_EDIT)),
 ):
     """Reflect on a decision using past experiences."""
     reflection = await agent_memory_manager.reflect_on_decision(
