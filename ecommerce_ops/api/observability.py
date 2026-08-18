@@ -7,7 +7,7 @@ import logging
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
@@ -26,6 +26,8 @@ from ecommerce_ops.observability.trace_models import (
     TraceAggregation,
     TraceStatus,
 )
+from ecommerce_ops.security.auth import require_permission
+from ecommerce_ops.security.models import Permission, User
 from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.api.observability")
@@ -53,6 +55,7 @@ async def list_traces(
     status: Optional[TraceStatus] = None,
     agent_name: Optional[str] = None,
     limit: int = Query(50, ge=1, le=200),
+    _: User = Depends(require_permission(Permission.OBSERVABILITY_VIEW)),
 ):
     """List recent pipeline traces from the PipelineRun table."""
     async with async_session_factory() as session:
@@ -81,7 +84,10 @@ async def list_traces(
 
 
 @router.get("/traces/{trace_id}")
-async def get_trace(trace_id: str):
+async def get_trace(
+    trace_id: str,
+    _: User = Depends(require_permission(Permission.OBSERVABILITY_VIEW)),
+):
     """Get trace details from PipelineRun table."""
     async with async_session_factory() as session:
         result = await session.execute(select(PipelineRun).where(PipelineRun.run_id == trace_id))
@@ -103,7 +109,10 @@ async def get_trace(trace_id: str):
 
 
 @router.get("/traces/{trace_id}/spans")
-async def get_trace_spans(trace_id: str):
+async def get_trace_spans(
+    trace_id: str,
+    _: User = Depends(require_permission(Permission.OBSERVABILITY_VIEW)),
+):
     """Get spans for a trace from ApprovalAction table."""
     async with async_session_factory() as session:
         result = await session.execute(select(PipelineRun).where(PipelineRun.run_id == trace_id))
@@ -134,7 +143,10 @@ async def get_trace_spans(trace_id: str):
 
 
 @router.get("/traces/{trace_id}/scores")
-async def get_trace_scores(trace_id: str):
+async def get_trace_scores(
+    trace_id: str,
+    _: User = Depends(require_permission(Permission.OBSERVABILITY_VIEW)),
+):
     """Get scores for a trace from evaluation results."""
     async with async_session_factory() as session:
         result = await session.execute(select(PipelineRun).where(PipelineRun.run_id == trace_id))
@@ -149,7 +161,10 @@ async def get_trace_scores(trace_id: str):
 
 
 @router.get("/traces/{trace_id}/url")
-async def get_trace_url(trace_id: str):
+async def get_trace_url(
+    trace_id: str,
+    _: User = Depends(require_permission(Permission.OBSERVABILITY_VIEW)),
+):
     """Get Langfuse dashboard URL for a trace."""
     url = langfuse_client.get_trace_url(trace_id)
     return {"trace_id": trace_id, "url": url}
@@ -159,7 +174,10 @@ async def get_trace_url(trace_id: str):
 
 
 @router.post("/evaluate")
-async def evaluate_decision(req: EvaluationRequest):
+async def evaluate_decision(
+    req: EvaluationRequest,
+    _: User = Depends(require_permission(Permission.OBSERVABILITY_VIEW)),
+):
     """Evaluate a single decision."""
     result = evaluation_framework.evaluate_decision(
         agent_name=req.agent_name,
@@ -173,7 +191,10 @@ async def evaluate_decision(req: EvaluationRequest):
 
 
 @router.post("/evaluate/batch")
-async def evaluate_batch(req: BatchEvaluationRequest):
+async def evaluate_batch(
+    req: BatchEvaluationRequest,
+    _: User = Depends(require_permission(Permission.OBSERVABILITY_VIEW)),
+):
     """Evaluate multiple decisions."""
     evaluation_items = [
         {
@@ -191,7 +212,9 @@ async def evaluate_batch(req: BatchEvaluationRequest):
 
 
 @router.get("/evaluate/metrics")
-async def get_metric_definitions():
+async def get_metric_definitions(
+    _: User = Depends(require_permission(Permission.OBSERVABILITY_VIEW)),
+):
     """Get available evaluation metrics."""
     metrics = {}
     for dim, metric in evaluation_framework._metrics.items():
@@ -211,6 +234,7 @@ async def get_metric_definitions():
 async def get_evaluation_history(
     agent_name: Optional[str] = None,
     days: int = Query(7, ge=1, le=90),
+    _: User = Depends(require_permission(Permission.OBSERVABILITY_VIEW)),
 ):
     """Get evaluation history from AuditEntry table."""
     cutoff = utc_now() - timedelta(days=days)
@@ -247,6 +271,7 @@ async def get_evaluation_history(
 @router.get("/metrics/summary")
 async def get_metrics_summary(
     days: int = Query(7, ge=1, le=90),
+    _: User = Depends(require_permission(Permission.OBSERVABILITY_VIEW)),
 ):
     """Get aggregated metrics summary from PipelineRun and ApprovalAction tables."""
     cutoff = utc_now() - timedelta(days=days)
@@ -297,7 +322,9 @@ async def get_metrics_summary(
 
 
 @router.get("/metrics/agents")
-async def get_agent_metrics():
+async def get_agent_metrics(
+    _: User = Depends(require_permission(Permission.OBSERVABILITY_VIEW)),
+):
     """Get per-agent metrics from AgentStatus table."""
     async with async_session_factory() as session:
         result = await session.execute(select(AgentStatus))
@@ -322,6 +349,7 @@ async def get_agent_metrics():
 @router.get("/metrics/costs")
 async def get_cost_metrics(
     days: int = Query(30, ge=1, le=90),
+    _: User = Depends(require_permission(Permission.OBSERVABILITY_VIEW)),
 ):
     """Get cost breakdown metrics from PipelineRun table."""
     cutoff = utc_now() - timedelta(days=days)

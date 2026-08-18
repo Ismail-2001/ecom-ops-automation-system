@@ -58,7 +58,10 @@ class BatchRecoveryRequest(BaseModel):
 
 
 @router.post("/analyze")
-async def analyze_cart(req: CartAnalysisRequest):
+async def analyze_cart(
+    req: CartAnalysisRequest,
+    _: User = Depends(require_permission(Permission.CART_RECOVERY_VIEW)),
+):
     """Analyze a single cart and get recovery recommendation."""
     cart_data = {
         "id": req.cart_id,
@@ -109,7 +112,10 @@ async def analyze_cart(req: CartAnalysisRequest):
 
 
 @router.post("/analyze/batch")
-async def analyze_carts_batch(carts: List[CartAnalysisRequest]):
+async def analyze_carts_batch(
+    carts: List[CartAnalysisRequest],
+    _: User = Depends(require_permission(Permission.CART_RECOVERY_VIEW)),
+):
     """Analyze multiple carts in batch."""
     results = []
     for req in carts:
@@ -219,6 +225,7 @@ async def trigger_batch_recovery(
 @router.get("/analytics")
 async def get_cart_analytics(
     days: int = Query(7, ge=1, le=90),
+    _: User = Depends(require_permission(Permission.CART_RECOVERY_VIEW)),
 ):
     """Get cart recovery analytics."""
     # In production, this would query the database
@@ -249,7 +256,9 @@ async def get_cart_analytics(
 
 
 @router.get("/analytics/strategies")
-async def get_strategy_analytics():
+async def get_strategy_analytics(
+    _: User = Depends(require_permission(Permission.CART_RECOVERY_VIEW)),
+):
     """Get strategy effectiveness analytics."""
     return {
         "strategies": [

@@ -44,7 +44,8 @@ from ecommerce_ops.models import (
 )
 from ecommerce_ops.observability.tracing_otel import init_tracing, instrument_app
 from ecommerce_ops.pipeline.runner import run_pipeline_task
-from ecommerce_ops.security.auth import AuthenticationMiddleware
+from ecommerce_ops.security.auth import AuthenticationMiddleware, require_permission
+from ecommerce_ops.security.models import Permission, User
 from ecommerce_ops.telemetry import configure_logger
 from ecommerce_ops.utils import utc_now
 
@@ -469,6 +470,7 @@ async def get_audit_logs(
     action_type: Optional[str] = None,
     page: int = 1,
     limit: int = 20,
+    _: User = Depends(require_permission(Permission.AUDIT_VIEW)),
     db: AsyncSession = Depends(get_db_session),
 ):
     query = select(AuditEntry)
@@ -495,6 +497,7 @@ async def get_audit_logs(
 @app.get("/api/audit/export")
 async def export_audit_logs(
     format: str = "csv",
+    _: User = Depends(require_permission(Permission.AUDIT_EXPORT)),
     db: AsyncSession = Depends(get_db_session),
 ):
     import csv as _csv
@@ -622,6 +625,7 @@ async def ws_stats(
 
 @app.post("/api/run")
 async def trigger_run(
+    _: User = Depends(require_permission(Permission.AGENTS_EXECUTE)),
     db: AsyncSession = Depends(get_db_session),
 ):
     run_id = str(uuid.uuid4())
@@ -654,7 +658,10 @@ async def trigger_run(
 
 
 @app.get("/api/tasks/{task_id}")
-async def get_task_status(task_id: str):
+async def get_task_status(
+    task_id: str,
+    _: User = Depends(require_permission(Permission.AGENTS_VIEW)),
+):
     if redis_task_queue is not None:
         task = await redis_task_queue.get_task(task_id)
         if not task:

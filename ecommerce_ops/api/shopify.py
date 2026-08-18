@@ -215,7 +215,9 @@ async def sync_shopify_data(
 
 
 @router.get("/status")
-async def shopify_status():
+async def shopify_status(
+    _: User = Depends(require_permission(Permission.SHOPIFY_VIEW)),
+):
     """Check Shopify integration status."""
     from ecommerce_ops.config import settings as app_settings
 
@@ -234,6 +236,7 @@ async def shopify_status():
 
 @router.get("/products")
 async def list_shopify_products(
+    _: User = Depends(require_permission(Permission.SHOPIFY_VIEW)),
     limit: int = Query(50, ge=1, le=250),
 ):
     """List products from Shopify."""
@@ -262,6 +265,7 @@ async def list_shopify_products(
 
 @router.get("/orders")
 async def list_shopify_orders(
+    _: User = Depends(require_permission(Permission.SHOPIFY_VIEW)),
     status: str = Query("any"),
     limit: int = Query(50, ge=1, le=250),
 ):

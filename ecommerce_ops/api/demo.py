@@ -10,8 +10,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ecommerce_ops.demo.roi_calculator import ROICalculator
-from ecommerce_ops.security.auth import require_admin, require_auth
-from ecommerce_ops.security.models import User
+from ecommerce_ops.security.auth import require_admin, require_auth, require_permission
+from ecommerce_ops.security.models import Permission, User
 
 logger = logging.getLogger("ecommerce_ops.api.demo")
 
@@ -36,7 +36,7 @@ class QuickEstimateRequest(BaseModel):
 @router.post("/roi/calculate")
 async def calculate_roi(
     req: ROIRequest,
-    user: dict = Depends(require_auth),
+    _: User = Depends(require_permission(Permission.DASHBOARD_VIEW)),
 ):
     """Calculate ROI for selected use cases."""
     report = roi_calculator.calculate_roi(
@@ -74,7 +74,7 @@ async def calculate_roi(
 @router.post("/roi/quick-estimate")
 async def quick_estimate(
     req: QuickEstimateRequest,
-    user: dict = Depends(require_auth),
+    _: User = Depends(require_permission(Permission.DASHBOARD_VIEW)),
 ):
     """Quick ROI estimate for all use cases."""
     estimate = roi_calculator.get_quick_estimate(monthly_revenue=req.monthly_revenue)
@@ -82,7 +82,7 @@ async def quick_estimate(
 
 
 @router.get("/roi/use-cases")
-async def list_use_cases(user: dict = Depends(require_auth)):
+async def list_use_cases(_: User = Depends(require_permission(Permission.DASHBOARD_VIEW))):
     """List all available use cases."""
     return {
         "use_cases": [
@@ -104,7 +104,7 @@ async def list_use_cases(user: dict = Depends(require_auth)):
 
 
 @router.get("/demo/status")
-async def demo_status():
+async def demo_status(_: User = Depends(require_permission(Permission.DASHBOARD_VIEW))):
     """Get demo environment status."""
     import os
 
@@ -128,7 +128,7 @@ async def demo_status():
 
 
 @router.get("/demo/scenarios")
-async def demo_scenarios():
+async def demo_scenarios(_: User = Depends(require_permission(Permission.DASHBOARD_VIEW))):
     """List demo scenarios."""
     return {
         "scenarios": [

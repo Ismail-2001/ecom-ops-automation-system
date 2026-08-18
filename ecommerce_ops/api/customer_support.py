@@ -22,8 +22,8 @@ from ecommerce_ops.agents.customer_support.models import (
 from ecommerce_ops.agents.customer_support.response_engine import ResponseGenerationEngine
 from ecommerce_ops.agents.customer_support.ticket_router import TicketClassifier
 from ecommerce_ops.config import settings
-from ecommerce_ops.security.auth import require_auth
-from ecommerce_ops.security.models import User
+from ecommerce_ops.security.auth import require_auth, require_permission
+from ecommerce_ops.security.models import Permission, User
 from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.api.customer_support")
@@ -128,6 +128,7 @@ async def list_tickets(
     channel: Optional[TicketChannel] = None,
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
+    _: User = Depends(require_permission(Permission.SUPPORT_VIEW)),
 ):
     """List support tickets with filters."""
     # In production: query database
@@ -166,7 +167,10 @@ async def list_tickets(
 
 
 @router.get("/tickets/{ticket_id}")
-async def get_ticket(ticket_id: str):
+async def get_ticket(
+    ticket_id: str,
+    _: User = Depends(require_permission(Permission.SUPPORT_VIEW)),
+):
     """Get ticket details."""
     # In production: query database
     return {
@@ -248,7 +252,10 @@ async def respond_to_ticket(
 
 
 @router.get("/tickets/{ticket_id}/suggestion")
-async def get_response_suggestion(ticket_id: str):
+async def get_response_suggestion(
+    ticket_id: str,
+    _: User = Depends(require_permission(Permission.SUPPORT_VIEW)),
+):
     """Get AI response suggestion for a ticket."""
     # In production: generate suggestion based on ticket content via LLM agent.
     # This stub returns a generic placeholder — it does NOT fabricate a
@@ -282,6 +289,7 @@ async def get_response_suggestion(ticket_id: str):
 @router.get("/analytics")
 async def get_support_analytics(
     days: int = Query(7, ge=1, le=90),
+    _: User = Depends(require_permission(Permission.SUPPORT_VIEW)),
 ):
     """Get support analytics."""
     # In production: query database
@@ -325,7 +333,9 @@ async def get_support_analytics(
 
 
 @router.get("/analytics/agents")
-async def get_agent_performance():
+async def get_agent_performance(
+    _: User = Depends(require_permission(Permission.SUPPORT_VIEW)),
+):
     """Get support agent performance metrics."""
     return {
         "agents": [

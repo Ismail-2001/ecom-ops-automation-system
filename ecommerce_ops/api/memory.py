@@ -83,7 +83,10 @@ async def create_memory(
 
 
 @router.post("/memories/search")
-async def search_memories(req: MemorySearchRequest):
+async def search_memories(
+    req: MemorySearchRequest,
+    _: User = Depends(require_permission(Permission.MEMORY_VIEW)),
+):
     """Search memories using semantic similarity."""
     results = await memory_retrieval.recall(
         query=req.query,
@@ -113,7 +116,10 @@ async def search_memories(req: MemorySearchRequest):
 
 
 @router.get("/memories/{memory_id}")
-async def get_memory(memory_id: str):
+async def get_memory(
+    memory_id: str,
+    _: User = Depends(require_permission(Permission.MEMORY_VIEW)),
+):
     """Get a memory by ID."""
     entry = await vector_store.get(memory_id)
     if not entry:
@@ -147,6 +153,7 @@ async def list_memories(
     memory_type: Optional[MemoryType] = None,
     agent_name: Optional[str] = None,
     limit: int = Query(50, ge=1, le=200),
+    _: User = Depends(require_permission(Permission.MEMORY_VIEW)),
 ):
     """List memories with filters."""
     from ecommerce_ops.memory.vector.models import MemoryQuery
@@ -182,7 +189,9 @@ async def list_memories(
 
 
 @router.get("/memories/stats/summary")
-async def get_memory_stats():
+async def get_memory_stats(
+    _: User = Depends(require_permission(Permission.MEMORY_VIEW)),
+):
     """Get memory system statistics."""
     stats = vector_store.get_stats()
     return stats.model_dump()
@@ -216,6 +225,7 @@ async def list_sessions(
     active_only: bool = Query(True),
     user_id: Optional[str] = None,
     agent_name: Optional[str] = None,
+    _: User = Depends(require_permission(Permission.MEMORY_VIEW)),
 ):
     """List sessions with filters."""
     if user_id:
@@ -245,7 +255,10 @@ async def list_sessions(
 
 
 @router.get("/sessions/{session_id}")
-async def get_session(session_id: str):
+async def get_session(
+    session_id: str,
+    _: User = Depends(require_permission(Permission.MEMORY_VIEW)),
+):
     """Get session details."""
     session = session_manager.get_session(session_id)
     if not session:
@@ -277,7 +290,9 @@ async def end_session(
 
 
 @router.get("/sessions/stats/summary")
-async def get_session_stats():
+async def get_session_stats(
+    _: User = Depends(require_permission(Permission.MEMORY_VIEW)),
+):
     """Get session statistics."""
     return session_manager.get_stats()
 
@@ -290,6 +305,7 @@ async def get_agent_context(
     agent_name: str,
     query: str,
     max_tokens: int = Query(4000, ge=100, le=10000),
+    _: User = Depends(require_permission(Permission.MEMORY_VIEW)),
 ):
     """Get memory context for an agent."""
     context = await agent_memory_manager.get_agent_context(
@@ -347,7 +363,10 @@ async def reflect_on_decision(
 
 
 @router.get("/agent/{agent_name}/stats")
-async def get_agent_memory_stats(agent_name: str):
+async def get_agent_memory_stats(
+    agent_name: str,
+    _: User = Depends(require_permission(Permission.MEMORY_VIEW)),
+):
     """Get memory stats for an agent."""
     return agent_memory_manager.get_agent_memory_stats(agent_name)
 

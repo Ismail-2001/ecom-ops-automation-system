@@ -55,6 +55,39 @@ async def test_superadmin_allowed_approve():
     assert user.role == Role.SUPER_ADMIN
 
 
+@pytest.mark.asyncio
+async def test_viewer_denied_memory_view():
+    with pytest.raises(Exception) as exc:
+        await require_permission(Permission.MEMORY_VIEW)(_make_request(_viewer()))
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_viewer_denied_audit_view():
+    with pytest.raises(Exception) as exc:
+        await require_permission(Permission.AUDIT_VIEW)(_make_request(_viewer()))
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_viewer_denied_dashboard_edit():
+    with pytest.raises(Exception) as exc:
+        await require_permission(Permission.DASHBOARD_EDIT)(_make_request(_viewer()))
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_viewer_allowed_shopify_view():
+    user = await require_permission(Permission.SHOPIFY_VIEW)(_make_request(_viewer()))
+    assert user.role == Role.VIEWER
+
+
+@pytest.mark.asyncio
+async def test_viewer_allowed_dashboard_view():
+    user = await require_permission(Permission.DASHBOARD_VIEW)(_make_request(_viewer()))
+    assert user.role == Role.VIEWER
+
+
 def test_redact_secrets_key_value():
     s = "api_key=sk_dummy_key_1234567890 token=xxxxxx"
     assert "sk_dummy_key_1234567890" not in _redact_text(s)

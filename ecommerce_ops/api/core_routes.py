@@ -181,6 +181,7 @@ async def get_approvals(
     status: Optional[str] = "pending",
     search: Optional[str] = None,
     sort: Optional[str] = "newest",
+    _: User = Depends(require_permission(Permission.APPROVALS_VIEW)),
     db: AsyncSession = Depends(get_db_session),
 ):
     await expire_stale_approvals(db)
@@ -213,7 +214,11 @@ async def get_approvals(
 
 
 @router.get("/approvals/{id}")
-async def get_approval(id: str, db: AsyncSession = Depends(get_db_session)):
+async def get_approval(
+    id: str,
+    _: User = Depends(require_permission(Permission.APPROVALS_VIEW)),
+    db: AsyncSession = Depends(get_db_session),
+):
     await expire_stale_approvals(db)
     result = await db.execute(select(ApprovalAction).where(ApprovalAction.id == id))
     action = result.scalar_one_or_none()
@@ -465,13 +470,19 @@ async def batch_approvals(
 
 
 @router.get("/agents/status")
-async def get_agents_status(db: AsyncSession = Depends(get_db_session)):
+async def get_agents_status(
+    _: User = Depends(require_permission(Permission.AGENTS_VIEW)),
+    db: AsyncSession = Depends(get_db_session),
+):
     res = await db.execute(select(AgentStatus))
     return res.scalars().all()
 
 
 @router.get("/settings")
-async def get_store_settings(db: AsyncSession = Depends(get_db_session)):
+async def get_store_settings(
+    _: User = Depends(require_permission(Permission.SETTINGS_VIEW)),
+    db: AsyncSession = Depends(get_db_session),
+):
     res = await db.execute(select(StoreSettings).where(StoreSettings.id == 1))
     store_settings = res.scalar_one_or_none()
     return store_settings
@@ -539,7 +550,10 @@ async def update_store_settings(
 
 
 @router.get("/analytics")
-async def get_analytics(db: AsyncSession = Depends(get_db_session)):
+async def get_analytics(
+    _: User = Depends(require_permission(Permission.DASHBOARD_VIEW)),
+    db: AsyncSession = Depends(get_db_session),
+):
     await expire_stale_approvals(db)
     approved = (
         await db.execute(
