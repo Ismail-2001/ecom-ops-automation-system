@@ -46,3 +46,6 @@ httpx==0.28.1
 
 # SQLite (local dev)
 aiosqlite==0.20.0
+
+# SSO / OAuth (Google, Okta)
+authlib>=1.3.0

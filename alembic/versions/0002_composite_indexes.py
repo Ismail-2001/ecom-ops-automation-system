@@ -5,6 +5,7 @@ Revises: 0001
 Create Date: 2026-06-26
 """
 from typing import Sequence, Union
+
 from alembic import op
 
 revision: str = "0002"
