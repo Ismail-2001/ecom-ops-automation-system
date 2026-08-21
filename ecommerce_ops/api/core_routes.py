@@ -13,11 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ecommerce_ops.api.auth import verify_auth_optional
 from ecommerce_ops.api.metrics import (
     METRIC_AGENT_CONFIDENCE_AVG,
+    METRIC_AGENT_EXECUTION_ERRORS,
     METRIC_DECISIONS_APPROVED,
     METRIC_DECISIONS_REJECTED,
 )
 from ecommerce_ops.api.ws import ws_manager
 from ecommerce_ops.config import settings as app_settings
+from ecommerce_ops.infra.notifications import notify_execution_failed
 from ecommerce_ops.models import (
     AgentStatus,
     ApprovalAction,
@@ -59,6 +61,11 @@ class BatchActionBody(BaseModel):
     action: str
     reason: Optional[str] = None
     notes: Optional[str] = None
+
+
+class SetAutonomyBody(BaseModel):
+    level: str
+    reason: Optional[str] = None
 
 
 class SettingsUpdateBody(BaseModel):
@@ -293,6 +300,14 @@ async def approve_approval(
     action.status = "executed" if success else "failed"
     if not success:
         action.operator_notes = f"{action.operator_notes or ''} [Error: {exec_msg}]".strip()
+        METRIC_AGENT_EXECUTION_ERRORS.labels(agent=action.agent).inc()
+        await notify_execution_failed(
+            action_id=action.id,
+            action_type=action.action_type,
+            agent=action.agent,
+            error=exec_msg,
+            context="manual-approval",
+        )
 
     audit_entry.details["execution_status"] = action.status
     audit_entry.details["execution_message"] = exec_msg if not success else None
@@ -418,9 +433,18 @@ async def batch_approvals(
                 db.add(audit_entry)
                 await db.flush()
 
-                success, _ = await execute_shop_action(action)
+                success, exec_msg = await execute_shop_action(action)
                 action.status = "executed" if success else "failed"
                 audit_entry.details["execution_status"] = action.status
+                if not success:
+                    METRIC_AGENT_EXECUTION_ERRORS.labels(agent=action.agent).inc()
+                    await notify_execution_failed(
+                        action_id=action.id,
+                        action_type=action.action_type,
+                        agent=action.agent,
+                        error=exec_msg or "unknown",
+                        context="batch-approval",
+                    )
                 await update_agent_streak(action.agent, success, action.confidence_score, db)
                 _score_hitl_outcome(action, "approved", db, success)
 
@@ -476,6 +500,69 @@ async def get_agents_status(
 ):
     res = await db.execute(select(AgentStatus))
     return res.scalars().all()
+
+
+AUTONOMY_LEVELS = {"shadow", "supervised", "autonomous"}
+
+
+@router.patch("/agents/{agent_id}/autonomy")
+async def set_agent_autonomy(
+    agent_id: str,
+    body: SetAutonomyBody,
+    _: User = Depends(require_permission(Permission.AGENTS_CONFIGURE)),
+    operator: str = Depends(get_current_operator),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Manually set an agent's autonomy level (promote/demote).
+
+    Graduation normally happens automatically after 50 consecutive
+    high-confidence discoveries; this endpoint lets operators force-promote
+    or force-demote an agent. Every change is audit-logged and broadcast.
+    """
+    if body.level not in AUTONOMY_LEVELS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid autonomy level. Must be one of: {', '.join(sorted(AUTONOMY_LEVELS))}",
+        )
+
+    res = await db.execute(
+        select(AgentStatus).where(AgentStatus.agent_id == agent_id).with_for_update()
+    )
+    agent = res.scalar_one_or_none()
+    if agent is None:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+
+    previous = agent.autonomy_level
+    if previous == body.level:
+        return agent
+
+    agent.autonomy_level = body.level
+    db.add(
+        AuditEntry(
+            action_id=None,
+            timestamp=utc_now(),
+            agent=agent_id,
+            action_type="autonomy_change",
+            decision="approved",
+            operator=operator,
+            confidence_score=1.0,
+            financial_impact=0.0,
+            details={
+                "previous_level": previous,
+                "new_level": body.level,
+                "reason": body.reason,
+            },
+        )
+    )
+    await db.commit()
+    await db.refresh(agent)
+    await ws_manager.broadcast(
+        {
+            "type": "agent_status",
+            "payload": {"agent_id": agent_id, "autonomy_level": body.level},
+        }
+    )
+    return agent
 
 
 @router.get("/settings")

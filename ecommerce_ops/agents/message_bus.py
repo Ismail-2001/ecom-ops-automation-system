@@ -1,6 +1,13 @@
 """
 Agent Message Bus - Inter-agent communication system.
 Enables agents to share insights, coordinate actions, and collaborate.
+
+SCOPE LIMITATION: this bus is IN-PROCESS ONLY — purely asyncio/in-memory with
+no Redis or queue backing. Agents coordinate only with other agents running in
+the same Python process. If the API/worker is ever scaled to multiple replicas,
+messages will NOT fan out across processes; a Redis pub/sub (or equivalent)
+backing must be added before running >1 replica. This is a documented scaling
+ceiling, not a distributed messaging system.
 """
 
 import asyncio
@@ -10,6 +17,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Coroutine, Dict, List, Optional
+
+from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.agents.message_bus")
 
@@ -25,7 +34,7 @@ class AgentMessage:
     topic: str = ""
     payload: Dict[str, Any] = field(default_factory=dict)
     priority: int = 0  # Higher = more urgent
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=utc_now)
     requires_response: bool = False
     response_timeout_seconds: float = 30.0
     correlation_id: Optional[str] = None

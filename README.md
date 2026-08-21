@@ -11,7 +11,7 @@
 [![LangGraph](https://img.shields.io/badge/LangGraph-0.2-1437EB.svg)](https://langchain-ai.github.io/langgraph)
 [![Docker](https://img.shields.io/badge/Docker-24-2496ED.svg)](https://docker.com)
 [![CI/CD](https://img.shields.io/badge/GitHub%20Actions-CI%2FCD-2088FF.svg)](.github/workflows)
-[![Security](https://img.shields.io/badge/Security-Audit%20Passed-22c55e.svg)](AUDIT_REPORT.md)
+[![Security](https://img.shields.io/badge/Security-Hardening%20%2F%20Remediated%20Items%20%2D%20In%20Progress-f59e0b.svg)](AUDIT_REPORT.md)
 [![Credentials](https://img.shields.io/badge/Credentials-Rotation%20Guide-EF4444.svg)](CREDENTIAL_ROTATION.md)
 
 **7 AI Agents. 1 Dashboard. Human-in-the-loop by default.**
@@ -81,7 +81,7 @@ This matters more than any feature list. A system that automates the wrong decis
 - **LangGraph Supervisor Orchestration** — Agents run in a defined pipeline with a planner that dynamically selects which agents execute based on available data, plus a reflection agent that self-corrects decisions post-execution
 - **LLM-First with Rule-Based Fallback** — Each agent tries Google Gemini 2.0 Flash (or DeepSeek) for rich analysis, then silently falls back to deterministic rules on any LLM failure — zero downtime, zero data loss
 - **Semantic LLM Cache** — Cosine-similarity cache (threshold 0.92) with bounded 200-entry index eliminates redundant LLM calls for similar queries, with graceful degradation on import failure
-- **Inter-Agent Communication** — Built-in message bus with 18 predefined topics (fraud.alert, inventory.low, cart.abandoned, etc.) enables agents to coordinate without tight coupling
+- **Inter-Agent Communication** — Built-in message bus with 18 predefined topics (fraud.alert, inventory.low, cart.abandoned, etc.) enables agents to coordinate without tight coupling. *Process-local today:* the bus is asyncio in-memory, so horizontal scaling past one API/worker replica requires a Redis pub/sub backing (see `ecommerce_ops/agents/message_bus.py`)
 - **Cost Tracking** — Per-agent LLM token usage and cost monitoring with Prometheus metrics and configurable daily budgets
 
 ### Human-in-the-Loop
@@ -101,21 +101,27 @@ This matters more than any feature list. A system that automates the wrong decis
 - **Webhook HMAC Verification** — Shopify webhooks validated with HMAC signature (Phase 1)
 - **Session Secret Rotation** — Cryptographically random session secrets, rotated on deploy (Phase 1)
 
+### Notifications & Integrations
+
+- **Multi-Channel Alerting** — Every operator event (HITL requests, pipeline/agent failures, agent graduations, daily summaries) fans out to Slack (`SLACK_WEBHOOK_URL` or bot token), email via Resend (`RESEND_API_KEY`), and outbound webhooks
+- **Outbound Webhooks** — Custom HTTPS endpoints with per-webhook secrets and event-type filtering (`"*"` wildcard for all); payloads are HMAC-SHA256 signed (`X-Ecom-Ops-Signature`); managed via `/api/integrations/webhooks` CRUD + test endpoints
+- **Multi-Store Support** — Per-shop Shopify OAuth credentials with `shop_domain` scoping on pipeline runs and product syncs (env fallback for single-store setups)
+
 ### Observability
 
-- **21 Prometheus Metrics** — Request rates, agent decisions, LLM costs, queue depths, financial impact, cache ratios, LLM cache hits/misses, DB connection pool
-- **14 Alert Rules** — API errors, latency spikes, agent failures, Redis/PostgreSQL down, LLM budget exceeded, missing backups
+- **31 Prometheus Metrics** — Request rates, agent decisions, LLM costs, queue depths, financial impact, cache ratios, LLM cache hits/misses, DB connection pool, live shop executions, outbox dead letters, outbound webhook deliveries, A/B experiments
+- **29 Alert Rules** — API errors, latency spikes, agent failures, Redis/PostgreSQL down, LLM budget exceeded, missing backups, shop-execution failures, outbox growth, A/B divergence
 - **OpenTelemetry Tracing** — Distributed traces via OTLP to Grafana Tempo with 10% sampling
 - **Langfuse Integration** — LLM-specific observability: traces, evaluations, cost breakdowns per model
 - **Grafana Dashboards** — Pre-configured dashboards for API, agents, infrastructure, and LLM costs
 
 ### Infrastructure
 
-- **13-Service Docker Stack** — PostgreSQL, Redis, API, Dashboard, Nginx, Prometheus, Grafana, Tempo, OTEL Collector, Alertmanager, exporters
+- **14-Service Docker Stack** — PostgreSQL, Redis, API, Dashboard, Nginx, Prometheus, Grafana, Tempo, OTEL Collector, Alertmanager, node/postgres/redis/cadvisor exporters
 - **Multi-Stage Docker Build** — Python 3.12-slim with Playwright (Chromium + Firefox + WebKit), non-root user, uvloop+httptools, 2 workers
 - **Rolling Deploy** — Zero-downtime deployment with auto-rollback on health check failure (`./scripts/deploy.sh rolling`)
 - **Offsite Backup** — Automated PostgreSQL dumps with S3/GCS upload (STANDARD_IA), 7-day retention
-- **CI/CD Pipeline** — 7 GitHub Actions workflows: lint+mypy, test, security scan, Docker build, Trivy scan, staging deploy, production deploy with auto-rollback
+- **CI/CD Pipeline** — 9 GitHub Actions workflows (lint+mypy, test, security & secret scan, Docker build, Trivy scan, load test, staging + production deploy with auto-rollback, release)
 - **Database Migrations** — Alembic with drift detection in CI
 - **Disaster Recovery** — Defined RTO/RPO targets, recovery procedures, escalation contacts (`docs/DR_POLICY.md`)
 - **Kubernetes-Ready** — `/health`, `/ready`, `/live` endpoints for orchestration
@@ -161,7 +167,7 @@ graph TB
     end
 
     subgraph "API Layer"
-        API["FastAPI Server<br/>14 Middleware Layers"]
+        API["FastAPI Server<br/>11 Middleware Layers"]
         WS["WebSocket<br/>Real-time Events"]
         AUTH["RBAC Auth<br/>5 Roles · 35 Permissions"]
     end
@@ -185,13 +191,13 @@ graph TB
     end
 
     subgraph "Data Layer"
-        PG[("PostgreSQL 16<br/>7 Tables")]
+        PG[("PostgreSQL 16<br/>17 Tables")]
         REDIS[("Redis 7<br/>Cache · Rate Limit")]
         PGV[("pgvector<br/>Semantic Memory")]
     end
 
     subgraph "Observability"
-        PROM["Prometheus<br/>18 Metrics"]
+        PROM["Prometheus<br/>31 Metrics"]
         GRAF["Grafana<br/>Dashboards"]
         TEMPO["Tempo<br/>Distributed Tracing"]
         LANGFUSE["Langfuse<br/>LLM Monitoring"]
@@ -291,7 +297,7 @@ graph TD
 <tr>
 <td><strong>Database</strong></td>
 <td>PostgreSQL 16, SQLAlchemy (async), Alembic, pgvector</td>
-<td>7 tables, async connection pooling, migrations, vector memory</td>
+<td>17 tables, async connection pooling, migrations, vector memory</td>
 </tr>
 <tr>
 <td><strong>Cache</strong></td>
@@ -316,16 +322,16 @@ graph TD
 <tr>
 <td><strong>Testing</strong></td>
 <td>pytest, Vitest, Playwright, Locust</td>
-<td>30+ test files, load tests, e2e integration</td>
+<td>51 test files, load tests, e2e integration</td>
 </tr>
 <tr>
 <td><strong>CI/CD</strong></td>
-<td>GitHub Actions (7 workflows), Docker, Trivy</td>
+<td>GitHub Actions (9 workflows), Docker, Trivy</td>
 <td>Lint, test, security scan, build, deploy, rollback</td>
 </tr>
 <tr>
 <td><strong>Infrastructure</strong></td>
-<td>Docker Compose (13 services), Nginx, PostgreSQL, Redis</td>
+<td>Docker Compose (14 services), Nginx, PostgreSQL, Redis</td>
 <td>Full production stack with monitoring</td>
 </tr>
 <tr>
@@ -343,11 +349,11 @@ graph TD
 ecom-ops-automation-system/
 ├── ecommerce_ops/              # Python backend
 │   ├── api/                    # FastAPI routes, middleware, WebSocket, metrics
-│   │   ├── app.py              # Main application (966 lines)
+│   │   ├── app.py              # Main application (772 lines)
 │   │   ├── routes/             # 7 route modules (shopify, cart, support, etc.)
-│   │   ├── middleware.py        # 14-layer middleware stack
+│   │   ├── middleware.py        # 11-layer middleware stack
 │   │   ├── ws.py               # WebSocket with auth + rate limiting
-│   │   └── metrics.py          # 18 Prometheus metrics
+│   │   └── metrics.py          # 31 Prometheus metrics
 │   ├── agents/                 # 7 AI agents + infrastructure
 │   │   ├── _base.py            # Base agent with LLM + memory
 │   │   ├── fraud.py / fraud_llm.py
@@ -371,7 +377,7 @@ ecom-ops-automation-system/
 │   ├── infra/                  # Circuit breaker, rate limiter, retry, task queue
 │   ├── pipeline/               # Pipeline runner + builder
 │   ├── tools/                  # Tool registry + executor
-│   ├── models/                 # SQLAlchemy DB models (7 tables)
+│   ├── models/                 # SQLAlchemy DB models (17 tables)
 │   ├── config.py               # Pydantic Settings with env validation
 │   └── cli.py                  # Typer CLI (ops-agent run/pause)
 ├── frontend/                   # Next.js 14 dashboard
@@ -382,7 +388,7 @@ ecom-ops-automation-system/
 ├── scripts/                    # 19 operational scripts (deploy, backup, rollback, DR)
 ├── alembic/                    # Database migrations
 ├── docs/                       # API.md, DEPLOYMENT.md, PERFORMANCE.md, DR_POLICY.md
-├── docker-compose.yml          # Production stack (13 services)
+├── docker-compose.yml          # Production stack (14 services)
 ├── Dockerfile                  # Multi-stage Python build
 ├── Makefile                    # Common commands
 └── pyproject.toml              # Project metadata + tooling config
@@ -413,7 +419,7 @@ cp .env.example .env
 # Edit .env with your keys (at minimum: API_KEY, GOOGLE_API_KEY)
 nano .env
 
-# Start everything (13 services)
+# Start everything (14 services)
 docker compose up -d
 
 # Verify
@@ -457,6 +463,10 @@ npm run dev
 | `SHOPIFY_API_KEY` | No | — | Shopify OAuth client key |
 | `SHOPIFY_PASSWORD` | No | — | Shopify OAuth client secret |
 | `SHOPIFY_ACCESS_TOKEN` | No | — | Shopify Admin API token |
+| `RESEND_API_KEY` | No | — | Resend API key for email notifications |
+| `NOTIFY_EMAIL` | No | — | Recipient for operator email alerts |
+| `NOTIFY_FROM_EMAIL` | No | — | Sender address for email notifications |
+| `SLACK_WEBHOOK_URL` | No | — | Slack incoming webhook URL for alerts (falls back to bot token) |
 | `ENV` | No | `development` | `development`, `production`, or `testing` |
 | `SHADOW_MODE` | No | `true` | Require human approval for all decisions |
 | `GLOBAL_PO_LIMIT` | No | `1000` | Max purchase order value ($) |
@@ -628,7 +638,7 @@ Rotate API keys periodically or on suspected exposure:
 
 ### Agent Safety
 
-- **Prompt Injection Guard**: 25+ regex patterns detecting role override, system prompt injection, SQL injection (wired into fraud, inventory, marketing agents)
+- **Prompt Injection Guard**: regex signature *tripwire* (role overrides, system/user tag injection, SQL/script idioms) wired into the fraud, inventory, and marketing agents. This is defense-in-depth, not a complete defense — adversarial/paraphrased injections can slip past a blocklist (see `ecommerce_ops/safety/guardrails.py`); adding an LLM-based injection classifier is planned before any agent consumes public-facing chat input
 - **Shell Injection Prevention**: Whitelist-based tool executor — blocks `subprocess`, `os.system`, `eval`, `exec`
 - **Hallucination Detector**: Validates unsupported claims, fabricated numbers, confidence levels
 - **Output Validator**: Ensures confidence scores, decision validity, required fields, JSON structure
@@ -686,7 +696,7 @@ pytest tests/ -m "e2e"               # End-to-end tests
 | Unit Tests | 7 focused modules (split from monolith) | Agent logic, safety rules, guardrails, config, memory, tools, infrastructure |
 | Integration Tests | 5+ files | API endpoints, database, Redis, Shopify |
 | E2E Tests | 3 files | Full pipeline, navigation, API health, accessibility |
-| Security Tests | 3 files | Auth, RBAC, rate limiting, input sanitization |
+| Security Tests | 4 files | Auth, RBAC, rate limiting, input sanitization |
 | Performance Tests | 1 file | Agent latency benchmarks |
 | Load Tests | 1 file | Locust-based load testing |
 | Frontend Tests | 81 Vitest + 18 Playwright | Unit tests + cross-browser e2e (Chromium, Firefox, WebKit) |
@@ -696,7 +706,7 @@ pytest tests/ -m "e2e"               # End-to-end tests
 Every push runs:
 1. **Lint & Type Check** — Ruff check + format verification + mypy type checking
 2. **Migration Drift** — Alembic vs models divergence check
-3. **Unit Tests** — pytest with PostgreSQL + Redis services (741+ tests, 65% coverage threshold)
+3. **Unit Tests** — pytest with PostgreSQL + Redis services (894 tests, 65% coverage threshold)
 4. **E2E Tests** — Full pipeline integration
 5. **Security Scan** — pip-audit + Bandit SAST
 6. **Docker Build** — Multi-stage build + Trivy CRITICAL severity scan
@@ -707,7 +717,7 @@ Every push runs:
 
 ## Docker Production
 
-The production stack runs **13 services**:
+The production stack runs **14 services**:
 
 ```bash
 # Start the full stack
@@ -736,18 +746,20 @@ docker compose down
 
 | Service | Port | Purpose |
 |:--------|:-----|:--------|
+| `postgres` | 5432 | Primary database |
+| `postgres-exporter` | 9187 | PG metrics |
+| `redis` | 6379 | Cache + rate limiting |
+| `redis-exporter` | 9121 | Redis metrics |
 | `api` | 8000 | FastAPI backend |
 | `dashboard` | 3000 | Next.js frontend |
-| `postgres` | 5432 | Primary database |
-| `redis` | 6379 | Cache + rate limiting |
 | `nginx` | 80/443 | Reverse proxy + TLS |
+| `node-exporter` | host | Host metrics |
+| `cadvisor` | 8080 | Container metrics |
 | `prometheus` | 9090 | Metrics collection |
 | `grafana` | 3001 | Dashboards |
 | `alertmanager` | 9093 | Alert routing |
 | `tempo` | 3200 | Distributed tracing |
-| `otel-collector` | 4317 | Telemetry routing |
-| `postgres-exporter` | 9187 | PG metrics |
-| `redis-exporter` | 9121 | Redis metrics |
+| `otel-collector` | 4317/4318 | Telemetry routing |
 
 ---
 
@@ -755,10 +767,10 @@ docker compose down
 
 ### Completed — Foundation (Phases 1-6)
 
-- [x] Security audit + vulnerability remediation (auth bypass, prompt injection, shell injection, hardcoded keys)
+- [x] Security audit + vulnerability remediation (auth bypass, shell injection, hardcoded keys) + prompt-injection *tripwire* guardrails (regex signature blocklist only — see the Agent Safety caveat above)
 - [x] Runtime infrastructure (Redis task queue, Redis PubSub, graceful shutdown)
 - [x] Code quality (thread-safe AgentFactory, dead code removal, metrics wiring)
-- [x] Test suite overhaul (2762-line monolith → 7+ focused modules, 741+ tests)
+- [x] Test suite overhaul (2762-line monolith → 51 focused modules, 894 tests)
 - [x] Frontend performance (lazy loading, dependency pruning, loading states)
 - [x] Semantic LLM cache (cosine similarity, bounded index, graceful degradation)
 - [x] API performance (SQL-side search, streaming audit export)
@@ -789,21 +801,51 @@ The codebase underwent a FAANG-level production audit scoring 4.8/10. Three focu
 - LLM tracing: `trace_llm_call` reads token usage from model response (not kwargs) — no more silent `None` spans
 - +12 regression tests covering all fixes
 
+### Completed — Live Execution, Observability & Credential Rotation (Weeks 7-10)
+
+**Week 7 — Reliability wave** (locked batch guard, transactional outbox sweeper, idempotent pipeline runs)
+
+**Week 8 — Live-execution breadth & operations**
+- `review_response` and `marketing_campaign` now execute for real via the Shopify Product Reviews API and price-rule/discount-code endpoints (with validation + NaN-safe discount handling); `purchase_order` stays an honest capability failure until an ERP/supplier integration is configured — no fabricated results
+- Shadow-mode A/B framework (`ecommerce_ops/observability/ab_testing.py`): production decision (variant A) vs conservative rule baseline (variant B), recorded in `ab_experiment_runs` with winner + divergence; fail-open, never touches live traffic
+- Execution/outbox metrics: `shop_executions_total`, `shop_execution_duration_seconds`, `outbox_dead_letters_total`, `agent_execution_errors_total`, `ab_*` series
+- Alerting: `monitoring/rules.yml` now covers shop-execution failure rate/spikes, outbox dead-letter growth, AB divergence, and baseline-outperforming agents; `notify_execution_failed` fires on auto, manual, and batch-approval failures
+
+**Week 9 — Full credential rotation & secret re-verification**
+- DB-backed rotation ledger (`server_credentials` table, SHA-256 hashes only) with a zero-downtime grace window: `POST /security/rotate/server-key` issues a new key and keeps the previous cohort valid for N days; `POST /security/rotate/server-key/finalize` cuts over; `GET /security/server-key/status` lists prefixes (never raw keys). `verify_auth` accepts the active/in-grace cohort alongside the env bootstrap key
+- `scripts/verify-secrets.sh` re-verifies after rotation (full-history gitleaks, `.env` tracking check, working-tree token scan, push-protection hook check)
+- Push protection: gitleaks hook now runs on `pre-commit` *and* `pre-push`; CI `secret-scan.yml` gained a `re-verify` job that fails pushes that track `.env`
+
+**Week 10 — Notifications, outbound webhooks & multi-store**
+- Email notification integration via Resend (`ecommerce_ops/infra/email.py`): `RESEND_API_KEY` + `NOTIFY_FROM_EMAIL` + `NOTIFY_EMAIL`; every operator alert (`notify_hitl_request`, `notify_pipeline_failed`, `notify_agent_graduated`, `notify_execution_failed`, `notify_daily_summary`) fans out to email, Slack, and outbound webhooks
+- Slack alert integration: `SLACK_WEBHOOK_URL` (incoming webhook POST) with bot-token `chat.postMessage` fallback; no-op when neither is configured
+- Outbound webhook integrations (custom HTTPS endpoints): `OutboundWebhook` model + Alembic `0014`; HMAC-SHA256 signed payloads (`X-Ecom-Ops-Signature`) filtered by event type with `"*"` wildcard; CRUD + test endpoints at `/api/integrations/webhooks[...]` protected by `integrations:manage`; `METRIC_OUTBOUND_WEBHOOKS` counter
+- Multi-store pipeline scoping: `POST /api/run` accepts optional `shop_domain`, `fetch_shopify_data`/`run_pipeline_task`/`execute_shop_action` resolve per-store OAuth credentials (`ShopifyShopCredential`) with env fallback; pipeline runs record `shop_domain`; `POST /shopify/sync` accepts a `shop_domain` query param
+- +24 tests (`tests/test_week9_integrations.py`) + 4 security-API regression tests (`tests/test_security_api.py`); full suite now 894 passing
+- Fixed latent bug in `ecommerce_ops/api/security.py`: 6 audit call sites awaited the synchronous `audit_logger.log_event` and passed kwargs to its `SecurityEvent`-only signature — now build and log events synchronously, covered end-to-end by the new security-API tests
+- Fixed `POST /security/api-keys` (500 for the master key): the operator principal is now auto-provisioned as an `RBACUser` (`role_manager.ensure_operator_user`) before issuing keys, so issued keys validate and resolve to a real owner; docs corrected from the non-existent `/api/security/*` to the actual `/security/*` paths
+- Agent autonomy graduation UI: new `PATCH /api/agents/{agent_id}/autonomy` endpoint (`agents:configure` permission) lets operators promote/demote an agent across `shadow` / `supervised` / `autonomous`; every change is audit-logged (`autonomy_change`) and broadcast over WebSocket. The `/agents` page now renders live autonomy levels, graduation streaks (50 consecutive high-confidence decisions to auto-graduate), confidence and approval stats, and promote/demote controls. +6 backend tests (`tests/test_api_app.py`)
+
+**Week 11 — Post-audit hardening pass (independent security audit remediation)**
+- Time consistency sweep: replaced all remaining `datetime.utcnow()` call sites with the project's `utc_now()` naive-UTC helper (`ecommerce_ops/utils.py`) across `graph/state.py`, `security/{audit,models}.py`, `agents/message_bus.py`, `observability/{trace_models,evaluation}.py`, and the `memory/vector`, `agents/cart_recovery`, and `agents/customer_support` model layers. Zero `datetime.utcnow` references remain (only the SQLAlchemy-delegating `utcnow()` in `models/db.py`)
+- Legacy API-key path hardened: unsalted SHA-256 legacy keys are only accepted before a documented sunset (`LEGACY_HASH_SUNSET_UTC = 2027-01-01` in `security/role_manager.py`); each legacy accept emits a rotate-key warning and increments `METRIC_LEGACY_API_KEY_USES`, and after sunset legacy hashes are rejected (incrementing `METRIC_LEGACY_API_KEY_REJECTED`; PBKDF2 keys are unaffected). +2 tests
+- Security-audit drops are now metered: any audit event that fails to persist increments `METRIC_SECURITY_AUDIT_DROPPED` (`security/audit.py`)
+- Prompt-injection guard documented honestly as a signature tripwire, not a complete defense (`safety/guardrails.py`); LLM-based classifier recommended for untrusted input. Inter-agent message bus scope documented as in-process-only asyncio guarantee (`agents/message_bus.py`)
+- Fixed pre-existing agent-memory signature bug: `get_context_window()` in `memory/vector/retrieval.py` did not accept the `agent_name` kwarg passed by `agents/_base.py`, making vector context retrieval fail per-agent (silent `TypeError` → "vector memory unavailable" → rule-based fallback). Signature now forwards `agent_name` to recall (which already filters by it)
+- Exception-handling audit: all security/financial paths verified fail-closed (auth 503/deny, webhook HMAC verify returns False, approval execution records failure, pipeline run marks `failed`); remaining broad `except Exception` sites are confined to non-critical/instrumentation paths (health checks, outbox sweeper, memory/Redis rule-based fallback)
+- Security badge corrected from "Audit Passed" to "Hardening / Remediated Items — In Progress", matching the audit report's honest status
+- Hermetic test environment (root cause of the performance-benchmark flake + the leaked dev key): `ENV=testing` now short-circuits every external dependency so tests never dial a provider or service. `agents/_base.py` installs a fail-fast `_DisabledLLM` instead of a real client (even if `.env`/shell exports valid keys); `memory/vector/embeddings.py` forces the mock provider in TESTING; `memory/cache.py` returns `None` without a Redis connect attempt — the single ~4s Windows IOCP connect stall (cProfile attributed the full duration to `GetQueuedCompletionStatus`) that made `test_concurrent_mixed_agents` fail standalone and pass only in luckier order. The 30-agent benchmark now runs in ~0.2-0.7s and the full suite ~2x faster (247s → 92s); +3 regression tests
+- Prompt-injection guard hardened from "tripwire + silent fallback" to **detect-and-quarantine**: `guardrail_blocked()` in `safety/guardrails.py` plus a `_guardrail_hit_decision` chokepoint in `agents/factory.py` adapters now make any input failing `check_input` force `requires_approval=True` + HITL evidence regardless of downstream confidence — so attacker-crafted order/review text can never auto-execute through the rule-based fallback. Output-validation failures and LLM network errors still degrade to rule-based analysis; +6 regression tests
+
 ### Near-term (1-3 months)
 
 - [ ] Vercel deployment optimization
-- [ ] Agent autonomy graduation UI
-- [ ] Multi-store support
-- [ ] Email notification integration (Resend)
-- [ ] Slack alert integration (webhook config ready)
 
 ### Mid-term (3-6 months)
 
 - [ ] Voice AI for support tickets
 - [ ] Computer vision for product image analysis
-- [ ] A/B testing framework for agent strategies
 - [ ] Mobile app for approval queue
-- [ ] Webhook integrations (Zapier, Make)
 
 ### Long-term (6-12 months)
 

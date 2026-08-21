@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import './mocks'
 import AgentsPage from '@/app/agents/page'
 
@@ -32,39 +32,38 @@ describe('AgentsPage', () => {
 
   it('renders filter tabs via actions', () => {
     render(<AgentsPage />)
-    expect(screen.getByText('All Agents')).toBeDefined()
-    expect(screen.getByText('Active')).toBeDefined()
-    expect(screen.getByText('Maintenance')).toBeDefined()
+    const actions = screen.getByTestId('shell-actions')
+    expect(within(actions).getByText('All Agents')).toBeDefined()
+    expect(within(actions).getByText('Shadow')).toBeDefined()
+    expect(within(actions).getByText('Supervised')).toBeDefined()
+    expect(within(actions).getByText('Autonomous')).toBeDefined()
   })
 
-  it('filters agents when Active tab is clicked', () => {
+  it('filters agents when Shadow tab is clicked', () => {
     render(<AgentsPage />)
-    fireEvent.click(screen.getByText('Active'))
-    expect(screen.getByText('Fraud Detection')).toBeDefined()
-    expect(screen.getAllByText('Inventory').length).toBeGreaterThanOrEqual(1)
-    expect(screen.queryByText('Review Moderator')).toBeNull()
-  })
-
-  it('filters agents when Maintenance tab is clicked', () => {
-    render(<AgentsPage />)
-    fireEvent.click(screen.getByText('Maintenance'))
+    const actions = screen.getByTestId('shell-actions')
+    fireEvent.click(within(actions).getByText('Shadow'))
+    expect(screen.getByText('Price Optimizer')).toBeDefined()
     expect(screen.getByText('Review Moderator')).toBeDefined()
+    expect(screen.getByText('Marketing')).toBeDefined()
+    expect(screen.getByText('Customer Support')).toBeDefined()
     expect(screen.queryByText('Fraud Detection')).toBeNull()
   })
 
-  it('renders deploy new agent button', () => {
+  it('filters agents when Supervised tab is clicked', () => {
     render(<AgentsPage />)
-    expect(screen.getByText('Deploy New Agent')).toBeDefined()
+    const actions = screen.getByTestId('shell-actions')
+    fireEvent.click(within(actions).getByText('Supervised'))
+    expect(screen.getByText('Fraud Detection')).toBeDefined()
+    expect(screen.getAllByText('Inventory').length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByText('Price Optimizer')).toBeNull()
   })
 
-  it('renders inference logs table', () => {
+  it('renders summary stats cards', () => {
     render(<AgentsPage />)
-    expect(screen.getByText('Inference Logs')).toBeDefined()
-    expect(screen.getByText('Blocked Tx #9012 (High Risk)')).toBeDefined()
-  })
-
-  it('renders system health status', () => {
-    render(<AgentsPage />)
-    expect(screen.getByText('System Healthy')).toBeDefined()
+    expect(screen.getByText('Total Agents')).toBeDefined()
+    expect(screen.getAllByText('Autonomous').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByText('Supervised').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByText('Shadow').length).toBeGreaterThanOrEqual(2)
   })
 })

@@ -18,7 +18,9 @@ from datetime import timedelta
 from typing import Any, Optional
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from ecommerce_ops.api.metrics import METRIC_OUTBOX_DEAD_LETTERS
 from ecommerce_ops.infra.distributed_lock import DistributedLock
 from ecommerce_ops.models import ApprovalAction, OutboxMessage, async_session_factory
 from ecommerce_ops.pipeline.runner import execute_shop_action
@@ -124,6 +126,15 @@ class OutboxSweeper:
                 logger.exception("Outbox redelivery failed for message %s", row.id)
         return processed
 
+    async def _dead_letter(self, fresh: OutboxMessage, reason: str, session: AsyncSession) -> None:
+        """Mark an outbox row dead and record its dead-letter metric."""
+        fresh.status = "dead"
+        fresh.error = reason
+        await session.commit()
+        action_type = str((fresh.payload or {}).get("action_type", "unknown"))
+        METRIC_OUTBOX_DEAD_LETTERS.labels(outbox_type=action_type).inc()
+        logger.warning("Dead-lettered outbox %s: %s", fresh.id, reason)
+
     async def _redeliver(self, row: OutboxMessage) -> None:
         """Claim and redeliver a single orphaned outbox row.
 
@@ -137,10 +148,9 @@ class OutboxSweeper:
                 return
             action = await session.get(ApprovalAction, row.action_id)
             if action is None:
-                fresh.status = "dead"
-                fresh.error = "approval_action not found; cannot redeliver"
-                await session.commit()
-                logger.warning("Dead-lettered outbox %s: action %s missing", row.id, row.action_id)
+                await self._dead_letter(
+                    fresh, "approval_action not found; cannot redeliver", session
+                )
                 return
             if action.status == "executed":
                 # The side effect already landed; just reconcile the outbox row.
@@ -150,12 +160,7 @@ class OutboxSweeper:
                 logger.info("Outbox %s reconciled (action already executed)", row.id)
                 return
             if fresh.retry_count >= self._max_retry_count:
-                fresh.status = "dead"
-                fresh.error = "max retry count exceeded"
-                await session.commit()
-                logger.warning(
-                    "Dead-lettered outbox %s after %d retries", row.id, fresh.retry_count
-                )
+                await self._dead_letter(fresh, "max retry count exceeded", session)
                 return
             fresh.retry_count += 1
             fresh.status = "retrying"

@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
+from ecommerce_ops.agents.registry import agent_registry
 from ecommerce_ops.models import (
     AgentStatus,
     ApprovalAction,
@@ -18,6 +19,7 @@ from ecommerce_ops.models import (
     PipelineRun,
     async_session_factory,
 )
+from ecommerce_ops.observability.agent_metrics import agent_metrics
 from ecommerce_ops.observability.evaluation import (
     evaluation_framework,
 )
@@ -370,6 +372,105 @@ async def get_cost_metrics(
             "total_runs": stats.total_runs or 0,
             "total_actions": stats.total_actions or 0,
         }
+
+
+# ── Per-agent SLO & live metrics ───────────────────────────
+
+
+@router.get("/slos")
+async def get_slos(
+    _: User = Depends(require_permission(Permission.OBSERVABILITY_VIEW)),
+):
+    """Per-agent SLO status: p95 latency and success rate vs thresholds."""
+    results = agent_metrics.check_all_slos()
+    return {
+        agent: {
+            "p95_latency_ms": r.p95_latency_ms,
+            "slo_p95_latency_ms": r.slo_p95_latency_ms,
+            "p95_ok": r.p95_ok,
+            "success_rate": r.success_rate,
+            "slo_min_success_rate": r.slo_min_success_rate,
+            "success_rate_ok": r.success_rate_ok,
+            "sample_count": r.sample_count,
+            "all_ok": r.all_ok,
+        }
+        for agent, r in results.items()
+    }
+
+
+@router.get("/agents/live")
+async def get_live_agent_metrics(
+    _: User = Depends(require_permission(Permission.OBSERVABILITY_VIEW)),
+):
+    """Live per-agent metrics from the in-memory ring buffer.
+
+    Returns latency histograms, success rates, cost breakdowns,
+    and SLO status for every agent that has recorded executions.
+    """
+    summaries = {}
+    for agent in list(agent_metrics._buffers.keys()):
+        summaries[agent] = agent_metrics.get_agent_summary(agent)
+        slo = agent_metrics.check_slo(agent)
+        summaries[agent]["slo"] = {
+            "p95_ok": slo.p95_ok,
+            "success_rate_ok": slo.success_rate_ok,
+            "all_ok": slo.all_ok,
+        }
+    return {"agents": summaries, "timestamp": utc_now().isoformat()}
+
+
+@router.get("/agents/{agent_name}/live")
+async def get_live_agent_detail(
+    agent_name: str,
+    _: User = Depends(require_permission(Permission.OBSERVABILITY_VIEW)),
+):
+    """Live metrics for a single agent."""
+    summary = agent_metrics.get_agent_summary(agent_name)
+    slo = agent_metrics.check_slo(agent_name)
+    summary["slo"] = {
+        "p95_latency_ms": slo.p95_latency_ms,
+        "slo_p95_latency_ms": slo.slo_p95_latency_ms,
+        "p95_ok": slo.p95_ok,
+        "success_rate": slo.success_rate,
+        "slo_min_success_rate": slo.slo_min_success_rate,
+        "success_rate_ok": slo.success_rate_ok,
+        "sample_count": slo.sample_count,
+        "all_ok": slo.all_ok,
+    }
+    return summary
+
+
+# ── Agent Registry ────────────────────────────────────────
+
+
+@router.get("/registry")
+async def get_registry(
+    _: User = Depends(require_permission(Permission.OBSERVABILITY_VIEW)),
+):
+    """List all registered agent specs from the dynamic registry."""
+    from ecommerce_ops.agents.factory import agent_factory
+
+    return {
+        "agents": agent_factory.list_agents(),
+        "spec_count": len(agent_registry),
+        "errors": agent_registry.load_errors,
+    }
+
+
+@router.post("/registry/reload")
+async def reload_registry(
+    _: User = Depends(require_permission(Permission.OBSERVABILITY_VIEW)),
+):
+    """Hot-reload: re-scan YAML specs and rebuild all agents."""
+    from ecommerce_ops.agents.factory import agent_factory
+
+    result = agent_factory.reload()
+    return {
+        "status": "ok",
+        "loaded": result["loaded"],
+        "errors": result["errors"],
+        "agents": result["agents"],
+    }
 
 
 # ── Health ─────────────────────────────────────────────────

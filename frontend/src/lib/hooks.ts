@@ -64,6 +64,23 @@ export function useAgentStatus() {
   })
 }
 
+export function useSetAgentAutonomy() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      agentId,
+      level,
+    }: {
+      agentId: string
+      level: "shadow" | "supervised" | "autonomous"
+    }) => agentApi.setAutonomy(agentId, level),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["agents"] })
+      qc.invalidateQueries({ queryKey: ["analytics"] })
+    },
+  })
+}
+
 export function useAnalytics() {
   return useQuery({
     queryKey: ["analytics"],

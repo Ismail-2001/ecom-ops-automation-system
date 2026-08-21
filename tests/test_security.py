@@ -14,8 +14,42 @@ from ecommerce_ops.security.models import (
 from ecommerce_ops.security.role_manager import (
     RoleManager,
     _hash_api_key,
+    _legacy_hash_api_key,
     _verify_api_key_hash,
 )
+
+# ── Role Manager Unit Tests ───────────────────────────────
+
+
+def test_legacy_hash_verified_with_warning_metric():
+    from ecommerce_ops.api.metrics import METRIC_LEGACY_API_KEY_USES
+
+    key = "legacy_key_000"
+    legacy = _legacy_hash_api_key(key)
+    before = METRIC_LEGACY_API_KEY_USES._value.get()
+    assert _verify_api_key_hash(key, legacy) is True
+    assert _verify_api_key_hash("wrong_key", legacy) is False
+    assert METRIC_LEGACY_API_KEY_USES._value.get() > before
+
+
+def test_legacy_hash_rejected_after_sunset(monkeypatch):
+    import ecommerce_ops.security.role_manager as role_manager_module
+    from ecommerce_ops.api.metrics import METRIC_LEGACY_API_KEY_REJECTED
+
+    monkeypatch.setattr(
+        role_manager_module,
+        "LEGACY_HASH_SUNSET_UTC",
+        datetime(2020, 1, 1),
+    )
+    key = "legacy_key_001"
+    legacy = _legacy_hash_api_key(key)
+    fresh = _hash_api_key(key)
+    before = METRIC_LEGACY_API_KEY_REJECTED._value.get()
+    assert _verify_api_key_hash(key, legacy) is False
+    assert METRIC_LEGACY_API_KEY_REJECTED._value.get() > before
+    # PBKDF2 keys are unaffected by the sunset
+    assert _verify_api_key_hash(key, fresh) is True
+
 
 # ── Role Manager Unit Tests ───────────────────────────────
 
@@ -48,7 +82,7 @@ def test_api_only_has_limited_permissions():
 
 
 def test_role_definitions_are_system_roles():
-    for role, definition in DEFAULT_ROLES.items():
+    for _role, definition in DEFAULT_ROLES.items():
         assert definition.is_system is True
 
 

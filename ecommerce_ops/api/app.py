@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import desc, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +18,7 @@ from ecommerce_ops.api.cart_recovery import router as cart_recovery_router
 from ecommerce_ops.api.core_routes import router as core_router
 from ecommerce_ops.api.customer_support import router as customer_support_router
 from ecommerce_ops.api.demo import router as demo_router
+from ecommerce_ops.api.integrations import router as integrations_router
 from ecommerce_ops.api.memory import router as memory_router
 from ecommerce_ops.api.metrics import (
     METRIC_DB_CONNECTION_POOL,
@@ -27,6 +28,7 @@ from ecommerce_ops.api.middleware import setup_middleware
 from ecommerce_ops.api.observability import router as observability_router
 from ecommerce_ops.api.security import router as security_router
 from ecommerce_ops.api.shopify import router as shopify_router
+from ecommerce_ops.api.sso import router as sso_router
 from ecommerce_ops.api.versioning import APIVersionMiddleware, create_v1_router
 from ecommerce_ops.api.ws import WS_TICKET_TTL_SECONDS, ws_manager, ws_ticket_store
 from ecommerce_ops.config import Environment
@@ -65,6 +67,7 @@ SERVER_START_TIME = time.time()
 async def _pipeline_task_handler(payload: Dict[str, Any]):
     """Handler for Redis-backed pipeline tasks."""
     run_id = payload.get("run_id", "")
+    shop_domain = payload.get("shop_domain")
     async with async_session_factory() as session:
         res = await session.execute(select(StoreSettings).where(StoreSettings.id == 1))
         db_settings = res.scalar_one_or_none()
@@ -79,7 +82,7 @@ async def _pipeline_task_handler(payload: Dict[str, Any]):
             )
             session.add(db_settings)
             await session.commit()
-    await run_pipeline_task(run_id, db_settings)
+    await run_pipeline_task(run_id, db_settings, shop_domain=shop_domain)
 
 
 async def _init_task_queue() -> Optional["RedisTaskQueue"]:
@@ -278,8 +281,14 @@ app.include_router(memory_router)
 # Include Security routes
 app.include_router(security_router)
 
+# Include SSO routes
+app.include_router(sso_router)
+
 # Include Demo routes
 app.include_router(demo_router)
+
+# Include Integration routes (outbound webhooks)
+app.include_router(integrations_router, prefix="/api")
 
 # Include Core routes (approvals, agents, settings, analytics, health)
 app.include_router(core_router, prefix="/api")
@@ -294,6 +303,7 @@ v1_router = create_v1_router(
     security_router,
     demo_router,
     core_router,
+    integrations_router=integrations_router,
 )
 app.include_router(v1_router)
 app.add_middleware(APIVersionMiddleware)
@@ -644,12 +654,24 @@ async def ws_stats(
     return ws_manager.get_stats()
 
 
+class RunRequest(BaseModel):
+    """Trigger a pipeline run, optionally scoped to an installed store."""
+
+    shop_domain: Optional[str] = Field(
+        None,
+        description="Scope the run to an OAuth-installed store "
+        "(e.g. my-store.myshopify.com). Omit to use the env-configured store.",
+    )
+
+
 @app.post("/api/run")
 async def trigger_run(
+    body: Optional[RunRequest] = None,
     _: User = Depends(require_permission(Permission.AGENTS_EXECUTE)),
     db: AsyncSession = Depends(get_db_session),
 ):
     run_id = str(uuid.uuid4())
+    shop_domain = body.shop_domain if body is not None else None
     res = await db.execute(select(StoreSettings).where(StoreSettings.id == 1))
     db_settings = res.scalar_one_or_none()
     if not db_settings:
@@ -669,13 +691,20 @@ async def trigger_run(
     if redis_task_queue is not None:
         task_id = await redis_task_queue.enqueue(
             "pipeline",
-            {"run_id": run_id},
+            {"run_id": run_id, "shop_domain": shop_domain},
             priority=TaskPriority.HIGH,
         )
     else:
-        task_id = await task_queue.enqueue("pipeline", run_pipeline_task, run_id, db_settings)
+        task_id = await task_queue.enqueue(
+            "pipeline", run_pipeline_task, run_id, db_settings, shop_domain
+        )
 
-    return {"message": "Operations cycle triggered", "run_id": run_id, "task_id": task_id}
+    return {
+        "message": "Operations cycle triggered",
+        "run_id": run_id,
+        "shop_domain": shop_domain,
+        "task_id": task_id,
+    }
 
 
 @app.get("/api/tasks/{task_id}")

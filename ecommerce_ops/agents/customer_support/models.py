@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from ecommerce_ops.utils import utc_now
+
 
 class TicketStatus(StrEnum):
     OPEN = "open"
@@ -94,7 +96,7 @@ class SupportTicket(BaseModel):
     product_id: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
     updated_at: Optional[datetime] = None
     first_response_at: Optional[datetime] = None
     resolved_at: Optional[datetime] = None
@@ -134,7 +136,7 @@ class TicketMessage(BaseModel):
     content: str
     is_internal: bool = False
     attachments: List[Dict[str, str]] = Field(default_factory=list)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
     class Config:
@@ -204,7 +206,7 @@ class KnowledgeArticle(BaseModel):
     tags: List[str] = Field(default_factory=list)
     helpful_count: int = 0
     not_helpful_count: int = 0
-    last_updated: datetime = Field(default_factory=datetime.utcnow)
+    last_updated: datetime = Field(default_factory=utc_now)
     is_published: bool = True
 
     class Config:

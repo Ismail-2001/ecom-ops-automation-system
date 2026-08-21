@@ -4,6 +4,7 @@ OAuth flow, webhooks, and sync endpoints.
 """
 
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -177,14 +178,28 @@ async def shopify_webhook(
 async def sync_shopify_data(
     background_tasks: BackgroundTasks,
     full: bool = Query(False, description="Full sync or incremental"),
+    shop_domain: Optional[str] = Query(
+        None, description="Scope sync to an OAuth-installed store"
+    ),
     _: User = Depends(require_permission(Permission.SHOPIFY_SYNC)),
 ):
     """Trigger data synchronization from Shopify."""
     from ecommerce_ops.config import settings as app_settings
+    from ecommerce_ops.pipeline.runner import _resolve_shop_credentials
 
-    shop_domain = app_settings.SHOPIFY_SHOP_DOMAIN
-    access_token_raw = app_settings.SHOPIFY_ACCESS_TOKEN
-    access_token = access_token_raw.get_secret_value() if access_token_raw else None
+    resolved_domain, resolved_token = await _resolve_shop_credentials(shop_domain)
+    if shop_domain and resolved_domain is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No active credential for shop {shop_domain}",
+        )
+
+    shop_domain = resolved_domain or app_settings.SHOPIFY_SHOP_DOMAIN
+    access_token = resolved_token or (
+        app_settings.SHOPIFY_ACCESS_TOKEN.get_secret_value()
+        if app_settings.SHOPIFY_ACCESS_TOKEN
+        else None
+    )
 
     if not shop_domain or not access_token:
         raise HTTPException(

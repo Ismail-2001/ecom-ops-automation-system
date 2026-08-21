@@ -1,252 +1,140 @@
-"""
-Agent Factory
+"""Agent Factory
+
 Unified interface for LLM and rule-based agents with automatic fallback.
 Tries LLM agent first; on failure, falls back to rule-based agent.
+
+Now driven by the dynamic ``AgentRegistry`` — adding a new agent is a
+YAML spec + a Python class.  Zero factory edits required.
 """
+
+from __future__ import annotations
 
 import logging
 import threading
 import time
 from typing import Any, Dict, Optional
 
-from ecommerce_ops.agents._base import BaseAgent
-from ecommerce_ops.agents.fraud import FraudAgent
-from ecommerce_ops.agents.fraud_llm import FraudDetectionAgentLLM
-from ecommerce_ops.agents.inventory import InventoryAgent
-from ecommerce_ops.agents.inventory_llm import InventoryManagementAgentLLM
-from ecommerce_ops.agents.marketing import MarketingAgent
-from ecommerce_ops.agents.marketing_llm import MarketingAutomationAgentLLM
-from ecommerce_ops.agents.pricing import PricingAgent
-from ecommerce_ops.agents.reviews import ReviewsAgent
+from ecommerce_ops.agents.registry import AgentSpec, agent_registry
+from ecommerce_ops.observability.agent_metrics import (
+    AgentExecutionRecord,
+    agent_metrics,
+)
 
 logger = logging.getLogger("ecommerce_ops.agents.factory")
 
 
 class AgentFactory:
-    """
-    Factory that creates agent instances with LLM-first, rule-based fallback.
+    """Creates ``UnifiedAgent`` instances driven by the agent registry.
 
-    Each agent node in the supervisor graph gets a UnifiedAgent that:
-    1. Tries the LLM variant first (richer analysis, guardrails, message bus)
-    2. On any LLM failure, silently falls back to the rule-based variant
-    3. Returns decisions in the same format the supervisor expects
+    Thread-safe with double-checked locking.  Agents are lazily created
+    on first ``get_agent(name)`` call.  Call ``reload()`` to pick up
+    new/changed YAML specs at runtime.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._agents: Dict[str, UnifiedAgent] = {}
         self._lock = threading.Lock()
+        self._ensure_registry_loaded()
 
-    def get_agent(self, name: str) -> "UnifiedAgent":
-        """Get or create an agent instance, thread-safe with double-checked locking."""
+    def _ensure_registry_loaded(self) -> None:
+        """Scan the specs directory once (idempotent)."""
+        if len(agent_registry) == 0:
+            agent_registry.scan()
+
+    def get_agent(self, name: str) -> UnifiedAgent:
+        """Get or create an agent instance."""
         agent = self._agents.get(name)
         if agent is not None:
             return agent
         with self._lock:
             agent = self._agents.get(name)
             if agent is None:
-                agent = self._create_unified(name)
+                agent = self._build_unified(name)
                 self._agents[name] = agent
         return agent
 
-    def _create_unified(self, name: str) -> "UnifiedAgent":
-        if name == "fraud":
-            return UnifiedAgent(
-                name="fraud",
-                llm_agent=FraudDetectionAgentLLM(),
-                rule_agent=FraudAgent(),
-                llm_method="analyze",
-                rule_method="run",
-                input_adapter=self._adapt_fraud_input,
-                output_adapter=self._adapt_fraud_output,
-            )
-        elif name == "inventory":
-            return UnifiedAgent(
-                name="inventory",
-                llm_agent=InventoryManagementAgentLLM(),
-                rule_agent=InventoryAgent(),
-                llm_method="analyze",
-                rule_method="run",
-                input_adapter=self._adapt_inventory_input,
-                output_adapter=self._adapt_inventory_output,
-            )
-        elif name == "pricing":
-            return UnifiedAgent(
-                name="pricing",
-                llm_agent=None,
-                rule_agent=PricingAgent(),
-                llm_method=None,
-                rule_method="run",
-                input_adapter=None,
-                output_adapter=None,
-            )
-        elif name == "reviews":
-            return UnifiedAgent(
-                name="reviews",
-                llm_agent=None,
-                rule_agent=ReviewsAgent(),
-                llm_method=None,
-                rule_method="run",
-                input_adapter=None,
-                output_adapter=None,
-            )
-        elif name == "marketing":
-            return UnifiedAgent(
-                name="marketing",
-                llm_agent=MarketingAutomationAgentLLM(),
-                rule_agent=MarketingAgent(),
-                llm_method="create_campaign",
-                rule_method="run",
-                input_adapter=self._adapt_marketing_input,
-                output_adapter=self._adapt_marketing_output,
-            )
-        else:
-            raise ValueError(f"Unknown agent: {name}")
+    def reload(self) -> Dict[str, Any]:
+        """Re-scan specs and rebuild all cached agents.
 
-    # ── Input Adapters (state → LLM agent format) ──────────
-
-    def _adapt_fraud_input(self, state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Select the single highest-value active order for fraud analysis.
-
-        The LLM agent analyzes one order per call, so a list must never be
-        passed as ``order_data``. Choosing the highest-value order ensures the
-        riskiest order is always analyzed; the rule-based agent still handles
-        the full order set in fallback.
+        Returns a summary dict with ``loaded``, ``errors``, ``agents``.
         """
-        orders = state.get("active_orders", [])
-        if not orders:
-            return None
-        order = max(orders, key=lambda o: float(o.get("order_total") or 0))
-        if not isinstance(order, dict):
-            return None
-        line_items = order.get("line_items") or []
+        with self._lock:
+            agent_registry.scan()
+            self._agents.clear()
+            loaded = list(agent_registry.specs.keys())
+            errors = agent_registry.load_errors
+            # Pre-warm all registered agents
+            for spec in agent_registry:
+                try:
+                    self._agents[spec.agent_id] = self._build_unified(spec.agent_id)
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to build agent %s: %s", spec.agent_id, exc
+                    )
+                    errors.append(
+                        {"agent_id": spec.agent_id, "error": str(exc)[:200]}
+                    )
         return {
-            "id": order.get("id", ""),
-            "customer_email": order.get("customer_email", ""),
-            "total": float(order.get("order_total") or 0),
-            "item_count": len(line_items),
-            "line_items": line_items,
+            "loaded": loaded,
+            "errors": errors,
+            "agents": list(self._agents.keys()),
         }
 
-    def _adapt_inventory_input(self, state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Map inventory state to a single product dict for the LLM agent.
+    def list_agents(self) -> Dict[str, Dict[str, Any]]:
+        """Return metadata for every registered agent."""
+        result = {}
+        for spec in agent_registry:
+            result[spec.agent_id] = {
+                "display_name": spec.display_name,
+                "description": spec.description,
+                "has_llm": spec.llm_class is not None,
+                "slo_p95_latency_ms": spec.slo_p95_latency_ms,
+                "slo_min_success_rate": spec.slo_min_success_rate,
+                "state_keys": spec.state_keys,
+            }
+        return result
 
-        Real stock from the state is surfaced as ``current_stock`` so the LLM
-        never sees an injected ``0``. The most urgent (lowest-stock) item is
-        analyzed first; the rule-based agent covers the full catalog in fallback.
-        """
-        items = [i for i in state.get("inventory_data", []) if isinstance(i, dict) and i.get("sku")]
-        if not items:
-            return None
-        item = min(items, key=lambda i: float(i.get("stock") or 0))
-        stock = item.get("stock")
-        if stock is None:
-            stock = item.get("current_stock")
-        return {
-            "product_id": str(item.get("variant_id") or item.get("product_id") or item.get("sku")),
-            "sku": item.get("sku"),
-            "name": item.get("name") or item.get("sku"),
-            "current_stock": int(stock or 0),
-            "price": float(item.get("price") or 0),
-            "unit_cost": float(item.get("unit_cost") or item.get("price") or 0),
-            "daily_sales": float(item.get("daily_sales") or 0),
-        }
+    def _build_unified(self, name: str) -> UnifiedAgent:
+        """Build a UnifiedAgent from registry spec."""
+        spec = agent_registry.get(name)
+        if spec is None:
+            raise ValueError(
+                f"Unknown agent: '{name}'. "
+                f"Available: {list(agent_registry.specs.keys())}"
+            )
+        return _build_from_spec(spec)
 
-    def _adapt_marketing_input(self, state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        items = state.get("inventory_data", [])
-        if not items:
-            return None
-        low_stock = [i for i in items if 0 < i.get("stock", 0) < 20]
-        if not low_stock:
-            return None
-        return {
-            "trigger": "low_stock",
-            "customer": {"segment": "all"},
-            "cart_value": 0,
-        }
 
-    # ── Output Adapters (LLM result → state decisions) ─────
+def _build_from_spec(spec: AgentSpec) -> UnifiedAgent:
+    """Construct a UnifiedAgent from an AgentSpec."""
+    llm_agent = spec.instantiate_llm()
+    rule_agent = spec.instantiate_rule()
+    input_adapter = spec.resolve_callable(spec.input_adapter)
+    output_adapter = spec.resolve_callable(spec.output_adapter)
 
-    def _adapt_fraud_output(self, llm_result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        if not llm_result or llm_result.get("decision") == "approve":
-            return None
-        return {
-            "action_type": "HOLD_ORDER",
-            "reasoning": llm_result.get("reasoning", ""),
-            "confidence": llm_result.get("confidence", 0.5),
-            "requires_approval": llm_result.get("confidence", 0.5) < 0.9,
-            "data": {
-                "risk_score": llm_result.get("risk_score", 0.5),
-                "risk_factors": llm_result.get("risk_factors", []),
-                "recommended_actions": llm_result.get("recommended_actions", []),
-            },
-        }
-
-    def _adapt_inventory_output(self, llm_result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Adapt inventory LLM result into a decision; never fabricate values.
-
-        Confidence comes from the LLM (with approval derived from it), and a
-        DRAFT_PO is only produced when all execution-critical values (sku,
-        positive reorder quantity) are actually present. Otherwise None is
-        returned so the pipeline falls back to the rule-based agent instead of
-        inventing a purchase order.
-        """
-        if not llm_result:
-            return None
-        if llm_result.get("recommended_action") != "reorder":
-            return None
-        sku = llm_result.get("sku")
-        reorder_quantity = llm_result.get("reorder_quantity")
-        if not sku or not reorder_quantity or reorder_quantity <= 0:
-            return None
-        confidence = float(llm_result.get("confidence") or 0)
-        return {
-            "action_type": "DRAFT_PO",
-            "reasoning": llm_result.get("reasoning") or "",
-            "confidence": confidence,
-            "requires_approval": confidence < 0.9,
-            "data": {
-                "sku": sku,
-                "quantity_to_order": int(reorder_quantity),
-                "product_id": llm_result.get("product_id") or "",
-                "urgency": llm_result.get("urgency") or "medium",
-                "demand_forecast": llm_result.get("demand_forecast") or {},
-                "cost_impact": float(llm_result.get("cost_impact") or 0),
-            },
-        }
-
-    def _adapt_marketing_output(self, llm_result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        if not llm_result:
-            return None
-        confidence = float(llm_result.get("confidence") or 0)
-        return {
-            "action_type": "DRAFT_MARKETING_CAMPAIGN",
-            "reasoning": llm_result.get("reasoning", ""),
-            "confidence": confidence,
-            "requires_approval": confidence < 0.95
-            or True,  # marketing campaigns always require approval
-            "data": {
-                "campaign_name": llm_result.get("campaign_name", ""),
-                "campaign_type": llm_result.get("campaign_type", "email"),
-                "target_audience": llm_result.get("target_audience", {}),
-                "content": llm_result.get("content", {}),
-                "estimated_reach": llm_result.get("estimated_reach", 0),
-                "estimated_ctr": llm_result.get("estimated_ctr", 0),
-                "estimated_revenue": llm_result.get("estimated_revenue", 0),
-            },
-        }
+    return UnifiedAgent(
+        name=spec.agent_id,
+        llm_agent=llm_agent,
+        rule_agent=rule_agent,
+        llm_method=spec.llm_method,
+        rule_method=spec.rule_method,
+        input_adapter=input_adapter,
+        output_adapter=output_adapter,
+    )
 
 
 class UnifiedAgent:
-    """
-    Wraps an LLM agent and a rule-based agent into a single interface.
-    Tries LLM first, falls back to rule-based on failure.
+    """Wraps an LLM agent and a rule-based agent into a single interface.
+
+    Tries LLM first, falls back to rule-based on failure.  Emits
+    per-agent metrics via ``agent_metrics`` on every execution.
     """
 
     def __init__(
         self,
         name: str,
-        llm_agent: Optional[BaseAgent],
-        rule_agent: BaseAgent,
+        llm_agent: Optional[Any],
+        rule_agent: Any,
         llm_method: Optional[str],
         rule_method: str,
         input_adapter: Optional[Any],
@@ -261,11 +149,16 @@ class UnifiedAgent:
         self.output_adapter = output_adapter
 
     async def run(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Execute the agent with LLM-first, rule-based fallback.
-        Returns state with decisions appended.
-        """
+        """Execute the agent with LLM-first, rule-based fallback."""
         start = time.monotonic()
+        fallback_used = False
+        tokens_in = 0
+        tokens_out = 0
+        cost_usd = 0.0
+        decision_type: Optional[str] = None
+        confidence: Optional[float] = None
+        success = True
+        error_msg: Optional[str] = None
 
         # Try LLM agent if available
         if self.llm_agent and self.llm_method:
@@ -274,7 +167,20 @@ class UnifiedAgent:
                 if llm_input is not None:
                     llm_method = getattr(self.llm_agent, self.llm_method)
                     llm_result = await llm_method(llm_input)
-                    adapted = self.output_adapter(llm_result) if self.output_adapter else None
+
+                    # Extract token/cost from LLM response
+                    from ecommerce_ops.agents.cost_tracker import track_llm_cost
+
+                    cost_data = track_llm_cost(
+                        llm_result, agent=self.name, model="gemini-2.0-flash"
+                    )
+                    tokens_in = cost_data.get("tokens_input", 0)
+                    tokens_out = cost_data.get("tokens_output", 0)
+                    cost_usd = cost_data.get("cost_usd", 0.0)
+
+                    adapted = (
+                        self.output_adapter(llm_result) if self.output_adapter else None
+                    )
 
                     if adapted:
                         decision = self.rule_agent.create_decision(
@@ -286,6 +192,8 @@ class UnifiedAgent:
                         )
                         decisions = [*state.get("decisions", []), decision]
                         state["decisions"] = decisions
+                        decision_type = adapted.get("action_type")
+                        confidence = adapted.get("confidence")
                         elapsed = (time.monotonic() - start) * 1000
                         logger.info(
                             "Agent %s (LLM) completed in %.1fms",
@@ -295,10 +203,12 @@ class UnifiedAgent:
                         return state
 
             except Exception as e:
+                fallback_used = True
+                error_msg = str(e)[:200]
                 logger.warning(
                     "Agent %s LLM failed (%s), falling back to rule-based",
                     self.name,
-                    str(e),
+                    error_msg,
                 )
 
         # Fallback: rule-based agent
@@ -312,12 +222,32 @@ class UnifiedAgent:
             )
             return result
         except Exception as e:
+            success = False
+            error_msg = str(e)[:200]
             logger.exception("Agent %s rule-based also failed: %s", self.name, e)
             errors = state.get("errors", [])
-            errors.append({"agent": self.name, "error": str(e)})
+            errors.append({"agent": self.name, "error": error_msg})
             state["errors"] = errors
             return state
+        finally:
+            elapsed_ms = (time.monotonic() - start) * 1000
+            agent_metrics.record(
+                AgentExecutionRecord(
+                    agent=self.name,
+                    started_at=start,
+                    finished_at=time.monotonic(),
+                    latency_ms=elapsed_ms,
+                    success=success,
+                    fallback_used=fallback_used,
+                    tokens_input=tokens_in,
+                    tokens_output=tokens_out,
+                    cost_usd=cost_usd,
+                    error=error_msg,
+                    decision_type=decision_type,
+                    confidence=confidence,
+                )
+            )
 
 
-# Singleton
+# Singleton — backward-compatible with existing imports
 agent_factory = AgentFactory()

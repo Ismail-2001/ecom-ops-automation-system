@@ -13,7 +13,7 @@ from ecommerce_ops.agents._base import BaseAgent
 from ecommerce_ops.agents.cost_tracker import track_llm_cost
 from ecommerce_ops.agents.message_bus import AgentMessage, MessageTopics, message_bus
 from ecommerce_ops.memory.llm_cache import llm_response_cache
-from ecommerce_ops.safety.guardrails import guardrail_manager
+from ecommerce_ops.safety.guardrails import guardrail_blocked, guardrail_manager
 
 logger = logging.getLogger("ecommerce_ops.agents.inventory_llm")
 
@@ -99,7 +99,11 @@ class InventoryManagementAgentLLM(BaseAgent):
         # Guardrail
         input_check = guardrail_manager.check_input(str(product_data))
         if not input_check.passed:
-            return self._safe_fallback(product_data)
+            logger.warning(
+                "Input guardrail blocked for InventoryAgent; quarantining for HITL review: %s",
+                input_check.violations,
+            )
+            return guardrail_blocked(input_check.violations)
 
         # LLM response cache
         cached = await llm_response_cache.get(context, namespace="inventory_management")
@@ -213,7 +217,3 @@ Provide your inventory analysis with recommended action, reorder quantity, and u
             "demand_forecast": {"30_days": int(daily_sales * 30)},
             "cost_impact": 0,
         }
-
-    def _safe_fallback(self, product_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Safe fallback."""
-        return self._rule_based_fallback(product_data)

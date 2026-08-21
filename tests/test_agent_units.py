@@ -95,6 +95,25 @@ class TestBaseAgent:
                 await agent.run({})
 
     @pytest.mark.asyncio
+    async def test_testing_env_never_constructs_real_provider(self):
+        from ecommerce_ops.agents._base import BaseAgent, _DisabledLLM
+        from ecommerce_ops.config import Environment
+
+        class TestAgent(BaseAgent):
+            async def run(self, state): return state
+
+        with patch("ecommerce_ops.agents._base.settings") as mock_settings:
+            mock_settings.GOOGLE_API_KEY = MagicMock(get_secret_value=MagicMock(return_value="google-key"))
+            mock_settings.DEEPSEEK_API_KEY = MagicMock(get_secret_value=MagicMock(return_value="sk-test"))
+            mock_settings.ENV = Environment.TESTING
+            mock_settings.LLM_MODEL = "test-model"
+            agent = TestAgent("TestAgent")
+            assert isinstance(agent.llm, _DisabledLLM)
+            assert agent.llm.with_structured_output("x") is agent.llm
+            with pytest.raises(RuntimeError, match="hermetic guard"):
+                await agent.llm.ainvoke([])
+
+    @pytest.mark.asyncio
     async def test_load_memory_context(self):
         from ecommerce_ops.agents._base import BaseAgent
         class TestAgent(BaseAgent):
@@ -127,12 +146,12 @@ class TestBaseAgent:
             mock_settings.LLM_MODEL = "test-model"
             mock_settings.DEEPSEEK_BASE_URL = ""
             agent = TestAgent("TestAgent")
-        with patch("ecommerce_ops.agents._base.get_recent_memories", new_callable=AsyncMock, return_value=[]):
-            with patch("ecommerce_ops.agents._base.get_pattern_insight", new_callable=AsyncMock, return_value=None):
-                with patch("ecommerce_ops.agents._base.memory_retrieval") as mock_mr:
-                    mock_mr.get_context_window = AsyncMock(return_value="")
-                    result = await agent.load_memory_context({})
-                    assert result == ""
+        with patch("ecommerce_ops.agents._base.get_recent_memories", new_callable=AsyncMock, return_value=[]), patch(
+            "ecommerce_ops.agents._base.get_pattern_insight", new_callable=AsyncMock, return_value=None
+        ), patch("ecommerce_ops.agents._base.memory_retrieval") as mock_mr:
+            mock_mr.get_context_window = AsyncMock(return_value="")
+            result = await agent.load_memory_context({})
+            assert result == ""
 
     @pytest.mark.asyncio
     async def test_load_memory_context_includes_vector_context(self):
@@ -145,13 +164,13 @@ class TestBaseAgent:
             mock_settings.LLM_MODEL = "test-model"
             mock_settings.DEEPSEEK_BASE_URL = ""
             agent = TestAgent("TestAgent")
-        with patch("ecommerce_ops.agents._base.get_recent_memories", new_callable=AsyncMock, return_value=[]):
-            with patch("ecommerce_ops.agents._base.get_pattern_insight", new_callable=AsyncMock, return_value=None):
-                with patch("ecommerce_ops.agents._base.memory_retrieval") as mock_mr:
-                    mock_mr.get_context_window = AsyncMock(return_value="[episodic] fraud pattern on repeat orders")
-                    result = await agent.load_memory_context({})
-                    assert "Relevant knowledge" in result
-                    assert "fraud pattern" in result
+        with patch("ecommerce_ops.agents._base.get_recent_memories", new_callable=AsyncMock, return_value=[]), patch(
+            "ecommerce_ops.agents._base.get_pattern_insight", new_callable=AsyncMock, return_value=None
+        ), patch("ecommerce_ops.agents._base.memory_retrieval") as mock_mr:
+            mock_mr.get_context_window = AsyncMock(return_value="[episodic] fraud pattern on repeat orders")
+            result = await agent.load_memory_context({})
+            assert "Relevant knowledge" in result
+            assert "fraud pattern" in result
 
     @pytest.mark.asyncio
     async def test_load_vector_context_fail_open(self):
@@ -184,12 +203,13 @@ class TestBaseAgent:
             agent_id="TestAgent", action_type="TEST",
             reasoning="Test reasoning", confidence_score=0.8,
         )
-        with patch("ecommerce_ops.agents._base.store_decision_memory", new_callable=AsyncMock) as mock_store:
-            with patch("ecommerce_ops.agents._base.agent_memory_manager") as mock_mgr:
-                mock_mgr.store_decision = AsyncMock()
-                await agent.persist_decision(decision)
-                mock_store.assert_called_once()
-                mock_mgr.store_decision.assert_called_once()
+        with patch("ecommerce_ops.agents._base.store_decision_memory", new_callable=AsyncMock) as mock_store, patch(
+            "ecommerce_ops.agents._base.agent_memory_manager"
+        ) as mock_mgr:
+            mock_mgr.store_decision = AsyncMock()
+            await agent.persist_decision(decision)
+            mock_store.assert_called_once()
+            mock_mgr.store_decision.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_persist_decision_durable_fail_open(self):
@@ -206,11 +226,12 @@ class TestBaseAgent:
             agent_id="TestAgent", action_type="TEST",
             reasoning="Test reasoning", confidence_score=0.8,
         )
-        with patch("ecommerce_ops.agents._base.store_decision_memory", new_callable=AsyncMock) as mock_store:
-            with patch("ecommerce_ops.agents._base.agent_memory_manager") as mock_mgr:
-                mock_mgr.store_decision = AsyncMock(side_effect=RuntimeError("db down"))
-                await agent.persist_decision(decision)
-                mock_store.assert_called_once()
+        with patch("ecommerce_ops.agents._base.store_decision_memory", new_callable=AsyncMock) as mock_store, patch(
+            "ecommerce_ops.agents._base.agent_memory_manager"
+        ) as mock_mgr:
+            mock_mgr.store_decision = AsyncMock(side_effect=RuntimeError("db down"))
+            await agent.persist_decision(decision)
+            mock_store.assert_called_once()
 
 
 class TestFraudAgent:
@@ -267,7 +288,7 @@ class TestFraudAgent:
         agent = FraudAgent.__new__(FraudAgent)
         items = [{"sku": f"s{i}"} for i in range(15)]
         order = {"id": "order-3", "order_total": 5000, "line_items": items}
-        score, factors = agent._assess_risk(order)
+        score, _factors = agent._assess_risk(order)
         assert score == 80
 
     @pytest.mark.asyncio
@@ -281,9 +302,8 @@ class TestFraudAgent:
             reasoning="test", confidence_score=0.8,
         ))
         state = {"active_orders": []}
-        with patch.object(agent, "create_decision") as mock_create:
-            result = await agent.run(state)
-            assert result["decisions"] == []
+        result = await agent.run(state)
+        assert result["decisions"] == []
 
     @pytest.mark.asyncio
     async def test_run_with_high_risk_order(self):

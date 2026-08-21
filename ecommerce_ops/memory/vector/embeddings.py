@@ -10,6 +10,8 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
+from ecommerce_ops.config import Environment, settings
+
 logger = logging.getLogger("ecommerce_ops.memory.vector.embeddings")
 
 # Dimension expected by the persistent vector store (persistent_store.py).
@@ -188,6 +190,12 @@ class EmbeddingService:
         M5: The semantic path is disabled unless a REAL embedding provider
         with compatible dimensions is configured. No fake MD5 fallback.
         """
+        if settings.ENV == Environment.TESTING:
+            logger.warning(
+                "Embeddings disabled in TESTING (hermetic guard) — using mock "
+                "embeddings so tests never dial a provider"
+            )
+            return MockEmbeddingProvider()
         if os.getenv("OPENAI_API_KEY"):
             provider = OpenAIEmbeddingProvider()
         elif os.getenv("GOOGLE_API_KEY"):

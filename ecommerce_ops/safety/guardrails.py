@@ -1,5 +1,14 @@
 """
 Guardrails - Prompt injection protection and hallucination detection.
+
+NOTE ON SCOPE: the prompt-injection guard in this module is a *signature
+tripwire*, not a complete defense. Regex blocklists catch lazy/obvious attack
+patterns but are trivially bypassed (synonyms, other languages, encoding
+tricks, splitting instructions across fields, or framing attacks as legitimate
+content). Treat it as one cheap layer of defense-in-depth. For any agent that
+consumes truly untrusted input (e.g. public-facing chat or review text) a
+second layer is required — an LLM-based injection classifier and/or stronger
+input provenance — before trusting that input with tools or data.
 """
 
 import logging
@@ -8,6 +17,27 @@ from dataclasses import dataclass, field
 from typing import Any, ClassVar, Dict, List, Optional
 
 logger = logging.getLogger("ecommerce_ops.safety.guardrails")
+
+
+# Key placed on an LLM-analyzer result dict when untrusted input fails the
+# prompt-injection tripwire. Output adapters treat its presence as a hard
+# signal to quarantine the decision for human review (requires_approval=True),
+# so a blocked input can never auto-execute through the rule-based fallback.
+GUARDRAIL_VIOLATION_KEY = "guardrail_violation"
+
+
+def guardrail_blocked(violations: List[str]) -> Dict[str, Any]:
+    """Canonical "input blocked by guardrail" result.
+
+    Returned instead of an LLM analysis when ``check_input`` fails, so the
+    downstream output adapter can force the decision to HITL review with the
+    offending patterns attached as evidence. Confidence is pinned to 0.0.
+    """
+    return {
+        GUARDRAIL_VIOLATION_KEY: list(violations),
+        "confidence": 0.0,
+        "decision": "reject",
+    }
 
 
 @dataclass
@@ -21,7 +51,14 @@ class GuardrailResult:
 
 
 class PromptInjectionGuard:
-    """Protect against prompt injection attacks."""
+    """Signature tripwire for obvious prompt-injection patterns.
+
+    This is an explicitly *limited* defense: it flags well-known attack
+    phrasings (role overrides, embedded system/user tags, script/SQL idioms)
+    but makes no guarantee of catching adversarial or paraphrased attempts.
+    See the module docstring for the recommended second layer when handling
+    untrusted input.
+    """
 
     DANGEROUS_PATTERNS: ClassVar[List[str]] = [
         r"ignore\s+(all\s+)?previous\s+instructions",

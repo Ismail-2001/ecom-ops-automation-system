@@ -96,7 +96,7 @@ class AbandonedCart(BaseModel):
     recovery_email_opened: bool = False
     recovery_link_clicked: bool = False
     recovery_completed: bool = False
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
     abandoned_at: datetime | None = None
     recovered_at: datetime | None = None
     expires_at: datetime | None = None

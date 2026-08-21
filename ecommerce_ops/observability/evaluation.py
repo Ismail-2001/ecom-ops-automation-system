@@ -10,6 +10,8 @@ from typing import Any, ClassVar, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from ecommerce_ops.utils import utc_now
+
 logger = logging.getLogger("ecommerce_ops.observability.evaluation")
 
 
@@ -65,7 +67,7 @@ class AgentEvaluation(BaseModel):
     agent_name: str
     decision_id: str
     trace_id: Optional[str] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=utc_now)
     metrics: List[EvaluationResult] = Field(default_factory=list)
     overall_score: float = 0.0
     passed: bool = False

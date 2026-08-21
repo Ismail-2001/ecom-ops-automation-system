@@ -260,6 +260,39 @@ GET /api/agents/status
 }
 ```
 
+### Set Agent Autonomy
+
+```
+PATCH /api/agents/{agent_id}/autonomy
+```
+
+Sets an agent's autonomy level (promote/demote). Graduation also happens automatically after 50 consecutive high-confidence decisions; this endpoint forces the level for an operator.
+
+**Permission**: `agents:configure` (RBAC) / operator API key.
+
+**Request**:
+```json
+{
+  "level": "autonomous"
+}
+```
+
+**Response**:
+```json
+{
+  "agent_id": "FraudAgent",
+  "status": "active",
+  "streak": 51,
+  "autonomy_level": "autonomous",
+  "total_decisions": 128,
+  "total_approvals": 121,
+  "total_rejections": 7,
+  "avg_confidence": 0.97
+}
+```
+
+Allowed levels: `shadow`, `supervised`, `autonomous`. Unknown agents return `404`, invalid levels `400`.
+
 ### Trigger Agent
 
 ```
@@ -359,6 +392,9 @@ POST /api/shopify/sync
   "data_types": ["products", "orders", "customers"]
 }
 ```
+
+**Query Parameters**:
+- `shop_domain` (optional string): Scope the sync to a specific store. The store must have an active OAuth credential (`ShopifyShopCredential`); otherwise a `400` is returned. When omitted, the environment-configured store is used.
 
 **Response**:
 ```json
@@ -664,7 +700,7 @@ GET /api/memory/sessions
 ### Create User
 
 ```
-POST /api/security/users
+POST /security/users
 ```
 
 **Request**:
@@ -690,7 +726,7 @@ POST /api/security/users
 ### Create API Key
 
 ```
-POST /api/security/api-keys
+POST /security/api-keys
 ```
 
 **Request**:
@@ -716,7 +752,7 @@ POST /api/security/api-keys
 ### List Roles
 
 ```
-GET /api/security/roles
+GET /security/roles
 ```
 
 **Response**:
@@ -744,7 +780,7 @@ GET /api/security/roles
 ### Check Permissions
 
 ```
-POST /api/security/check-permissions
+POST /security/check-permissions
 ```
 
 **Request**:
@@ -766,7 +802,7 @@ POST /api/security/check-permissions
 ### Audit Summary
 
 ```
-GET /api/security/audit/summary?hours=24
+GET /security/audit/summary?hours=24
 ```
 
 **Response**:
@@ -886,6 +922,107 @@ POST /api/demo/demo/run/{scenario_id}
   }
 }
 ```
+
+## Pipeline Trigger
+
+### Trigger Pipeline Run
+
+```
+POST /api/run
+```
+
+**Request** (optional body):
+```json
+{
+  "shop_domain": "my-other-store.myshopify.com"
+}
+```
+
+**Parameters**:
+- `shop_domain` (optional string): Run the pipeline against a specific store. The store must have an active OAuth credential; the pipeline falls back to the environment store when omitted. The response echoes `shop_domain`.
+
+**Response**:
+```json
+{
+  "status": "started",
+  "run_id": "run_123",
+  "shop_domain": "my-other-store.myshopify.com"
+}
+```
+
+## Integrations
+
+### Outbound Webhooks
+
+All endpoints require the `integrations:manage` permission (admin by default).
+
+#### List Webhooks
+
+```
+GET /api/integrations/webhooks
+```
+
+**Response**:
+```json
+{
+  "webhooks": [
+    {
+      "id": 1,
+      "name": "orders-webhook",
+      "url": "https://hooks.example.com/h/acct/9",
+      "events": ["hitl_request", "daily_summary"],
+      "enabled": true,
+      "created_at": "2026-08-19T00:00:00Z"
+    }
+  ]
+}
+```
+
+#### Create Webhook
+
+```
+POST /api/integrations/webhooks
+```
+
+**Request**:
+```json
+{
+  "name": "orders-webhook",
+  "url": "https://hooks.example.com/h/acct/9",
+  "events": ["hitl_request", "daily_summary"],
+  "secret": "optional-shared-secret",
+  "enabled": true
+}
+```
+
+**Notes**:
+- `url` must be `https://`; `events` must be known event types (or `["*"]` for all).
+- A unique `name` is enforced (409 on duplicates).
+- When `secret` is set, dispatched payloads include an `X-Ecom-Ops-Signature` header (HMAC-SHA256 hex of the body).
+
+**Response**: `201` with the serialized webhook (see list shape).
+
+#### Update Webhook
+
+```
+PATCH /api/integrations/webhooks/{id}
+```
+
+Partial update of `name`, `url`, `events`, `secret`, or `enabled`.
+
+#### Delete Webhook
+
+```
+DELETE /api/integrations/webhooks/{id}
+```
+
+#### Test Webhook
+
+```
+POST /api/integrations/webhooks/{id}/test
+```
+
+Sends a test payload to the webhook URL. **Response**: `200` on success.
 
 ## Error Responses
 

@@ -174,6 +174,7 @@ class MemoryRetrievalService:
     async def get_context_window(
         self,
         query: str,
+        agent_name: Optional[str] = None,
         session_id: Optional[str] = None,
         max_tokens: int = 4000,
     ) -> str:
@@ -181,6 +182,7 @@ class MemoryRetrievalService:
         # Recall relevant memories
         results = await self.recall(
             query=query,
+            agent_name=agent_name,
             session_id=session_id,
             max_results=20,
             min_similarity=0.6,

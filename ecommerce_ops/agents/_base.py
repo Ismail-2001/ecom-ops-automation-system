@@ -18,6 +18,30 @@ from ecommerce_ops.memory.vector.retrieval import memory_retrieval
 logger = structlog.get_logger(__name__)
 
 
+class _DisabledLLM:
+    """Hermetic test fallback that fails fast with zero network I/O.
+
+    Used in TESTING so tests stay deterministic regardless of ambient API
+    keys (a developer shell may export real GOOGLE_API_KEY / DEEPSEEK_API_KEY).
+    Raises a structured failure the same way a provider outage would, so
+    callers still exercise their documented rule-based fallback paths.
+    """
+
+    def __init__(self, model: str, temperature: int = 0, timeout: int = 30) -> None:
+        self.model = model
+        self.temperature = temperature
+        self.timeout = timeout
+
+    def with_structured_output(self, *args: Any, **kwargs: Any) -> "_DisabledLLM":
+        return self
+
+    async def ainvoke(self, *args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError(
+            "LLM disabled in TESTING environment (hermetic guard); configure a "
+            "real provider key in a non-testing environment."
+        )
+
+
 def _build_memory_query(agent_name: str, state: dict[str, Any]) -> str:
     """Build a semantic query string from the current agent state snapshot."""
     parts = [f"{agent_name} operational decision"]
@@ -46,7 +70,9 @@ class BaseAgent(abc.ABC):  # noqa: B024
         deepseek_key = (
             settings.DEEPSEEK_API_KEY.get_secret_value() if settings.DEEPSEEK_API_KEY else None
         )
-        if google_key:
+        if settings.ENV == Environment.TESTING:
+            self.llm = _DisabledLLM(model=settings.LLM_MODEL, temperature=0, timeout=30)
+        elif google_key:
             self.llm = ChatGoogleGenerativeAI(
                 model="gemini-2.0-flash",
                 google_api_key=google_key,

@@ -40,6 +40,7 @@ def create_v1_router(
     security_router,
     demo_router,
     core_router=None,
+    integrations_router=None,
 ) -> APIRouter:
     """Create a versioned API router with all v1 endpoints.
 
@@ -55,6 +56,8 @@ def create_v1_router(
     v1.include_router(memory_router, prefix="/memory", tags=["v1"])
     v1.include_router(security_router, prefix="/security", tags=["v1"])
     v1.include_router(demo_router, prefix="/demo", tags=["v1"])
+    if integrations_router is not None:
+        v1.include_router(integrations_router, prefix="/integrations", tags=["v1"])
     if core_router is not None:
         v1.include_router(core_router, tags=["v1"])
 

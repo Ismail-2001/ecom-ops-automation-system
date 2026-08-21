@@ -10,7 +10,18 @@ const stableSettingsData: Record<string, unknown> = {
 
 vi.mock('@/lib/hooks', () => ({
   useHealth: vi.fn(() => ({ data: { status: 'ok', version: 'v2.5.0' }, isLoading: false })),
-  useAgentStatus: vi.fn(() => ({ data: [], isLoading: false })),
+  useAgentStatus: vi.fn(() => ({
+    data: [
+      { agent_id: "FraudAgent", status: "active", streak: 12, autonomy_level: "supervised", total_decisions: 1200, total_approvals: 1100, avg_confidence: 0.94 },
+      { agent_id: "InventoryAgent", status: "active", streak: 8, autonomy_level: "supervised", total_decisions: 800, total_approvals: 750, avg_confidence: 0.89 },
+      { agent_id: "PricingAgent", status: "active", streak: 3, autonomy_level: "shadow", total_decisions: 400, total_approvals: 380, avg_confidence: 0.91 },
+      { agent_id: "ReviewsAgent", status: "maintenance", streak: 1, autonomy_level: "shadow", total_decisions: 200, total_approvals: 190, avg_confidence: 0.87 },
+      { agent_id: "MarketingAgent", status: "active", streak: 0, autonomy_level: "shadow", total_decisions: 100, total_approvals: 95, avg_confidence: 0.85 },
+      { agent_id: "CartRecoveryAgent", status: "active", streak: 5, autonomy_level: "supervised", total_decisions: 300, total_approvals: 280, avg_confidence: 0.88 },
+      { agent_id: "SupportAgent", status: "active", streak: 2, autonomy_level: "shadow", total_decisions: 150, total_approvals: 140, avg_confidence: 0.86 },
+    ],
+    isLoading: false,
+  })),
   useApprovals: vi.fn(() => ({ data: [], isLoading: false })),
   useAnalytics: vi.fn(() => ({
     data: {
@@ -49,6 +60,7 @@ vi.mock('@/lib/hooks', () => ({
   useProducts: vi.fn(() => ({ data: [], isLoading: false })),
   useReviews: vi.fn(() => ({ data: [], isLoading: false })),
   useSecurityEvents: vi.fn(() => ({ data: [], isLoading: false })),
+  useSetAgentAutonomy: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
 }))
 
 vi.mock('@/app/providers', () => ({

@@ -45,7 +45,7 @@ class MemoryEntry(BaseModel):
     user_id: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
     source: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
     last_accessed: Optional[datetime] = None
     access_count: int = 0
     expiry: Optional[datetime] = None
@@ -117,7 +117,7 @@ class MemoryConsolidation(BaseModel):
     consolidated_content: str
     summary: str
     key_points: List[str] = Field(default_factory=list)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
     memory_type: MemoryType = MemoryType.SEMANTIC
     importance: MemoryImportance = MemoryImportance.HIGH
 
@@ -128,8 +128,8 @@ class SessionContext(BaseModel):
     session_id: str
     user_id: Optional[str] = None
     agent_name: Optional[str] = None
-    start_time: datetime = Field(default_factory=datetime.utcnow)
-    last_activity: datetime = Field(default_factory=datetime.utcnow)
+    start_time: datetime = Field(default_factory=utc_now)
+    last_activity: datetime = Field(default_factory=utc_now)
     conversation_turns: int = 0
     memories_created: int = 0
     memories_accessed: int = 0

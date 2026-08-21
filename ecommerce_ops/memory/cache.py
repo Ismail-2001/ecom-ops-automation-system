@@ -8,7 +8,7 @@ import redis.asyncio as redis
 from redis.exceptions import ConnectionError, TimeoutError
 
 from ecommerce_ops.api.metrics import METRIC_CACHE_HIT_RATIO
-from ecommerce_ops.config import settings
+from ecommerce_ops.config import Environment, settings
 from ecommerce_ops.infra.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
 from ecommerce_ops.infra.retry import async_retry_decorator
 
@@ -52,6 +52,8 @@ class RedisCache:
     async def get_client(self) -> Optional[redis.Redis]:
         if self._redis is not None:
             return self._redis
+        if settings.ENV == Environment.TESTING:
+            return None
         now = time.monotonic()
         if now - self._last_connect_attempt < REDIS_RECONNECT_BACKOFF_SECONDS:
             return None

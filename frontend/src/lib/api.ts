@@ -99,6 +99,11 @@ export const healthApi = {
 export const agentApi = {
   list: () => request<{ agents: AgentStatus[]; total: number }>(`${API_PREFIX}/agents`),
   status: () => request<AgentStatus[]>(`${API_PREFIX}/agents/status`),
+  setAutonomy: (agentId: string, level: "shadow" | "supervised" | "autonomous") =>
+    request<AgentStatus>(`${API_PREFIX}/agents/${encodeURIComponent(agentId)}/autonomy`, {
+      method: "PATCH",
+      body: JSON.stringify({ level }),
+    }),
   deploy: (agentType: string) =>
     request<{ status: string; agent_type: string }>(`${API_PREFIX}/agents/deploy`, {
       method: "POST",

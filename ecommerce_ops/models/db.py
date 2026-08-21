@@ -236,6 +236,9 @@ class PipelineRun(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     run_id = Column(String, unique=True, nullable=False, index=True)
+    # Multi-store (week 9): the shop this run is scoped to. NULL means the
+    # default (env-configured) store.
+    shop_domain = Column(String, nullable=True, index=True)
     status = Column(String, nullable=False, default="pending", index=True)
     data_source = Column(String, nullable=True)
     decisions_count = Column(Integer, nullable=False, default=0)
@@ -276,7 +279,90 @@ class OutboxMessage(Base):
     __table_args__ = ()
 
 
+# ── A/B Shadow Experiments (Week 8) ─────────────────────────
+
+
+class ABExperimentRun(Base):
+    """Record of a shadow-mode A/B comparison between the production agent
+    decision (variant A) and a configured baseline strategy (variant B).
+
+    In shadow mode nothing is executed, so this table captures *which* strategy
+    would have produced the higher-scoring decision, along with the divergence
+    between the two.  Teams use the aggregate winner/divergence to promote
+    better thresholds or rule baselines without touching live traffic.
+    """
+
+    __tablename__ = "ab_experiment_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(String, nullable=False, index=True)
+    agent_name = Column(String, nullable=False, index=True)
+    action_type = Column(String, nullable=False)
+    variant_a_score = Column(Float, nullable=False)
+    variant_b_score = Column(Float, nullable=False)
+    divergence = Column(Float, nullable=False)
+    winner = Column(String, nullable=False, index=True)  # "A" | "B" | "tie"
+    baseline_params = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (Index("ix_ab_experiment_runs_agent_created", "agent_name", "created_at"),)
+
+
 # ── Shopify OAuth Credentials (C9) ────────────────────────
+
+
+class ServerCredential(Base):
+    """Server-level credential rotation ledger (week 9).
+
+    Holds only SHA-256 hashes of the server API key material so a database
+    leak never exposes usable secrets.  ``status`` is one of:
+
+    - ``active``  — currently accepted for API auth.
+    - ``rotated`` — previous key, still accepted during the grace window
+      (``valid_until``), giving zero-downtime credential rotation.
+    - ``revoked`` — no longer accepted.
+
+    The env-key (``API_KEY``) acts as the bootstrap credential; the first
+    rotation writes it here as ``rotated`` so it can be cut over explicitly.
+    """
+
+    __tablename__ = "server_credentials"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    key_hash = Column(String, unique=True, nullable=False, index=True)
+    key_prefix = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="active", index=True)
+    valid_until = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    rotated_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (Index("ix_server_credentials_status_valid_until", "status", "valid_until"),)
+
+
+class OutboundWebhook(Base):
+    """Outbound webhook destinations (custom HTTPS endpoints).
+
+    Each row is an HTTPS endpoint that receives event notifications the system
+    emits (HITL requests, pipeline failures, agent graduations, daily
+    summaries, …).  ``events`` is a JSON list of event types this hook should
+    receive; the wildcard ``"*"`` matches every event.
+
+    ``secret`` (optional) is used to HMAC-SHA256 sign the delivered payload so
+    the receiving side can verify authenticity via the ``X-Ecom-Ops-Signature``
+    header.  It is stored locally like the Shopify OAuth tokens and should be
+    treated as sensitive.
+    """
+
+    __tablename__ = "outbound_webhooks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, unique=True, nullable=False, index=True)
+    url = Column(String, nullable=False)
+    secret = Column(String, nullable=True)
+    events = Column(JSON, nullable=False)  # list[str]; "*" means all events
+    enabled = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
 
 class ShopifyShopCredential(Base):

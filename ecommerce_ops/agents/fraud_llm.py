@@ -13,7 +13,7 @@ from ecommerce_ops.agents._base import BaseAgent
 from ecommerce_ops.agents.cost_tracker import track_llm_cost
 from ecommerce_ops.agents.message_bus import AgentMessage, MessageTopics, message_bus
 from ecommerce_ops.memory.llm_cache import llm_response_cache
-from ecommerce_ops.safety.guardrails import guardrail_manager
+from ecommerce_ops.safety.guardrails import guardrail_blocked, guardrail_manager
 
 logger = logging.getLogger("ecommerce_ops.agents.fraud_llm")
 
@@ -89,8 +89,11 @@ class FraudDetectionAgentLLM(BaseAgent):
         # Guardrail: check input for injection
         input_check = guardrail_manager.check_input(str(order_data))
         if not input_check.passed:
-            logger.warning(f"Input guardrail failed: {input_check.violations}")
-            return self._safe_fallback(order_data)
+            logger.warning(
+                "Input guardrail blocked for FraudAgent; quarantining for HITL review: %s",
+                input_check.violations,
+            )
+            return guardrail_blocked(input_check.violations)
 
         # LLM response cache
         cached = await llm_response_cache.get(context, namespace="fraud_detection")

@@ -273,6 +273,41 @@ class ShopifyClient:
         """Get checkouts (abandoned carts)."""
         return await self._get_with_retry("/checkouts.json", params={"limit": min(limit, 250)})
 
+    # ── Discounts / Price Rules (marketing_campaign) ────────
+
+    async def create_price_rule(self, rule: Dict) -> Dict:
+        """Create a Shopify price rule (campaign discount).
+
+        ``rule`` maps directly to the Admin API body, e.g.
+        ``{"title": ..., "value_type": "percentage", "value": "-15.0",
+           "target_type": "line_item", "target_selection": "all"}``.
+        """
+        return await self._post_with_retry("/price_rules.json", json={"price_rule": rule})
+
+    async def create_discount_code(self, price_rule_id: str, code: str) -> Dict:
+        """Attach a discount code to an existing price rule."""
+        return await self._post_with_retry(
+            f"/price_rules/{price_rule_id}/discount_codes.json",
+            json={"discount_code": {"code": code}},
+        )
+
+    # ── Product Reviews (review_response) ───────────────────
+    # Requires the Shopify Product Reviews API scope
+    # (``read_product_reviews`` / ``write_product_reviews``). If the shop has
+    # not installed/approved the reviews app, Shopify returns 403/404 and the
+    # call is reported as an honest capability failure by the executor.
+
+    async def get_product_reviews(self, limit: int = 50) -> Dict:
+        """List product reviews (requires reviews API scope)."""
+        return await self._get_with_retry("/product_reviews.json", params={"limit": min(limit, 50)})
+
+    async def post_review_reply(self, review_id: str, reply: str) -> Dict:
+        """Post a reply to a product review (requires reviews API scope)."""
+        return await self._post_with_retry(
+            f"/product_reviews/{review_id}/replies.json",
+            json={"product_review_reply": {"reply": reply, "status": "published"}},
+        )
+
     # ── Shop Info ───────────────────────────────────────────
 
     async def get_shop_info(self) -> Dict:

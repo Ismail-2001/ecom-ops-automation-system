@@ -9,11 +9,15 @@ import hmac
 import logging
 import secrets
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set
 
 from sqlalchemy import select
 
+from ecommerce_ops.api.metrics import (
+    METRIC_LEGACY_API_KEY_REJECTED,
+    METRIC_LEGACY_API_KEY_USES,
+)
 from ecommerce_ops.models.db import RBACApiKey, RBACUser, async_session_factory
 from ecommerce_ops.security.models import (
     DEFAULT_ROLES,
@@ -29,6 +33,18 @@ from ecommerce_ops.utils import utc_now
 logger = logging.getLogger("ecommerce_ops.security.role_manager")
 
 PBKDF2_ITERATIONS = 600_000
+
+# Hard cutover for the legacy unsalted SHA-256 API-key hash format. Until this
+# date (naive UTC, matching ``utc_now()``) legacy hashes are accepted but logged
+# and metered; after it, the verifier refuses them outright to force rotation.
+LEGACY_HASH_SUNSET_UTC = datetime(2027, 1, 1)
+
+# The auth middleware synthesizes this principal for the master (operator) API
+# key without a backing DB row (see AuthenticationMiddleware._operator_user).
+# Some operations — e.g. issuing an RBAC API key — require the owning user to
+# exist so that issued keys stay validable (validate_api_key -> get_user).
+OPERATOR_USER_ID = "operator"
+OPERATOR_USER_EMAIL = "operator@local"
 
 
 def _fast_hash_api_key(key: str) -> str:
@@ -62,9 +78,24 @@ def _verify_api_key_hash(key: str, stored: str) -> bool:
     """Verify a key against a stored hash.
 
     Supports the current salted PBKDF2 format and falls back to legacy
-    unsalted SHA-256 so existing keys keep working until rotated.
+    unsalted SHA-256 so existing keys keep working until rotated. Every legacy
+    use is logged and metered so migration progress is observable, and after
+    ``LEGACY_HASH_SUNSET_UTC`` the legacy path is refused outright.
     """
     if stored.count("$") != 3:
+        if utc_now() >= LEGACY_HASH_SUNSET_UTC:
+            logger.warning(
+                "Legacy SHA-256 API-key hash rejected: past sunset %s, rotate the key",
+                LEGACY_HASH_SUNSET_UTC.date(),
+            )
+            METRIC_LEGACY_API_KEY_REJECTED.inc()
+            return False
+        logger.warning(
+            "Legacy unsalted SHA-256 API-key hash used for authentication; "
+            "rotate the key to PBKDF2 before %s",
+            LEGACY_HASH_SUNSET_UTC.date(),
+        )
+        METRIC_LEGACY_API_KEY_USES.inc()
         return hmac.compare_digest(_legacy_hash_api_key(key), stored)
 
     try:
@@ -257,6 +288,37 @@ class RoleManager:
             db_user.login_count = (db_user.login_count or 0) + 1
             await session.commit()
             return True
+
+    async def ensure_operator_user(self) -> None:
+        """Idempotently persist the synthetic operator principal as an RBACUser.
+
+        The admission middleware authenticates the master API key as a
+        SUPER_ADMIN principal named ``operator`` that has no DB row.  Before
+        issuing an RBAC key for that principal we must materialize it, otherwise
+        ``create_api_key`` rejects an unknown owner and any key tied to a
+        missing user would never resolve through ``validate_api_key``.
+        """
+        async with async_session_factory() as session:
+            existing = (
+                await session.execute(
+                    select(RBACUser).where(RBACUser.id == OPERATOR_USER_ID)
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                return
+            session.add(
+                RBACUser(
+                    id=OPERATOR_USER_ID,
+                    email=OPERATOR_USER_EMAIL,
+                    name="Operator",
+                    role=Role.SUPER_ADMIN.value,
+                    is_active=True,
+                    permissions=[p.value for p in set(Permission)],
+                    metadata_json={},
+                )
+            )
+            await session.commit()
+            logger.info("Auto-provisioned operator RBAC user")
 
     # ── Permission Checks ──────────────────────────────────
 

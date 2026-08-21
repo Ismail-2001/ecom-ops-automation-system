@@ -22,6 +22,7 @@ os.environ["DEEPSEEK_API_KEY"] = "sk-test-key"
 from httpx import ASGITransport, AsyncClient
 
 # Register JSONB adapter for SQLite (maps JSONB to JSON)
+from sqlalchemy import select, update
 from sqlalchemy.dialects.sqlite.base import SQLiteTypeCompiler
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -617,6 +618,114 @@ class TestAgents:
         app.dependency_overrides.clear()
         assert r.status_code == 200
         assert r.json() == []
+
+
+class TestAgentsAutonomy:
+    @pytest.mark.asyncio
+    async def test_promote_to_supervised(self, seeded_session):
+        app.dependency_overrides.update(_overrides(seeded_session))
+        transport = ASGITransport(app=app)
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
+            r = await c.patch(
+                "/api/agents/FraudAgent/autonomy", json={"level": "supervised"}
+            )
+        app.dependency_overrides.clear()
+        assert r.status_code == 200
+        body = r.json()
+        assert body["agent_id"] == "FraudAgent"
+        assert body["autonomy_level"] == "supervised"
+        row = (
+            await seeded_session.execute(
+                select(AgentStatus).where(AgentStatus.agent_id == "FraudAgent")
+            )
+        ).scalar_one()
+        assert row.autonomy_level == "supervised"
+
+    @pytest.mark.asyncio
+    async def test_graduate_to_autonomous(self, seeded_session):
+        app.dependency_overrides.update(_overrides(seeded_session))
+        transport = ASGITransport(app=app)
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
+            r = await c.patch(
+                "/api/agents/InventoryAgent/autonomy",
+                json={"level": "autonomous", "reason": "manual override"},
+            )
+        app.dependency_overrides.clear()
+        assert r.status_code == 200
+        assert r.json()["autonomy_level"] == "autonomous"
+        audit = (
+            await seeded_session.execute(
+                select(AuditEntry).where(AuditEntry.action_type == "autonomy_change")
+            )
+        ).scalars().all()
+        assert len(audit) == 1
+        assert audit[0].agent == "InventoryAgent"
+        assert audit[0].details == {
+            "previous_level": "shadow",
+            "new_level": "autonomous",
+            "reason": "manual override",
+        }
+
+    @pytest.mark.asyncio
+    async def test_demote_from_autonomous(self, seeded_session):
+        app.dependency_overrides.update(_overrides(seeded_session))
+        await seeded_session.execute(
+            update(AgentStatus)
+            .where(AgentStatus.agent_id == "PricingAgent")
+            .values(autonomy_level="autonomous")
+        )
+        await seeded_session.commit()
+        transport = ASGITransport(app=app)
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
+            r = await c.patch(
+                "/api/agents/PricingAgent/autonomy", json={"level": "supervised"}
+            )
+        app.dependency_overrides.clear()
+        assert r.status_code == 200
+        assert r.json()["autonomy_level"] == "supervised"
+
+    @pytest.mark.asyncio
+    async def test_invalid_level_returns_400(self, seeded_session):
+        app.dependency_overrides.update(_overrides(seeded_session))
+        transport = ASGITransport(app=app)
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
+            r = await c.patch(
+                "/api/agents/FraudAgent/autonomy", json={"level": "rogue"}
+            )
+        app.dependency_overrides.clear()
+        assert r.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_unknown_agent_returns_404(self, seeded_session):
+        app.dependency_overrides.update(_overrides(seeded_session))
+        transport = ASGITransport(app=app)
+        async with AsyncClient(
+            transport=transport, base_url="http://test", headers=AUTH_HEADER
+        ) as c:
+            r = await c.patch(
+                "/api/agents/DoesNotExist/autonomy", json={"level": "autonomous"}
+            )
+        app.dependency_overrides.clear()
+        assert r.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_requires_auth(self, seeded_session):
+        app.dependency_overrides.update(_overrides(seeded_session))
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            r = await c.patch(
+                "/api/agents/FraudAgent/autonomy", json={"level": "autonomous"}
+            )
+        app.dependency_overrides.clear()
+        assert r.status_code == 401
 
 
 # ---------------------------------------------------------------------------

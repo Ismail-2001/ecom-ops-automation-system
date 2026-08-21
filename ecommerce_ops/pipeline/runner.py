@@ -1,5 +1,7 @@
 import asyncio
+import functools
 import logging
+import math
 import uuid
 from datetime import timedelta
 from typing import Any, Dict, Optional
@@ -8,10 +10,13 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ecommerce_ops.api.metrics import (
+    METRIC_AGENT_EXECUTION_ERRORS,
     METRIC_DECISIONS_AUTO_APPROVED,
     METRIC_DECISIONS_CREATED,
     METRIC_FINANCIAL_IMPACT,
     METRIC_PIPELINE_RUNS,
+    METRIC_SHOP_EXECUTION_DURATION,
+    METRIC_SHOP_EXECUTIONS,
 )
 from ecommerce_ops.api.ws import ws_manager
 from ecommerce_ops.config import Environment
@@ -19,6 +24,7 @@ from ecommerce_ops.config import settings as app_settings
 from ecommerce_ops.graph.supervisor import Supervisor
 from ecommerce_ops.infra.notifications import (
     notify_agent_graduated,
+    notify_execution_failed,
     notify_hitl_request,
     notify_pipeline_failed,
 )
@@ -31,6 +37,7 @@ from ecommerce_ops.models import (
     StoreSettings,
     async_session_factory,
 )
+from ecommerce_ops.observability.ab_testing import run_ab_experiment
 from ecommerce_ops.observability.evaluation import evaluation_framework
 from ecommerce_ops.observability.langfuse_client import langfuse_client
 from ecommerce_ops.pipeline.builder import build_payload_and_evidence
@@ -62,7 +69,11 @@ def _get_pipeline_lock(run_id: str) -> asyncio.Lock:
     return _pipeline_locks[run_id]
 
 
-async def _try_register_pipeline_run(run_id: str, session: AsyncSession) -> PipelineRun | None:
+async def _try_register_pipeline_run(
+    run_id: str,
+    session: AsyncSession,
+    shop_domain: Optional[str] = None,
+) -> PipelineRun | None:
     """Attempt to register a pipeline run idempotently.
 
     Uses ``INSERT … ON CONFLICT DO NOTHING`` against the ``pipeline_runs``
@@ -80,7 +91,7 @@ async def _try_register_pipeline_run(run_id: str, session: AsyncSession) -> Pipe
 
         stmt = (
             dialect_insert(PipelineRun)
-            .values(run_id=run_id, status="running", started_at=utc_now())
+            .values(run_id=run_id, status="running", shop_domain=shop_domain, started_at=utc_now())
             .on_conflict_do_nothing(index_elements=[PipelineRun.run_id])
         )
         result = await session.execute(stmt)
@@ -96,13 +107,50 @@ async def _try_register_pipeline_run(run_id: str, session: AsyncSession) -> Pipe
 logger = logging.getLogger("ecommerce_ops.pipeline.runner")
 
 
-async def fetch_shopify_data() -> Optional[Dict[str, Any]]:
-    """Fetch real data from Shopify if credentials are configured."""
-    from ecommerce_ops.connectors.shopify.client import ShopifyClient
+async def _resolve_shop_credentials(
+    shop_domain: Optional[str] = None,
+) -> tuple[str | None, str | None]:
+    """Resolve Shopify credentials for a shop.
+
+    When ``shop_domain`` is given, the OAuth-installed credential for that
+    store (``shopify_shop_credentials``) is used — this powers multi-store
+    runs.  Otherwise the env-configured default store is used.  Returns
+    ``(shop_domain, access_token)`` or ``(None, None)`` when unavailable.
+    """
+    if shop_domain:
+        from ecommerce_ops.models.db import ShopifyShopCredential, async_session_factory
+
+        try:
+            async with async_session_factory() as session:
+                res = await session.execute(
+                    select(ShopifyShopCredential).where(
+                        ShopifyShopCredential.shop_domain == shop_domain,
+                        ShopifyShopCredential.is_active.is_(True),
+                    )
+                )
+                cred = res.scalar_one_or_none()
+        except Exception:
+            logger.warning("Failed to load shop credentials for %s", shop_domain, exc_info=True)
+            return None, None
+        if cred is None:
+            return None, None
+        return cred.shop_domain, cred.access_token
 
     shop_domain = app_settings.SHOPIFY_SHOP_DOMAIN
     access_token_raw = app_settings.SHOPIFY_ACCESS_TOKEN
     access_token = access_token_raw.get_secret_value() if access_token_raw else None
+    if not shop_domain or not access_token:
+        return None, None
+    return shop_domain, access_token
+
+
+async def fetch_shopify_data(
+    shop_domain: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Fetch real data from Shopify if credentials are configured."""
+    from ecommerce_ops.connectors.shopify.client import ShopifyClient
+
+    shop_domain, access_token = await _resolve_shop_credentials(shop_domain)
 
     if not shop_domain or not access_token:
         logger.debug("Shopify credentials not configured, using mock data")
@@ -232,6 +280,36 @@ ACTION_TYPE_AGENT_ALLOWLIST: dict[str, set[str]] = {
 }
 
 
+def _instrument_shop_execution(fn):
+    """Measure duration and record the outcome of a live Shopify action.
+
+    Decorates handlers that return ``(ok: bool, message: str)``.  The
+    counter differentiates ``executed`` from ``failed`` so alerting can key
+    on a rising failure rate per action type.
+    """
+
+    @functools.wraps(fn)
+    async def wrapper(action: ApprovalAction, *args, **kwargs) -> tuple[bool, str]:
+        import time as _t
+
+        start = _t.monotonic()
+        try:
+            ok, message = await fn(action, *args, **kwargs)
+            result = "executed" if ok else "failed"
+            return ok, message
+        except Exception:
+            result = "error"
+            raise
+        finally:
+            METRIC_SHOP_EXECUTIONS.labels(action_type=action.action_type, result=result).inc()
+            METRIC_SHOP_EXECUTION_DURATION.labels(action_type=action.action_type).observe(
+                _t.monotonic() - start
+            )
+
+    return wrapper
+
+
+@_instrument_shop_execution
 async def execute_shop_action(action: ApprovalAction) -> tuple[bool, str]:
     if action.shadow_mode:
         logger.info("[SHADOW] Simulating %s for %s", action.action_type, action.id)
@@ -256,9 +334,24 @@ async def execute_shop_action(action: ApprovalAction) -> tuple[bool, str]:
     # Live execution requires Shopify credentials; without them a real action
     # cannot be performed, so report an honest failure instead of a fabricated
     # "Executed" result.
-    shop_domain = app_settings.SHOPIFY_SHOP_DOMAIN
-    access_token_raw = app_settings.SHOPIFY_ACCESS_TOKEN
-    access_token = access_token_raw.get_secret_value() if access_token_raw else None
+    # Multi-store (week 9): actions whose payload carries a shop_domain are
+    # executed against THAT store's OAuth credentials; they never silently
+    # fall back to the env store (wrong-tenant execution would be a serious
+    # bug).  Without a shop_domain the env-configured store is used.
+    scoped_shop = (
+        action.payload.get("shop_domain") if isinstance(action.payload, dict) else None
+    )
+    shop_domain, access_token = await _resolve_shop_credentials(scoped_shop)
+    if scoped_shop and shop_domain is None:
+        logger.warning(
+            "[LIVE] Cannot execute %s for %s: shop %s has no active credential",
+            action.action_type,
+            action.id,
+            scoped_shop,
+        )
+        return False, (
+            f"execution requires an active credential for shop {scoped_shop}"
+        )
     if not shop_domain or not access_token:
         logger.warning(
             "[LIVE] Cannot execute %s for %s: Shopify not configured",
@@ -311,22 +404,84 @@ async def execute_shop_action(action: ApprovalAction) -> tuple[bool, str]:
             return True, f"Updated price for {sku} to {new_price}"
 
         if action.action_type == "purchase_order":
+            # A supplier PO has no standard Shopify Admin API equivalent; it
+            # belongs in an ERP/fulfilment system. Fail honest, never fabricate
+            # a "purchased" result.
+            location_id = payload.get("inventory_location_id")
+            reorder_qty = payload.get("reorder_quantity")
+            if not location_id or not reorder_qty:
+                return False, (
+                    "purchase_order requires inventory_location_id and reorder_quantity in payload"
+                )
             return False, (
-                "purchase_order requires inventory_location_id and reorder_quantity; not executed"
+                "purchase_order is a supplier-side action; it requires an ERP/"
+                "supplier integration that is not configured. Action recorded "
+                "for HITL follow-up instead of being executed."
             )
 
         if action.action_type == "review_response":
-            return False, (
-                "review_response requires a product reviews API scope that is not configured"
-            )
+            # Live reply via the Shopify Product Reviews API. The shop must
+            # have the reviews app installed and grant read/write review
+            # scopes; otherwise Shopify returns 4xx and we surface the honest
+            # capability failure below.
+            review_id = payload.get("review_id")
+            reply = payload.get("draft_response") or payload.get("reply")
+            if not review_id or not str(review_id).isdigit():
+                return False, (
+                    "review_response requires a numeric review_id and draft_response in payload"
+                )
+            await client.post_review_reply(str(review_id), str(reply))
+            logger.info("Posted reply to review %s", review_id)
+            return True, f"Posted public reply to review {review_id}"
 
         if action.action_type == "marketing_campaign":
-            return False, (
-                "marketing_campaign requires a marketing events API scope that is not configured"
+            # Live campaign creation: a price rule (percentage discount) plus
+            # a discount code. Codes are namespaced with the campaign to keep
+            # the operation idempotent across retries.
+            name = payload.get("campaign_name")
+            discount_percent = payload.get("discount_percent") or payload.get("discount")
+            code = payload.get("code") or "CAMPAIGN"
+            if not name or discount_percent is None:
+                return False, (
+                    "marketing_campaign requires campaign_name and discount_percent in payload"
+                )
+            try:
+                discount_percent = float(discount_percent)
+            except (TypeError, ValueError):
+                return False, "marketing_campaign discount_percent must be numeric"
+            if not math.isfinite(discount_percent):
+                return False, "marketing_campaign discount_percent must be finite"
+            percent = min(max(discount_percent, 0.0), 100.0)
+            rule_id = str(uuid.uuid4())
+            rule_title = f"{name} {utc_now():%Y-%m-%d}"
+            price_rule = await client.create_price_rule(
+                {
+                    "title": rule_title,
+                    "target_type": "line_item",
+                    "target_selection": "all",
+                    "allocation_method": "across",
+                    "value_type": "percentage",
+                    "value": f"-{percent:g}",
+                    "customer_selection": "all",
+                    "starts_at": utc_now().isoformat(timespec="seconds") + "Z",
+                }
             )
+            price_rule_id = str(
+                price_rule.get("price_rule", {}).get("id") or price_rule.get("id") or rule_id
+            )
+            discount_code = f"{code}-{rule_id[:8]}"
+            await client.create_discount_code(price_rule_id, discount_code)
+            logger.info(
+                "Created marketing campaign %s (price rule %s, code %s)",
+                name,
+                price_rule_id,
+                discount_code,
+            )
+            return True, f"Created campaign {rule_title} with code {discount_code}"
 
         return False, f"Unknown action type: {action.action_type}"
     except Exception as e:
+        METRIC_AGENT_EXECUTION_ERRORS.labels(agent=action.agent).inc()
         logger.error("Shop action %s for %s failed: %s", action.action_type, action.id, e)
         return False, str(e)
     finally:
@@ -402,7 +557,7 @@ async def update_agent_streak(agent_name: str, approved: bool, confidence: float
         )
 
 
-async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
+async def run_pipeline_task(run_id: str, db_settings: StoreSettings, shop_domain: Optional[str] = None):
     # Locked batch guard: prevent re-running the same pipeline
     lock = _get_pipeline_lock(run_id)
     if lock.locked():
@@ -411,7 +566,7 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
 
     # Idempotency: register run in PipelineRun table (C4)
     async with async_session_factory() as session:
-        pipeline_run = await _try_register_pipeline_run(run_id, session)
+        pipeline_run = await _try_register_pipeline_run(run_id, session, shop_domain=shop_domain)
         if pipeline_run is None:
             logger.warning("Pipeline run %s already registered, rejecting", run_id)
             raise RuntimeError(f"Pipeline run {run_id} has already completed")
@@ -419,8 +574,8 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
 
     # Fetch data OUTSIDE the lock — this is read-only I/O and should not
     # serialize unrelated pipeline runs.
-    logger.info("Starting pipeline run %s", run_id)
-    shopify_data = await fetch_shopify_data()
+    logger.info("Starting pipeline run %s (%s)", run_id, shop_domain or "default store")
+    shopify_data = await fetch_shopify_data(shop_domain=shop_domain)
 
     if shopify_data:
         inventory_data = shopify_data["inventory_data"]
@@ -604,6 +759,17 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
             settings = res_set.scalar_one()
             new_actions_count = 0
 
+            # Shadow-mode A/B: compare each decision against the rule-baseline
+            # variant and record which strategy would have won. Fail-open.
+            if settings.shadow_mode:
+                for d, evaluation in zip(decisions_list, evaluation_results, strict=False):
+                    await run_ab_experiment(
+                        decision=d,
+                        evaluation_a=evaluation,
+                        run_id=run_id,
+                        session=session,
+                    )
+
             for d in decisions_list:
                 mapped_type = DECISION_TYPE_MAP.get(d.action_type)
                 if mapped_type is None:
@@ -679,6 +845,13 @@ async def run_pipeline_task(run_id: str, db_settings: StoreSettings):
                         action.operator_notes = f"Auto-execution failed: {execution_msg}"
                         outbox.status = "failed"
                         outbox.error = execution_msg
+                        await notify_execution_failed(
+                            action_id=action_id,
+                            action_type=mapped_type,
+                            agent=d.agent_id,
+                            error=execution_msg,
+                            context="auto-execution",
+                        )
                     else:
                         outbox.status = "sent"
                         outbox.sent_at = utc_now()

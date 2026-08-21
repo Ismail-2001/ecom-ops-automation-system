@@ -11,6 +11,7 @@ from typing import Any, ClassVar, Dict, List, Optional, Set
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
+from ecommerce_ops.api.metrics import METRIC_SECURITY_AUDIT_DROPPED
 from ecommerce_ops.models.db import SecurityAuditLog, async_session_factory
 from ecommerce_ops.security.models import SecurityEvent
 from ecommerce_ops.utils import utc_now
@@ -22,7 +23,7 @@ class AuditEntry(BaseModel):
     """Single audit log entry (read model)."""
 
     id: int
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=utc_now)
     event_type: str
     action: str
     resource: str
@@ -122,6 +123,7 @@ class AuditLogger:
                 await session.commit()
         except Exception as e:
             logger.error("Failed to persist audit entry: %s", e)
+            METRIC_SECURITY_AUDIT_DROPPED.inc()
 
     # ── Convenience methods ────────────────────────────────
 

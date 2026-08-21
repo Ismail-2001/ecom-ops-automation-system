@@ -93,10 +93,13 @@ class TestCache:
 
     @pytest.mark.asyncio
     async def test_get_client_initializes(self):
+        from ecommerce_ops.config import Environment
         from ecommerce_ops.memory.cache import RedisCache
         rc = RedisCache()
         rc._redis = None
-        with patch("ecommerce_ops.memory.cache.redis") as mock_redis_mod:
+        with patch("ecommerce_ops.memory.cache.settings.ENV", Environment.DEVELOPMENT), patch(
+            "ecommerce_ops.memory.cache.redis"
+        ) as mock_redis_mod:
             mock_client = AsyncMock()
             mock_client.ping = AsyncMock()
             mock_redis_mod.from_url.return_value = mock_client
@@ -105,13 +108,28 @@ class TestCache:
 
     @pytest.mark.asyncio
     async def test_get_client_failure(self):
+        from ecommerce_ops.config import Environment
         from ecommerce_ops.memory.cache import RedisCache
         rc = RedisCache()
         rc._redis = None
-        with patch("ecommerce_ops.memory.cache.redis") as mock_redis_mod:
+        with patch("ecommerce_ops.memory.cache.settings.ENV", Environment.DEVELOPMENT), patch(
+            "ecommerce_ops.memory.cache.redis"
+        ) as mock_redis_mod:
             mock_redis_mod.from_url.side_effect = Exception("Connection refused")
             client = await rc.get_client()
             assert client is None
+
+    @pytest.mark.asyncio
+    async def test_get_client_skips_network_in_testing(self):
+        from ecommerce_ops.config import Environment, settings
+        from ecommerce_ops.memory.cache import RedisCache
+        rc = RedisCache()
+        rc._redis = None
+        assert settings.ENV == Environment.TESTING
+        with patch("ecommerce_ops.memory.cache.redis") as mock_redis_mod:
+            client = await rc.get_client()
+            assert client is None
+            mock_redis_mod.from_url.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_get_with_retry_no_client(self):

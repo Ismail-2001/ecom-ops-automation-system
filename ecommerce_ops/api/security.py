@@ -11,12 +11,15 @@ from pydantic import BaseModel
 
 from ecommerce_ops.security.audit import audit_logger
 from ecommerce_ops.security.auth import require_admin, require_auth
+from ecommerce_ops.security.credential_store import credential_store
 from ecommerce_ops.security.models import (
     Permission,
     Role,
+    SecurityEvent,
     User,
 )
-from ecommerce_ops.security.role_manager import role_manager
+from ecommerce_ops.security.role_manager import OPERATOR_USER_ID, role_manager
+from ecommerce_ops.security.secrets_rotation import secret_rotation
 from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.api.security")
@@ -53,6 +56,112 @@ class PermissionCheckRequest(BaseModel):
     permissions: List[Permission]
 
 
+class ServerKeyRotateRequest(BaseModel):
+    grace_days: int = 7
+
+
+# ── Server Credential Rotation (week 9) ────────────────────
+
+
+@router.post("/rotate/server-key")
+async def rotate_server_key(
+    req: ServerKeyRotateRequest,
+    admin: User = Depends(require_admin),
+):
+    """Rotate the server API key with a zero-downtime grace window.
+
+    Issues a new active credential and demotes every previously active
+    credential to ``rotated`` (still accepted until ``valid_until``).
+    The raw key is returned exactly once.
+    """
+    grace = max(1, min(req.grace_days, 30))
+    raw_key, key_prefix = await credential_store.start_rotation(grace_days=grace)
+
+    audit_logger.log_event(
+        SecurityEvent(
+            event_type="credential_rotation",
+            action="rotate_server_key",
+            resource="server_credential",
+            resource_id=key_prefix,
+            user_id=admin.id,
+            success=True,
+            details={"grace_days": grace, "key_prefix": key_prefix},
+        )
+    )
+
+    return {
+        "key": raw_key,  # Only shown once!
+        "key_prefix": key_prefix,
+        "grace_days": grace,
+        "message": (
+            f"Previous credentials remain valid for {grace} day(s). "
+            "Deploy the new key to all clients, then call "
+            "POST /security/rotate/server-key/finalize to cut over."
+        ),
+    }
+
+
+@router.post("/rotate/server-key/finalize")
+async def finalize_server_key_rotation(admin: User = Depends(require_admin)):
+    """Revoke all rotated credentials immediately (cutover)."""
+    revoked = await credential_store.finalize_rotation()
+
+    audit_logger.log_event(
+        SecurityEvent(
+            event_type="credential_rotation",
+            action="finalize_server_key_rotation",
+            resource="server_credential",
+            user_id=admin.id,
+            success=True,
+            details={"revoked_count": revoked},
+        )
+    )
+
+    return {"revoked_count": revoked, "message": "Rotation finalized; old keys revoked."}
+
+
+@router.get("/server-key/status")
+async def server_key_status(admin: User = Depends(require_admin)):
+    """Show the rotation ledger (prefixes + statuses, never raw keys)."""
+    credentials = await credential_store.list_credentials()
+    return {"credentials": credentials, "total": len(credentials)}
+
+
+# ── Secret-rotation hygiene (audit remediation) ───────────
+
+
+class SecretRotateRequest(BaseModel):
+    name: str
+
+
+@router.get("/secrets/rotation")
+async def get_secrets_rotation(admin: User = Depends(require_admin)):
+    """Return rotation health for all tracked secrets.
+
+    Each entry carries ``status`` (``active`` / ``overdue`` / ``unknown``)
+    and the last-checked timestamp.  An ``overdue_count > 0`` means at
+    least one credential has exceeded its configured rotation period and
+    should be rotated.
+    """
+    return secret_rotation.check_all()
+
+
+@router.post("/secrets/rotate")
+async def mark_secret_rotated(
+    req: SecretRotateRequest,
+    admin: User = Depends(require_admin),
+):
+    """Mark a tracked secret as just-rotated (updates last_rotated_at).
+
+    This is the operator-facing mutation — call it after you have actually
+    rotated the credential in the upstream provider / vault.
+    """
+    success = secret_rotation.mark_rotated(req.name)
+    if not success:
+        raise HTTPException(status_code=404, detail="Secret not tracked")
+    return {"rotated": True, "name": req.name}
+
+
 # ── Users ──────────────────────────────────────────────────
 
 
@@ -67,14 +176,16 @@ async def create_user(req: UserCreateRequest, admin: User = Depends(require_admi
             permissions=set(req.permissions) if req.permissions else None,
         )
 
-        await audit_logger.log_event(
-            event_type="user_management",
-            action="create_user",
-            resource="user",
-            resource_id=user.id,
-            user_id=admin.id,
-            success=True,
-            details={"email": req.email, "role": req.role.value},
+        audit_logger.log_event(
+            SecurityEvent(
+                event_type="user_management",
+                action="create_user",
+                resource="user",
+                resource_id=user.id,
+                user_id=admin.id,
+                success=True,
+                details={"email": req.email, "role": req.role.value},
+            )
         )
 
         return {
@@ -151,14 +262,16 @@ async def update_user(
     if not success:
         raise HTTPException(status_code=404, detail="User not found")
 
-    await audit_logger.log_event(
-        event_type="user_management",
-        action="update_user",
-        resource="user",
-        resource_id=user_id,
-        user_id=admin.id,
-        success=True,
-        details=req.model_dump(exclude_none=True),
+    audit_logger.log_event(
+        SecurityEvent(
+            event_type="user_management",
+            action="update_user",
+            resource="user",
+            resource_id=user_id,
+            user_id=admin.id,
+            success=True,
+            details=req.model_dump(exclude_none=True),
+        )
     )
 
     return {"updated": True}
@@ -172,13 +285,15 @@ async def delete_user(user_id: str, admin: User = Depends(require_admin)):
     if not success:
         raise HTTPException(status_code=404, detail="User not found")
 
-    await audit_logger.log_event(
-        event_type="user_management",
-        action="delete_user",
-        resource="user",
-        resource_id=user_id,
-        user_id=admin.id,
-        success=True,
+    audit_logger.log_event(
+        SecurityEvent(
+            event_type="user_management",
+            action="delete_user",
+            resource="user",
+            resource_id=user_id,
+            user_id=admin.id,
+            success=True,
+        )
     )
 
     return {"deleted": True}
@@ -193,6 +308,11 @@ async def create_api_key(
     admin: User = Depends(require_admin),
 ):
     """Create API key."""
+    if admin.id == OPERATOR_USER_ID:
+        # The master key's principal has no DB row; materialize it so issued
+        # keys have a resolvable owner (otherwise this endpoint 500s).
+        await role_manager.ensure_operator_user()
+
     api_key = await role_manager.create_api_key(
         user_id=admin.id,
         name=req.name,
@@ -201,14 +321,16 @@ async def create_api_key(
         permissions=set(req.permissions) if req.permissions else None,
     )
 
-    await audit_logger.log_event(
-        event_type="api_key_management",
-        action="create_api_key",
-        resource="api_key",
-        resource_id=api_key.id,
-        user_id=admin.id,
-        success=True,
-        details={"name": req.name, "role": req.role.value},
+    audit_logger.log_event(
+        SecurityEvent(
+            event_type="api_key_management",
+            action="create_api_key",
+            resource="api_key",
+            resource_id=api_key.id,
+            user_id=admin.id,
+            success=True,
+            details={"name": req.name, "role": req.role.value},
+        )
     )
 
     return {
@@ -259,14 +381,16 @@ async def rotate_api_key(
     if not api_key:
         raise HTTPException(status_code=404, detail="API key not found or already revoked")
 
-    await audit_logger.log_event(
-        event_type="api_key_management",
-        action="rotate_api_key",
-        resource="api_key",
-        resource_id=api_key.id,
-        user_id=admin.id,
-        success=True,
-        details={"previous_key_id": req.key_id, "name": api_key.name, "role": api_key.role.value},
+    audit_logger.log_event(
+        SecurityEvent(
+            event_type="api_key_management",
+            action="rotate_api_key",
+            resource="api_key",
+            resource_id=api_key.id,
+            user_id=admin.id,
+            success=True,
+            details={"previous_key_id": req.key_id, "name": api_key.name, "role": api_key.role.value},
+        )
     )
 
     return {
@@ -288,13 +412,15 @@ async def revoke_api_key(key_id: str, admin: User = Depends(require_admin)):
     if not success:
         raise HTTPException(status_code=404, detail="API key not found")
 
-    await audit_logger.log_event(
-        event_type="api_key_management",
-        action="revoke_api_key",
-        resource="api_key",
-        resource_id=key_id,
-        user_id=admin.id,
-        success=True,
+    audit_logger.log_event(
+        SecurityEvent(
+            event_type="api_key_management",
+            action="revoke_api_key",
+            resource="api_key",
+            resource_id=key_id,
+            user_id=admin.id,
+            success=True,
+        )
     )
 
     return {"revoked": True}

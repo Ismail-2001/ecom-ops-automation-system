@@ -3,6 +3,8 @@ from typing import Any, Dict, List, Optional, TypedDict
 
 from pydantic import BaseModel, Field
 
+from ecommerce_ops.utils import utc_now
+
 
 class AgentDecision(BaseModel):
     agent_id: str
@@ -11,7 +13,7 @@ class AgentDecision(BaseModel):
     action_data: Dict = Field(default_factory=dict)
     requires_approval: bool = True
     confidence_score: float
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=utc_now)
 
 
 class ReflectionFeedback(BaseModel):

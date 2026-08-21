@@ -33,6 +33,18 @@ jobs:
       - name: Ruff format check
         run: ruff format --check ecommerce_ops/
 
+      - name: Ban datetime.utcnow (must use ecommerce_ops.utils.utc_now)
+        run: |
+          # Regression guard for the time-consistency sweep: never call the
+          # deprecated datetime.utcnow() in app code. ecommerce_ops.utils.utc_now()
+          # returns naive UTC, compatible with SQLAlchemy. (models/db.py defines a
+          # delegating `def utcnow()` helper, which is not a banned call site.)
+          if grep -rn "datetime\.utcnow(" ecommerce_ops --include="*.py"; then
+            echo "::error::datetime.utcnow() found — use ecommerce_ops.utils.utc_now instead"
+            exit 1
+          fi
+          echo "::Notice::No datetime.utcnow() calls"
+
       - name: Mypy type check
         # Whole-package strict mypy is ~800 pre-existing errors (audit debt, see
         # W1-W2). The gate is scoped to the reliability-wave modules we own so it

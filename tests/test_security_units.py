@@ -1,16 +1,16 @@
-from ecommerce_ops.utils import utc_now
 import os
+import time
+from datetime import timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from ecommerce_ops.utils import utc_now
 
 os.environ["ENV"] = "testing"
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite://"
 os.environ["API_KEY"] = "test-key"
 os.environ["DEEPSEEK_API_KEY"] = "sk-test-key"
-
-import time
-from datetime import datetime, timedelta, UTC
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
 
 
 class TestSecurityModels:
@@ -150,7 +150,7 @@ class TestSecurityModels:
     def test_default_roles_have_permissions(self):
         from ecommerce_ops.security.models import DEFAULT_ROLES, Permission
 
-        for role, defn in DEFAULT_ROLES.items():
+        for _role, defn in DEFAULT_ROLES.items():
             assert len(defn.permissions) > 0
             assert all(isinstance(p, Permission) for p in defn.permissions)
 
@@ -209,8 +209,6 @@ class TestRoleManager:
             rm.create_role("dup_role", "Dup2", "Dup2", {Permission.DASHBOARD_VIEW})
 
     def test_update_role_permissions(self):
-        from datetime import datetime
-
         from ecommerce_ops.security.models import Permission, Role, RoleDefinition
         from ecommerce_ops.security.role_manager import RoleManager
 
@@ -389,7 +387,8 @@ class TestAuth:
         assert mw._is_public_path("/health") is True
 
     def test_middleware_docs_and_metrics_public_only_in_dev(self):
-        from ecommerce_ops.config import Environment, settings as app_settings
+        from ecommerce_ops.config import Environment
+        from ecommerce_ops.config import settings as app_settings
         from ecommerce_ops.security.auth import AuthenticationMiddleware
 
         mw = AuthenticationMiddleware(app=MagicMock())

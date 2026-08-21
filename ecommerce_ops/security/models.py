@@ -77,6 +77,9 @@ class Permission(StrEnum):
     API_KEYS_CREATE = "api_keys:create"
     API_KEYS_REVOKE = "api_keys:revoke"
 
+    # Integrations / outbound webhooks
+    INTEGRATIONS_MANAGE = "integrations:manage"
+
 
 class Role(StrEnum):
     """Predefined roles."""
@@ -96,8 +99,8 @@ class RoleDefinition(BaseModel):
     description: str
     permissions: Set[Permission]
     is_system: bool = True  # System roles can't be deleted
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
 
 
 class User(BaseModel):
@@ -111,7 +114,7 @@ class User(BaseModel):
     is_api_only: bool = False
     permissions: Set[Permission] = Field(default_factory=set)
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
     last_login: Optional[datetime] = None
     login_count: int = 0
 
@@ -140,7 +143,7 @@ class APIKey(BaseModel):
     expires_at: Optional[datetime] = None
     last_used: Optional[datetime] = None
     usage_count: int = 0
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
     class Config:
@@ -171,7 +174,7 @@ class AccessContext(BaseModel):
     permissions: Set[Permission] = Field(default_factory=set)
     ip_address: Optional[str] = None
     user_agent: Optional[str] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=utc_now)
 
 
 class SecurityEvent(BaseModel):
@@ -187,7 +190,7 @@ class SecurityEvent(BaseModel):
     ip_address: Optional[str] = None
     user_agent: Optional[str] = None
     details: Dict[str, Any] = Field(default_factory=dict)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=utc_now)
 
 
 # ── Default Role Definitions ───────────────────────────────
@@ -238,6 +241,7 @@ DEFAULT_ROLES: Dict[Role, RoleDefinition] = {
             Permission.API_KEYS_VIEW,
             Permission.API_KEYS_CREATE,
             Permission.API_KEYS_REVOKE,
+            Permission.INTEGRATIONS_MANAGE,
         },
         is_system=True,
     ),

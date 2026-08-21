@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from ecommerce_ops.utils import utc_now
+
 
 class TraceStatus(StrEnum):
     """Trace execution status."""
@@ -42,7 +44,7 @@ class StoredSpan(BaseModel):
     input: Any = None
     output: Any = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    start_time: datetime = Field(default_factory=datetime.utcnow)
+    start_time: datetime = Field(default_factory=utc_now)
     end_time: Optional[datetime] = None
     duration_ms: Optional[float] = None
     status: TraceStatus = TraceStatus.COMPLETED
@@ -69,7 +71,7 @@ class StoredScore(BaseModel):
     value: float
     comment: Optional[str] = None
     evaluator: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
     class Config:
@@ -89,7 +91,7 @@ class StoredTrace(BaseModel):
     input: Any = None
     output: Any = None
     error: Optional[str] = None
-    start_time: datetime = Field(default_factory=datetime.utcnow)
+    start_time: datetime = Field(default_factory=utc_now)
     end_time: Optional[datetime] = None
     duration_ms: Optional[float] = None
     spans: List[StoredSpan] = Field(default_factory=list)

@@ -13,7 +13,7 @@ from ecommerce_ops.agents._base import BaseAgent
 from ecommerce_ops.agents.cost_tracker import track_llm_cost
 from ecommerce_ops.agents.message_bus import AgentMessage, MessageTopics, message_bus
 from ecommerce_ops.memory.llm_cache import llm_response_cache
-from ecommerce_ops.safety.guardrails import guardrail_manager
+from ecommerce_ops.safety.guardrails import guardrail_blocked, guardrail_manager
 
 logger = logging.getLogger("ecommerce_ops.agents.marketing_llm")
 
@@ -106,7 +106,11 @@ class MarketingAutomationAgentLLM(BaseAgent):
         # Guardrail
         input_check = guardrail_manager.check_input(str(context_data))
         if not input_check.passed:
-            return self._safe_fallback(context_data)
+            logger.warning(
+                "Input guardrail blocked for MarketingAgent; quarantining for HITL review: %s",
+                input_check.violations,
+            )
+            return guardrail_blocked(input_check.violations)
 
         # LLM response cache
         cached = await llm_response_cache.get(context, namespace="marketing_automation")
@@ -240,7 +244,3 @@ Include A/B test variants for optimization.
                 "reasoning": "Rule-based: Default engagement campaign",
                 "ab_test_variants": [],
             }
-
-    def _safe_fallback(self, context_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Safe fallback."""
-        return self._rule_based_fallback(context_data)
