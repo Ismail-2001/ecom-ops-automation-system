@@ -14,9 +14,11 @@
 [![Security](https://img.shields.io/badge/Security-Hardening%20%2F%20Remediated%20Items%20%2D%20In%20Progress-f59e0b.svg)](AUDIT_REPORT.md)
 [![Credentials](https://img.shields.io/badge/Credentials-Rotation%20Guide-EF4444.svg)](CREDENTIAL_ROTATION.md)
 
-**7 AI Agents. 1 Dashboard. Human-in-the-loop by default.**
+**10 AI Agents. 1 Dashboard. Human-in-the-loop by default.**
 
-[Getting Started](#-getting-started) · [Architecture](#-architecture) · [API Docs](#-usage-examples) · [Deploy](#-docker-production) · [Live Demo](#-live-demo)
+`1,157 tests passing` · `16 migrations` · `40 Prometheus metrics` · `37 RBAC permissions`
+
+[Getting Started](#getting-started) · [Architecture](#architecture) · [API Docs](#usage-examples) · [Deploy](#docker-production) · [Operations Runbook](#operations-runbook)
 
 </div>
 
@@ -41,7 +43,7 @@ None of this is complicated work. It's just **constant**. And it's exactly the k
 
 ## What OpsIQ Does
 
-OpsIQ is a team of **7 specialized AI agents** that sits behind the scenes of a store and handles this operational load continuously — the way a sharp operations team would, if that team never took a break.
+OpsIQ is a team of **10 specialized AI agents** that sits behind the scenes of a store and handles this operational load continuously — the way a sharp operations team would, if that team never took a break.
 
 <div align="center">
 
@@ -50,12 +52,17 @@ OpsIQ is a team of **7 specialized AI agents** that sits behind the scenes of a 
 | **Fraud Detection** | Risk-scores every order (0-100), flags suspicious patterns | Prevent chargebacks before they ship |
 | **Inventory Management** | Forecasts demand, drafts purchase orders, tracks stockout risk | Never run out of bestsellers |
 | **Price Optimization** | Scrapes competitor prices, enforces floor/ceiling margins | Stay competitive without margin erosion |
+| **Dynamic Pricing** | Real-time repricing from demand, stock, and competitor signals | Capture margin without manual review |
+| **Order Swaps** | Detects swap-fraud patterns and suggests equivalent-value exchanges | Block return abuse before it ships |
+| **Smart Returns** | Scores return risk, routes restock vs. liquidation vs. refund | Cut reverse-logistics losses |
 | **Review Moderation** | Analyzes sentiment, drafts responses in your brand voice | Build trust at any review volume |
 | **Marketing Automation** | Triggers campaigns based on real store events (low stock, trends) | Convert at the right moment |
 | **Cart Recovery** | Scores abandoned carts, selects recovery strategy (discount, urgency, email series) | Recover 8-12% of lost revenue |
 | **Customer Support** | Classifies tickets, routes correctly, answers routine questions | Handle 60-80% of tickets with AI |
 
 </div>
+
+> A **Reflection Agent** runs after every pipeline execution and self-corrects confidence scores and HITL consistency — it is not counted as a domain agent.
 
 ---
 
@@ -77,12 +84,13 @@ This matters more than any feature list. A system that automates the wrong decis
 
 ### AI & Automation
 
-- **7 Specialized Agents** — Each agent is domain-expert in its area (fraud, inventory, pricing, reviews, marketing, cart recovery, support) with dedicated logic, guardrails, and decision formats
+- **10 Specialized Agents** — Each agent is domain-expert in its area (fraud, inventory, pricing, dynamic pricing, swaps, returns, reviews, marketing, cart recovery, support) with dedicated logic, guardrails, and decision formats
+- **Dynamic Agent Registry** — Every agent is declared in a YAML spec (`agents/specs/*/agent.yaml`) loaded at startup with hot-reload. Adding an agent means adding a folder — no factory if/elif, no code changes to the orchestrator. Each spec carries its SLO targets (`slo_p95_latency_ms`, `slo_min_success_rate`) and state keys
 - **LangGraph Supervisor Orchestration** — Agents run in a defined pipeline with a planner that dynamically selects which agents execute based on available data, plus a reflection agent that self-corrects decisions post-execution
 - **LLM-First with Rule-Based Fallback** — Each agent tries Google Gemini 2.0 Flash (or DeepSeek) for rich analysis, then silently falls back to deterministic rules on any LLM failure — zero downtime, zero data loss
 - **Semantic LLM Cache** — Cosine-similarity cache (threshold 0.92) with bounded 200-entry index eliminates redundant LLM calls for similar queries, with graceful degradation on import failure
 - **Inter-Agent Communication** — Built-in message bus with 18 predefined topics (fraud.alert, inventory.low, cart.abandoned, etc.) enables agents to coordinate without tight coupling. *Process-local today:* the bus is asyncio in-memory, so horizontal scaling past one API/worker replica requires a Redis pub/sub backing (see `ecommerce_ops/agents/message_bus.py`)
-- **Cost Tracking** — Per-agent LLM token usage and cost monitoring with Prometheus metrics and configurable daily budgets
+- **Cost Tracking & SLO Monitoring** — Per-agent LLM token usage and cost monitoring, plus per-agent SLO checks (p95 latency, success rate) backed by a bounded ring-buffer metrics collector with Prometheus emission
 
 ### Human-in-the-Loop
 
@@ -93,9 +101,12 @@ This matters more than any feature list. A system that automates the wrong decis
 
 ### Security & Compliance
 
-- **5-Role RBAC** — super_admin, admin, operator, viewer, api_only with 35 granular permissions across 12 categories
+- **5-Role RBAC** — super_admin, admin, operator, viewer, api_only with **37 granular permissions across 14 categories**
+- **Middleware-Level RBAC Enforcement** — `RBACMiddleware` maps every route to a minimum access level (`public` → `viewer` → `operator` → `admin` → `super_admin`) and returns 403 before the handler runs — authorization is not left to individual endpoints
+- **Enterprise SSO** — Google OAuth 2.0 and Okta via Authlib with state/session lifecycle management (`/auth/sso/providers`, `/login`, `/callback`, `/logout`). SSO users are mapped onto the same 5-role RBAC model
+- **Immutable Audit Log** — Append-only `audit_log` table (migration `0015`) written by `AuditLogger`: actor, action, resource, outcome, risk level, confidence, IP, user-agent, session, request ID. No UPDATE or DELETE paths exist
 - **PBKDF2 API Key Management** — SHA-256 hashed keys with `eops_` prefix, 90-day expiry, usage tracking (Phase 1 hardening)
-- **Comprehensive Audit Logging** — Every action, decision, and security event logged to PostgreSQL with risk-level assessment and sensitive-field redaction
+- **Comprehensive Security Audit** — Every security event logged with risk-level assessment and sensitive-field redaction
 - **Rate Limiting** — Redis sliding window (60 req/min) with LRU-eviction in-memory fallback, per-IP tracking, and automatic blocking
 - **Security Hardening** — HSTS, CSP, X-Frame-Options: DENY, input sanitization (25+ injection patterns), SQL/XSS blocking, no hardcoded secrets
 - **Webhook HMAC Verification** — Shopify webhooks validated with HMAC signature (Phase 1)
@@ -109,7 +120,7 @@ This matters more than any feature list. A system that automates the wrong decis
 
 ### Observability
 
-- **31 Prometheus Metrics** — Request rates, agent decisions, LLM costs, queue depths, financial impact, cache ratios, LLM cache hits/misses, DB connection pool, live shop executions, outbox dead letters, outbound webhook deliveries, A/B experiments
+- **40 Prometheus Metrics** — Request rates, agent decisions, LLM costs, queue depths, financial impact, cache ratios, LLM cache hits/misses, DB connection pool, live shop executions, outbox dead letters, outbound webhook deliveries, A/B experiments, legacy-key usage, dropped audit events
 - **29 Alert Rules** — API errors, latency spikes, agent failures, Redis/PostgreSQL down, LLM budget exceeded, missing backups, shop-execution failures, outbox growth, A/B divergence
 - **OpenTelemetry Tracing** — Distributed traces via OTLP to Grafana Tempo with 10% sampling
 - **Langfuse Integration** — LLM-specific observability: traces, evaluations, cost breakdowns per model
@@ -118,11 +129,11 @@ This matters more than any feature list. A system that automates the wrong decis
 ### Infrastructure
 
 - **14-Service Docker Stack** — PostgreSQL, Redis, API, Dashboard, Nginx, Prometheus, Grafana, Tempo, OTEL Collector, Alertmanager, node/postgres/redis/cadvisor exporters
+- **16 Alembic Migrations** — Full schema coverage including the immutable `audit_log` and pgvector-backed `vector_memories` tables; drift detection in CI
 - **Multi-Stage Docker Build** — Python 3.12-slim with Playwright (Chromium + Firefox + WebKit), non-root user, uvloop+httptools, 2 workers
 - **Rolling Deploy** — Zero-downtime deployment with auto-rollback on health check failure (`./scripts/deploy.sh rolling`)
 - **Offsite Backup** — Automated PostgreSQL dumps with S3/GCS upload (STANDARD_IA), 7-day retention
 - **CI/CD Pipeline** — 9 GitHub Actions workflows (lint+mypy, test, security & secret scan, Docker build, Trivy scan, load test, staging + production deploy with auto-rollback, release)
-- **Database Migrations** — Alembic with drift detection in CI
 - **Disaster Recovery** — Defined RTO/RPO targets, recovery procedures, escalation contacts (`docs/DR_POLICY.md`)
 - **Kubernetes-Ready** — `/health`, `/ready`, `/live` endpoints for orchestration
 
@@ -132,27 +143,17 @@ This matters more than any feature list. A system that automates the wrong decis
 
 ### Command Center Dashboard
 
-![Dashboard — Metric cards, pending approvals, system health](docs/images/dashboard.png)
+![Dashboard — metric cards, pending approvals, system health](docs/assets/dashboard_preview.png)
 
 *Real-time operations overview with revenue tracking, decision queue, and system health.*
 
-### 7 Autonomous AI Agents
+### Agent Architecture
 
-![Agent Fleet — Fraud, Inventory, Pricing, Reviews, Marketing, Cart Recovery, Support](docs/images/agents.png)
+![Agent architecture — registry, pipeline, HITL gates](docs/assets/agent_architecture.png)
 
-*Each agent operates independently with accuracy tracking, decision counts, and live sparklines.*
+*Registry-driven agent composition with supervisor orchestration and human-in-the-loop gates.*
 
-### Inference Logs & Real-Time Decisions
-
-![Inference Logs — Fraud blocked, Inventory restock, Price adjustment](docs/images/inference-logs.png)
-
-*Every agent action logged with timestamps, results, and latency metrics.*
-
-### Performance Analytics
-
-![Analytics — ROI, Revenue Saved, Decision Distribution, Risk Analysis](docs/images/analytics.png)
-
-*428% ROI, $1.24M revenue saved, 82% autonomous decisions, real-time risk distribution across regions.*
+> **Screenshots:** Only the two images above are tracked in the repo. Live captures of the Agents page, Inference Logs, and Analytics views are taken against a running stack — run `docker compose up -d` and open `http://localhost:3000`.
 
 ---
 
@@ -169,14 +170,19 @@ graph TB
     subgraph "API Layer"
         API["FastAPI Server<br/>11 Middleware Layers"]
         WS["WebSocket<br/>Real-time Events"]
-        AUTH["RBAC Auth<br/>5 Roles · 35 Permissions"]
+        AUTH["RBAC Auth<br/>5 Roles · 37 Permissions"]
+        SSO["SSO<br/>Google · Okta"]
     end
 
     subgraph "AI Engine"
+        REG["Agent Registry<br/>YAML Specs · Hot Reload"]
         SUP["LangGraph Supervisor<br/>Planner → Agents → Reflection"]
         FRAUD["Fraud Agent"]
         INV["Inventory Agent"]
         PRICE["Pricing Agent"]
+        DPRICE["Dynamic Pricing"]
+        SWAP["Order Swaps"]
+        RET["Smart Returns"]
         REV["Reviews Agent"]
         MKT["Marketing Agent"]
         CART["Cart Recovery"]
@@ -191,13 +197,13 @@ graph TB
     end
 
     subgraph "Data Layer"
-        PG[("PostgreSQL 16<br/>17 Tables")]
+        PG[("PostgreSQL 16<br/>19 Tables")]
         REDIS[("Redis 7<br/>Cache · Rate Limit")]
         PGV[("pgvector<br/>Semantic Memory")]
     end
 
     subgraph "Observability"
-        PROM["Prometheus<br/>31 Metrics"]
+        PROM["Prometheus<br/>40 Metrics"]
         GRAF["Grafana<br/>Dashboards"]
         TEMPO["Tempo<br/>Distributed Tracing"]
         LANGFUSE["Langfuse<br/>LLM Monitoring"]
@@ -205,11 +211,15 @@ graph TB
 
     UI -->|REST + WS| API
     API --> AUTH
+    API --> SSO
+    AUTH --> PG
+    SSO --> PG
     API --> SUP
-    SUP --> FRAUD & INV & PRICE & REV & MKT & CART & CS
+    REG --> SUP
+    SUP --> FRAUD & INV & PRICE & DPRICE & SWAP & RET & REV & MKT & CART & CS
     SUP --> REFLECT
-    FRAUD & INV & PRICE & REV & MKT & CART & CS --> LLM
-    FRAUD & INV & PRICE & REV & MKT & CART & CS --> SHOPIFY
+    FRAUD & INV & PRICE & DPRICE & SWAP & RET & REV & MKT & CART & CS --> LLM
+    FRAUD & INV & PRICE & DPRICE & SWAP & RET & REV & MKT & CART & CS --> SHOPIFY
     PRICE --> WEB
     API --> PG & REDIS & PGV
     API --> PROM
@@ -287,7 +297,7 @@ graph TD
 <tr>
 <td><strong>Frontend</strong></td>
 <td>Next.js 14, React 18, TypeScript, Tailwind CSS</td>
-<td>Dashboard with 15+ pages, real-time WebSocket updates</td>
+<td>Dashboard with 12 page routes, real-time WebSocket updates</td>
 </tr>
 <tr>
 <td><strong>State Management</strong></td>
@@ -297,7 +307,7 @@ graph TD
 <tr>
 <td><strong>Database</strong></td>
 <td>PostgreSQL 16, SQLAlchemy (async), Alembic, pgvector</td>
-<td>17 tables, async connection pooling, migrations, vector memory</td>
+<td>19 tables, async connection pooling, 16 migrations, vector memory</td>
 </tr>
 <tr>
 <td><strong>Cache</strong></td>
@@ -322,7 +332,7 @@ graph TD
 <tr>
 <td><strong>Testing</strong></td>
 <td>pytest, Vitest, Playwright, Locust</td>
-<td>51 test files, load tests, e2e integration</td>
+<td>1,157 tests (1,042 backend + 115 frontend), load tests, e2e integration</td>
 </tr>
 <tr>
 <td><strong>CI/CD</strong></td>
@@ -336,8 +346,8 @@ graph TD
 </tr>
 <tr>
 <td><strong>Security</strong></td>
-<td>RBAC, SHA-256 API keys, Bandit SAST, pip-audit</td>
-<td>5 roles, 35 permissions, input sanitization, audit logging</td>
+<td>RBAC, PBKDF2 API keys, Authlib SSO, Bandit SAST, pip-audit</td>
+<td>5 roles, 37 permissions, Google/Okta SSO, input sanitization, audit logging</td>
 </tr>
 </table>
 
@@ -350,17 +360,26 @@ ecom-ops-automation-system/
 ├── ecommerce_ops/              # Python backend
 │   ├── api/                    # FastAPI routes, middleware, WebSocket, metrics
 │   │   ├── app.py              # Main application (772 lines)
-│   │   ├── routes/             # 7 route modules (shopify, cart, support, etc.)
-│   │   ├── middleware.py        # 11-layer middleware stack
+│   │   ├── core_routes.py      # Approvals, agents/status, settings, analytics, health
+│   │   ├── cart_recovery.py    # Cart recovery API (7 endpoints)
+│   │   ├── customer_support.py # Support tickets API (8 endpoints)
+│   │   ├── sso.py              # SSO endpoints (providers/login/callback/logout)
+│   │   ├── security.py         # Users, API keys, roles, audit, rotation
+│   │   ├── integrations.py     # Outbound webhooks CRUD + test
+│   │   ├── middleware.py       # 11-layer middleware stack
 │   │   ├── ws.py               # WebSocket with auth + rate limiting
-│   │   └── metrics.py          # 31 Prometheus metrics
-│   ├── agents/                 # 7 AI agents + infrastructure
+│   │   └── metrics.py          # 40 Prometheus metrics
+│   ├── agents/                 # 10 AI agents + infrastructure
 │   │   ├── _base.py            # Base agent with LLM + memory
+│   │   ├── factory.py          # Registry-driven AgentFactory
+│   │   ├── specs/              # 8 YAML agent specs (hot-reloadable)
+│   │   │   └── fraud/agent.yaml
 │   │   ├── fraud.py / fraud_llm.py
 │   │   ├── inventory.py / inventory_llm.py
-│   │   ├── pricing.py
-│   │   ├── reviews.py
-│   │   ├── marketing.py / marketing_llm.py
+│   │   ├── pricing.py / dynamic_pricing/
+│   │   ├── order_swaps/        # Revenue agent (LLM + rule fallback)
+│   │   ├── smart_returns/      # Revenue agent (LLM + rule fallback)
+│   │   ├── reviews.py / marketing.py / marketing_llm.py
 │   │   ├── cart_recovery/      # Cart recovery agent (standalone package)
 │   │   ├── customer_support/   # Customer support agent (standalone package)
 │   │   ├── reflection.py       # Post-pipeline self-correction
@@ -371,22 +390,26 @@ ecom-ops-automation-system/
 │   │   └── state.py            # TypedDict state definitions
 │   ├── connectors/             # Shopify integration + competitor scraper
 │   ├── safety/                 # Guardrails (prompt injection, hallucination)
-│   ├── security/               # RBAC, auth, audit, hardening, rate limiting
+│   ├── security/               # RBAC, auth, SSO, audit, hardening, rate limiting
+│   │   ├── rbac_middleware.py  # Route-level access-level enforcement
+│   │   ├── sso.py              # Google OAuth2 + Okta via Authlib
+│   │   ├── audit_logger.py     # Immutable audit log writer
+│   │   └── role_manager.py     # 5 roles, 37 permissions
 │   ├── memory/                 # Redis cache, agent memory, pgvector store
-│   ├── observability/          # Langfuse, OpenTelemetry, evaluation framework
+│   ├── observability/          # Langfuse, OTel, agent SLO metrics, A/B framework
 │   ├── infra/                  # Circuit breaker, rate limiter, retry, task queue
 │   ├── pipeline/               # Pipeline runner + builder
 │   ├── tools/                  # Tool registry + executor
-│   ├── models/                 # SQLAlchemy DB models (17 tables)
+│   ├── models/                 # SQLAlchemy DB models (19 tables incl. audit_log)
 │   ├── config.py               # Pydantic Settings with env validation
 │   └── cli.py                  # Typer CLI (ops-agent run/pause)
-├── frontend/                   # Next.js 14 dashboard
-│   └── src/app/                # 15+ page routes
-├── tests/                      # 7 focused test modules + fixtures + load tests
-├── monitoring/                 # Prometheus, Grafana, Tempo, Alertmanager
+├── frontend/                   # Next.js 14 dashboard (12 page routes)
+│   └── src/app/                # agents, analytics, orders, products, reviews, support, ...
+├── tests/                      # 61 test modules (1,042 tests)
+├── monitoring/                 # Prometheus, Grafana, Tempo, Alertmanager (29 rules)
 ├── nginx/                      # Reverse proxy + TLS
-├── scripts/                    # 19 operational scripts (deploy, backup, rollback, DR)
-├── alembic/                    # Database migrations
+├── scripts/                    # 18 operational scripts (deploy, backup, DR, secrets)
+├── alembic/                    # 16 migrations (0001-0016)
 ├── docs/                       # API.md, DEPLOYMENT.md, PERFORMANCE.md, DR_POLICY.md
 ├── docker-compose.yml          # Production stack (14 services)
 ├── Dockerfile                  # Multi-stage Python build
@@ -400,33 +423,40 @@ ecom-ops-automation-system/
 
 ### Prerequisites
 
-- Python 3.11+
-- Node.js 18+
-- PostgreSQL 16 (or Docker)
-- Redis 7 (or Docker)
-- Shopify Partner Account (for live data)
+- Python 3.11+ (3.12 recommended)
+- Node.js 18+ (24 LTS tested)
+- Docker + Docker Compose (for the full stack)
+- PostgreSQL 16 and Redis 7 (or let Docker provide them)
+- An LLM key — Google Gemini **or** DeepSeek (one is required, the other optional)
+- Shopify Partner Account (only for live store data)
 
-### Quick Start with Docker
+### Quick Start with Docker (~5 minutes)
 
 ```bash
-# Clone the repository
+# 1. Clone the repository
 git clone https://github.com/Ismail-2001/ecom-ops-automation-system.git
 cd ecom-ops-automation-system
 
-# Copy environment template
-cp .env.example .env
+# 2. Create your environment file
+cp .env.example .env          # local/dev
+# or: cp .env.docker .env      # production (matches deploy.sh preflight)
 
-# Edit .env with your keys (at minimum: API_KEY, GOOGLE_API_KEY)
+# 3. Edit .env — minimum required keys:
+#    API_KEY=$(openssl rand -hex 32)
+#    GOOGLE_API_KEY=...            (or DEEPSEEK_API_KEY=...)
 nano .env
 
-# Start everything (14 services)
+# 4. Start everything (14 services)
 docker compose up -d
 
-# Verify
+# 5. Run migrations (first run only)
+docker compose exec api alembic upgrade head
+
+# 6. Verify
 curl http://localhost:8000/health
 ```
 
-The dashboard is available at `http://localhost:3000` and the API at `http://localhost:8000/docs`.
+The dashboard is at `http://localhost:3000`, the API docs at `http://localhost:8000/docs`, Grafana at `http://localhost:3001`.
 
 ### Local Development
 
@@ -451,6 +481,22 @@ npm install
 npm run dev
 ```
 
+### Verify Your Install
+
+```bash
+# Backend test suite — expect 1,042 passing
+pytest tests/ -q -o addopts="" -p no:cacheprovider
+
+# Frontend test suite — expect 115 passing
+cd frontend && npx vitest run
+
+# Lint — expect clean
+ruff check ecommerce_ops/
+
+# Migration integrity — expect no drift
+alembic check
+```
+
 ### Environment Variables
 
 | Variable | Required | Default | Description |
@@ -463,16 +509,24 @@ npm run dev
 | `SHOPIFY_API_KEY` | No | — | Shopify OAuth client key |
 | `SHOPIFY_PASSWORD` | No | — | Shopify OAuth client secret |
 | `SHOPIFY_ACCESS_TOKEN` | No | — | Shopify Admin API token |
+| `SHOPIFY_SHOP_DOMAIN` | No | — | `your-store.myshopify.com` (multi-store scoping) |
 | `RESEND_API_KEY` | No | — | Resend API key for email notifications |
 | `NOTIFY_EMAIL` | No | — | Recipient for operator email alerts |
 | `NOTIFY_FROM_EMAIL` | No | — | Sender address for email notifications |
 | `SLACK_WEBHOOK_URL` | No | — | Slack incoming webhook URL for alerts (falls back to bot token) |
+| `GOOGLE_CLIENT_ID` | No | — | SSO: Google OAuth 2.0 client ID (requires `authlib`) |
+| `GOOGLE_CLIENT_SECRET` | No | — | SSO: Google OAuth 2.0 client secret |
+| `GOOGLE_REDIRECT_URI` | No | `/api/auth/sso/google/callback` | SSO: Google redirect URI |
+| `OKTA_CLIENT_ID` | No | — | SSO: Okta application client ID |
+| `OKTA_CLIENT_SECRET` | No | — | SSO: Okta application client secret |
+| `OKTA_DOMAIN` | No | — | SSO: Okta org domain (`https://dev-xxxx.okta.com`) |
+| `OKTA_REDIRECT_URI` | No | `/api/auth/sso/okta/callback` | SSO: Okta redirect URI |
 | `ENV` | No | `development` | `development`, `production`, or `testing` |
 | `SHADOW_MODE` | No | `true` | Require human approval for all decisions |
 | `GLOBAL_PO_LIMIT` | No | `1000` | Max purchase order value ($) |
 | `GLOBAL_PRICE_CHANGE_LIMIT_PERCENT` | No | `20` | Max price change (%) |
 
-*At least one LLM key (Google or DeepSeek) is required.
+*At least one LLM key (Google or DeepSeek) is required. SSO keys are optional — without them the API-key auth path still works.
 
 ---
 
@@ -555,6 +609,45 @@ curl "http://localhost:8000/api/v1/audit/export?format=csv&days=30" \
   -o audit-export.csv
 ```
 
+### Query the Audit Log
+
+```bash
+curl "http://localhost:8000/api/v1/security/audit/logs?limit=50" \
+  -H "X-API-Key: your-api-key"
+```
+
+### Check SSO Providers
+
+```bash
+curl http://localhost:8000/auth/sso/providers
+```
+
+```json
+{
+  "providers": [
+    {"name": "google", "display_name": "Google", "enabled": true},
+    {"name": "okta", "display_name": "Okta", "enabled": false}
+  ]
+}
+```
+
+Initiate a login (returns the redirect URL to open in a browser):
+
+```bash
+curl -X POST http://localhost:8000/auth/sso/login \
+  -H "Content-Type: application/json" \
+  -d '{"provider": "google"}'
+# → {"authorization_url": "https://accounts.google.com/...", "provider": "google"}
+```
+
+### Inspect the Agent Registry
+
+```bash
+curl http://localhost:8000/observability/registry -H "X-API-Key: your-api-key"
+```
+
+Returns every loaded YAML spec with its `agent_id`, `llm_class`, `rule_class`, and SLO targets. `POST /observability/registry/reload` hot-reloads specs without a restart.
+
 ### CLI Usage
 
 ```bash
@@ -604,10 +697,18 @@ For a store doing **$200K/year** in revenue:
 ### Authentication & Authorization
 
 - **API Key Auth**: PBKDF2 hashed keys with `eops_` prefix, 90-day expiry, usage tracking (Phase 1 hardening)
+- **Enterprise SSO**: Google OAuth 2.0 and Okta via Authlib (`ecommerce_ops/security/sso.py`) with PKCE-style state/session lifecycle — `GET /auth/sso/providers` → `POST /auth/sso/login` → `POST /auth/sso/callback` → `POST /auth/sso/logout`. SSO identities map onto the same RBAC roles; unconfigured providers return a clean 400 rather than a 500
 - **5-Role RBAC**: `super_admin` → `admin` → `operator` → `viewer` → `api_only`
-- **35 Granular Permissions**: Dashboard, agents, approvals, Shopify, cart recovery, support, observability, memory, settings, users, roles, audit, API keys
+- **37 Granular Permissions** across 14 categories: dashboard, agents, approvals, shopify, cart_recovery, support, observability, memory, settings, users, roles, audit, api_keys, integrations
 - **Permission Dependencies**: `require_auth()`, `require_permission()`, `require_role()`, `require_admin()`
+- **Middleware-Level Enforcement**: `RBACMiddleware` (`security/rbac_middleware.py`) maps each path to a minimum `AccessLevel` and rejects insufficient roles with 403 before the handler executes — authorization is not opt-in per endpoint
 - **Fail-Secure Auth**: Returns 503 on DB errors, never silently proceeds unauthenticated (Phase 2 fix)
+
+### Audit Trail
+
+- **Immutable `audit_log` table** (migration `0015`): append-only, no UPDATE or DELETE code paths exist
+- **`AuditLogger` service** (`security/audit_logger.py`): `log()` records actor, role, action, resource type/id, outcome, risk level, confidence, IP, user-agent, session ID, and request ID; `query()` supports filtering by actor, action, resource, risk level, and time range
+- **Coverage**: RBAC changes, autonomy promotions, SSO logins, API key issuance/rotation, approval decisions, and webhook mutations are all audit-logged
 
 ### Data Protection
 
@@ -674,11 +775,19 @@ Rotate API keys periodically or on suspected exposure:
 
 ## Testing
 
+### Current Status (verified)
+
+```
+Backend    1,042 tests  ·  61 files  ·  pytest
+Frontend     115 tests  ·   9 files  ·  vitest
+Total      1,157 tests  ·  70 files
+```
+
 ### Test Coverage
 
 ```bash
-# Run all tests
-pytest tests/ -v
+# Run all backend tests (Windows-safe form)
+pytest tests/ -q -o addopts="" -p no:cacheprovider
 
 # Run with coverage
 pytest tests/ --cov=ecommerce_ops --cov-report=html
@@ -687,6 +796,9 @@ pytest tests/ --cov=ecommerce_ops --cov-report=html
 pytest tests/ -m "not slow"           # Skip slow tests
 pytest tests/ -m "security"           # Security tests only
 pytest tests/ -m "e2e"               # End-to-end tests
+
+# Frontend
+cd frontend && npx vitest run
 ```
 
 ### Test Categories
@@ -694,19 +806,20 @@ pytest tests/ -m "e2e"               # End-to-end tests
 | Category | Files | Coverage |
 |:---------|:------|:---------|
 | Unit Tests | 7 focused modules (split from monolith) | Agent logic, safety rules, guardrails, config, memory, tools, infrastructure |
-| Integration Tests | 5+ files | API endpoints, database, Redis, Shopify |
-| E2E Tests | 3 files | Full pipeline, navigation, API health, accessibility |
-| Security Tests | 4 files | Auth, RBAC, rate limiting, input sanitization |
-| Performance Tests | 1 file | Agent latency benchmarks |
-| Load Tests | 1 file | Locust-based load testing |
-| Frontend Tests | 81 Vitest + 18 Playwright | Unit tests + cross-browser e2e (Chromium, Firefox, WebKit) |
+| API Integration | `test_api*.py`, `test_cart_recovery_api`, `test_customer_support_api` | Endpoint contracts, auth, validation |
+| Agent Tests | `test_fraud/inventory/marketing/pricing/reviews`, `test_revenue_agents` | Per-agent LLM + rule paths, adapters |
+| Registry & Factory | `test_agent_factory`, `test_agent_metrics` | YAML specs, hot-reload, SLO checks |
+| E2E Pipeline | `test_e2e_full_pipeline`, `test_e2e_integration` | Fraud pipeline, Shopify webhook → approval → execute |
+| Security | `test_auth`, `test_security*`, `test_rbac_enforcement`, `test_rbac_middleware`, `test_sso`, `test_audit_log` | Auth, RBAC, SSO, audit trail, rate limiting |
+| Infrastructure | `test_redis_task_queue`, `test_infra*`, `test_outbox_poller` | Queue semantics, circuit breakers, retries |
+| Frontend | 9 Vitest files | Agents page, dashboard, analytics, settings, login, API client, error boundary, trace context |
 
 ### CI Pipeline
 
 Every push runs:
 1. **Lint & Type Check** — Ruff check + format verification + mypy type checking
 2. **Migration Drift** — Alembic vs models divergence check
-3. **Unit Tests** — pytest with PostgreSQL + Redis services (894 tests, 65% coverage threshold)
+3. **Unit Tests** — pytest with PostgreSQL + Redis services (1,042 tests)
 4. **E2E Tests** — Full pipeline integration
 5. **Security Scan** — pip-audit + Bandit SAST
 6. **Docker Build** — Multi-stage build + Trivy CRITICAL severity scan
@@ -763,14 +876,100 @@ docker compose down
 
 ---
 
+## Operations Runbook
+
+Everything an on-call engineer needs in the first 10 minutes of an incident.
+
+### Health Checks
+
+```bash
+# Liveness — is the process up?
+curl -fsS http://localhost:8000/health | jq .status     # expect "healthy"
+
+# Readiness — is it safe to send traffic?
+curl -fsS http://localhost:8000/ready
+
+# Dependency detail (db / redis / agents / task_queue)
+curl -fsS http://localhost:8000/health | jq .checks
+
+# Service status
+docker compose ps
+
+# Container resource usage
+docker stats --no-stream
+```
+
+### Common Failure Modes
+
+| Symptom | Likely Cause | Fix |
+|:--------|:-------------|:----|
+| `/health` → `"database": "down"` | Postgres not running or wrong `DATABASE_URL` | `docker compose up -d postgres` → check `.env` → `alembic upgrade head` |
+| `/health` → `"redis": "down"` | Redis not running | `docker compose up -d redis` |
+| 401 on every request | `API_KEY` mismatch between client and server | Regenerate: `openssl rand -hex 32`, restart `api` |
+| 503 on auth endpoints | Auth middleware fails closed on DB error (by design) | Fix the DB first — it never silently proceeds unauthenticated |
+| Agents return rule-based results only | No LLM key set, or `ENV=testing` | Set `GOOGLE_API_KEY` or `DEEPSEEK_API_KEY`; confirm `ENV` is not `testing` |
+| Decisions all stuck in approval queue | `SHADOW_MODE=true` (default, intended) | Graduate an agent: `PATCH /api/agents/{id}/autonomy` or flip `SHADOW_MODE` |
+| Migration error on startup | Model/migration drift | `alembic check` → inspect diff → generate migration |
+| `authlib` import error on SSO routes | Dependency missing | `pip install authlib` (also pinned in `requirements.txt`) |
+| Frontend build fails on types | `ignoreBuildErrors` was removed intentionally | Fix the type error — do not re-enable the ignore flag |
+| Rate limiter returning 429 bursts | In-memory fallback after Redis loss | Check Redis; limiter uses LRU eviction, not full-clear |
+
+### Logs
+
+```bash
+# API logs (structured JSON in production)
+docker compose logs -f api --tail 200
+
+# Which agent failed?
+docker compose logs api | grep -i "agent_execution_error"
+
+# Audit trail for a specific resource
+curl "http://localhost:8000/api/v1/security/audit/logs?resource_id=<id>" \
+  -H "X-API-Key: $API_KEY"
+```
+
+### Backup & Restore
+
+```bash
+# Manual backup
+./scripts/backup-db.sh
+
+# Verify a backup is restorable
+./scripts/verify-backup.sh <backup-file>
+
+# Restore
+./scripts/restore-db.sh <backup-file>
+
+# Offsite upload is automatic when S3_BUCKET is set (7-day retention)
+```
+
+### Deploy & Rollback
+
+```bash
+./scripts/deploy.sh rolling     # zero-downtime, auto-rollback on health failure
+./scripts/deploy.sh rollback    # manual rollback to previous version
+./scripts/health-check.sh       # post-deploy verification
+```
+
+### Scaling Notes
+
+- **Single-node ceiling**: the inter-agent message bus is in-process asyncio. Past one API replica, agents lose cross-replica visibility (see `ecommerce_ops/agents/message_bus.py`) — back it with Redis pub/sub before scaling horizontally.
+- **Workers**: `UVICORN_WORKERS` defaults to 2; the task queue already shares work across workers via Redis.
+- **Connection pool**: `DB_POOL_SIZE=20` + `DB_MAX_OVERFLOW=10`. Raise both before raising workers.
+- **WebSocket**: 500 global connections, Redis PubSub for cross-worker broadcast.
+
+---
+
 ## Roadmap
+
+> **Current state (as of `e513623`):** 1,157 tests (1,042 backend + 115 frontend), 10 domain agents, 19 tables / 16 migrations, 40 metrics, 37 permissions, SSO + immutable audit log. Entries below are point-in-time records of how the project got here — test counts cited inside them reflect the state at that week, not today.
 
 ### Completed — Foundation (Phases 1-6)
 
 - [x] Security audit + vulnerability remediation (auth bypass, shell injection, hardcoded keys) + prompt-injection *tripwire* guardrails (regex signature blocklist only — see the Agent Safety caveat above)
 - [x] Runtime infrastructure (Redis task queue, Redis PubSub, graceful shutdown)
 - [x] Code quality (thread-safe AgentFactory, dead code removal, metrics wiring)
-- [x] Test suite overhaul (2762-line monolith → 51 focused modules, 894 tests)
+- [x] Test suite overhaul (2762-line monolith → focused modules)
 - [x] Frontend performance (lazy loading, dependency pruning, loading states)
 - [x] Semantic LLM cache (cosine similarity, bounded index, graceful degradation)
 - [x] API performance (SQL-side search, streaming audit export)
@@ -837,9 +1036,31 @@ The codebase underwent a FAANG-level production audit scoring 4.8/10. Three focu
 - Hermetic test environment (root cause of the performance-benchmark flake + the leaked dev key): `ENV=testing` now short-circuits every external dependency so tests never dial a provider or service. `agents/_base.py` installs a fail-fast `_DisabledLLM` instead of a real client (even if `.env`/shell exports valid keys); `memory/vector/embeddings.py` forces the mock provider in TESTING; `memory/cache.py` returns `None` without a Redis connect attempt — the single ~4s Windows IOCP connect stall (cProfile attributed the full duration to `GetQueuedCompletionStatus`) that made `test_concurrent_mixed_agents` fail standalone and pass only in luckier order. The 30-agent benchmark now runs in ~0.2-0.7s and the full suite ~2x faster (247s → 92s); +3 regression tests
 - Prompt-injection guard hardened from "tripwire + silent fallback" to **detect-and-quarantine**: `guardrail_blocked()` in `safety/guardrails.py` plus a `_guardrail_hit_decision` chokepoint in `agents/factory.py` adapters now make any input failing `check_input` force `requires_approval=True` + HITL evidence regardless of downstream confidence — so attacker-crafted order/review text can never auto-execute through the rule-based fallback. Output-validation failures and LLM network errors still degrade to rule-based analysis; +6 regression tests
 
+**Week 12 — Per-agent instrumentation**
+- `MetricsCollector` singleton (`observability/agent_metrics.py`): bounded ring buffer (500 executions per agent), per-agent SLO checks against each spec's `slo_p95_latency_ms` / `slo_min_success_rate`, Prometheus emission for decision counts, latency histograms, and SLO violations; wired into `UnifiedAgent.run()` so every agent path is measured
+- +21 tests (`tests/test_agent_metrics.py`)
+
+**Week 13 — Dynamic Agent Registry + revenue agents**
+- `AgentSpec` + `AgentRegistry`: every agent declared in `agents/specs/*/agent.yaml`, discovered via `rglob("agent.yaml")`, validated on load. `AgentFactory` is now registry-driven — zero if/elif chains; adding an agent is adding a folder
+- Hot-reload: `POST /observability/registry/reload` re-reads specs without a restart
+- Input/output adapters extracted to standalone modules
+- Three new revenue agents (LLM-first + deterministic rule fallback + adapters + YAML specs): **DynamicPricingAgent**, **OrderSwapsAgent**, **SmartReturnsAgent** — bringing the fleet to 10 domain agents
+- +37 registry/factory tests + 27 revenue-agent tests
+
+**Production-readiness audit (`e513623`)**
+- Alembic `0015` (immutable `audit_log`) and `0016` (pgvector `vector_memories`) — both tables had ORM models but no migration, so they would have silently failed on PostgreSQL
+- `authlib>=1.3.0` added to `requirements.txt` + `pyproject.toml` — SSO imported it but it was never declared
+- `.env.docker` template created for `deploy.sh` preflight; `.env.example` completed with `SLACK_WEBHOOK_URL`, `NOTIFY_FROM_EMAIL`, and all `GOOGLE_*` / `OKTA_*` SSO keys
+- `alembic/env.py` hardened: `VectorMemory` import wrapped so migrations don't break when pgvector is absent
+- Frontend `next.config.mjs`: `eslint.ignoreDuringBuilds` and `typescript.ignoreBuildErrors` removed — type errors and lint issues now fail the build
+- Suite at this point: **1,042 backend + 115 frontend tests, ruff clean**
+
 ### Near-term (1-3 months)
 
+- [ ] LLM-based prompt-injection classifier (replaces regex-only guard for untrusted input)
+- [ ] Redis pub/sub backing for the inter-agent message bus (enables horizontal scaling)
 - [ ] Vercel deployment optimization
+- [ ] First live Shopify store integration + webhook validation against real traffic
 
 ### Mid-term (3-6 months)
 
@@ -869,7 +1090,7 @@ Direct Shopify integration with OAuth. Real-time order monitoring, abandoned car
 Deploy OpsIQ for multiple clients. Each client gets their own agent configuration with custom safety thresholds.
 
 ### AI Agency (Sell Agents)
-7 standalone agent packages ready for resale. Each agent has its own Dockerfile, API, and pricing model.
+10 standalone agent packages ready for resale. Each agent ships as its own module with a YAML spec, adapters, and its own API surface.
 
 ### Enterprise Operations Team
 Full audit trail, RBAC, and compliance features. Human-in-the-loop by default with configurable autonomy levels.
