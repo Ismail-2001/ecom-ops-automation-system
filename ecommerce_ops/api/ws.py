@@ -25,6 +25,7 @@ from typing import Dict, List, Optional
 from fastapi import WebSocket
 
 from ecommerce_ops.config import Environment, settings
+from ecommerce_ops.infra.async_utils import LoopAwareLock
 
 logger = logging.getLogger("ecommerce_ops.api.ws")
 
@@ -131,7 +132,10 @@ class ConnectionManager:
 
     def __init__(self):
         self._connections: List[AuthenticatedConnection] = []
-        self._lock = asyncio.Lock()
+        # LoopAwareLock: this manager is a process-level singleton shared across
+        # event loops (uvicorn --reload, per-test loops), so a plain asyncio.Lock
+        # would bind to the first loop it contends on and break the next one.
+        self._lock = LoopAwareLock()
         self._ip_counts: Dict[str, int] = defaultdict(int)
         self._redis = None
         self._pubsub_task: Optional[asyncio.Task] = None

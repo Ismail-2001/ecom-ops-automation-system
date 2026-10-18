@@ -1,4 +1,3 @@
-import asyncio
 import functools
 import logging
 import math
@@ -22,6 +21,7 @@ from ecommerce_ops.api.ws import ws_manager
 from ecommerce_ops.config import Environment
 from ecommerce_ops.config import settings as app_settings
 from ecommerce_ops.graph.supervisor import Supervisor
+from ecommerce_ops.infra.async_utils import LoopAwareLock
 from ecommerce_ops.infra.notifications import (
     notify_agent_graduated,
     notify_execution_failed,
@@ -47,12 +47,15 @@ from ecommerce_ops.utils import utc_now
 # ── Locked batch guard ─────────────────────────────────────────
 # In-process asyncio lock per run_id (prevents concurrent runs in same process).
 # For multi-worker deployments, add a Redis/distributed lock via backend.
-_pipeline_locks: dict[str, asyncio.Lock] = {}
+# LoopAwareLock: these locks live in a module-level dict and are reused across
+# event loops (uvicorn --reload, per-test loops), so a plain asyncio.Lock would
+# bind to the first loop it contends on and break the next one.
+_pipeline_locks: dict[str, LoopAwareLock] = {}
 _pipeline_lock_times: dict[str, float] = {}
 _LOCK_TTL_SECONDS = 3600  # clean up locks older than 1 hour
 
 
-def _get_pipeline_lock(run_id: str) -> asyncio.Lock:
+def _get_pipeline_lock(run_id: str) -> LoopAwareLock:
     """Get or create a lock for the given run_id, with TTL cleanup."""
     import time as _time
 
@@ -64,7 +67,7 @@ def _get_pipeline_lock(run_id: str) -> asyncio.Lock:
         _pipeline_lock_times.pop(k, None)
 
     if run_id not in _pipeline_locks:
-        _pipeline_locks[run_id] = asyncio.Lock()
+        _pipeline_locks[run_id] = LoopAwareLock()
     _pipeline_lock_times[run_id] = now
     return _pipeline_locks[run_id]
 

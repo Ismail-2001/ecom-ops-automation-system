@@ -1,7 +1,8 @@
-import asyncio
 import logging
 import time
 from enum import Enum
+
+from ecommerce_ops.infra.async_utils import LoopAwareLock
 
 logger = logging.getLogger("ecommerce_ops.infra.circuit_breaker")
 
@@ -29,7 +30,10 @@ class CircuitBreaker:
         self._failure_count = 0
         self._last_failure_time = 0.0
         self._half_open_attempts = 0
-        self._lock = asyncio.Lock()
+        # LoopAwareLock: module-level CircuitBreaker singletons are shared across
+        # event loops (uvicorn --reload, per-test loops), so a plain asyncio.Lock
+        # would bind to the first loop it contends on and break the next one.
+        self._lock = LoopAwareLock()
 
     @property
     def state(self) -> CircuitState:

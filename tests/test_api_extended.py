@@ -11,6 +11,24 @@ from ecommerce_ops.api.metrics import (
 )
 from ecommerce_ops.api.versioning import APIVersionMiddleware, create_v1_router
 
+
+def _flatten_route_paths(router) -> list:
+    """Resolve a FastAPI router's full route paths.
+
+    FastAPI >= 0.115 mounts included routers as lazy ``_IncludedRouter``
+    wrappers that expose no ``path`` attribute; resolve those to the routes of
+    their underlying router so assertions stay version-agnostic.
+    """
+    paths = []
+    for route in router.routes:
+        if hasattr(route, "path"):
+            paths.append(route.path)
+        else:
+            inner = getattr(route, "original_router", None)
+            if inner is not None:
+                paths.extend(getattr(r, "path", "") for r in inner.routes if hasattr(r, "path"))
+    return paths
+
 # ── metrics.py tests ───────────────────────────────────────
 
 
@@ -93,5 +111,5 @@ class TestCreateV1Router:
             obs_router, mem_router, sec_router, demo_router,
         )
         assert v1.prefix == "/api/v1"
-        route_paths = [r.path for r in v1.routes]
+        route_paths = _flatten_route_paths(v1)
         assert "/api/v1/version" in route_paths
