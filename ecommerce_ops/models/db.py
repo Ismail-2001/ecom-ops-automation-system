@@ -526,7 +526,17 @@ async def init_db():
             .on_conflict_do_nothing(index_elements=[StoreSettings.id])
         )
 
-        agents = ["FraudAgent", "InventoryAgent", "PricingAgent", "ReviewsAgent", "MarketingAgent"]
+        # Canonical fleet. agent_id values must match AGENT_META keys on the
+        # frontend /agents page or the card renders without display metadata.
+        agents = [
+            "FraudAgent",
+            "InventoryAgent",
+            "PricingAgent",
+            "ReviewsAgent",
+            "MarketingAgent",
+            "CartRecoveryAgent",
+            "SupportAgent",
+        ]
         agent_values = [
             {
                 "agent_id": name,

@@ -4,13 +4,17 @@ import { loginAs } from './helpers'
 const BASE = process.env.BASE_URL || 'http://localhost:3200'
 
 test.describe('API Health', () => {
-  test('health endpoint returns 200', async ({ request }) => {
-    const resp = await request.get(`${BASE}/api/v1/health`)
+  // The BFF proxy is session-gated by design (default-deny, 401 without a
+  // cookie), so health is checked through an authenticated session.
+  test('health endpoint returns 200', async ({ page }) => {
+    await loginAs(page)
+    const resp = await page.request.get(`${BASE}/api/v1/health`)
     expect(resp.ok()).toBeTruthy()
   })
 
-  test('health response includes status field', async ({ request }) => {
-    const resp = await request.get(`${BASE}/api/v1/health`)
+  test('health response includes status field', async ({ page }) => {
+    await loginAs(page)
+    const resp = await page.request.get(`${BASE}/api/v1/health`)
     const body = await resp.json()
     expect(body).toHaveProperty('status')
     expect(body).toHaveProperty('dependencies')

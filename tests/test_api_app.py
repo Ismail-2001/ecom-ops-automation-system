@@ -1257,7 +1257,7 @@ class TestDemo:
         async with AsyncClient(
             transport=transport, base_url="http://test", headers=AUTH_HEADER
         ) as c:
-            r = await c.get("/demo/demo/status")
+            r = await c.get("/demo/status")
         assert r.status_code == 200
         body = r.json()
         assert "demo_mode" in body
@@ -1269,7 +1269,7 @@ class TestDemo:
         async with AsyncClient(
             transport=transport, base_url="http://test", headers=AUTH_HEADER
         ) as c:
-            r = await c.get("/demo/demo/scenarios")
+            r = await c.get("/demo/scenarios")
         assert r.status_code == 200
         scenarios = r.json()["scenarios"]
         ids = {s["id"] for s in scenarios}
@@ -1285,7 +1285,7 @@ class TestDemo:
             async with AsyncClient(
                 transport=transport, base_url="http://test", headers=AUTH_HEADER
             ) as c:
-                r = await c.post("/demo/demo/run/fraud_detection")
+                r = await c.post("/demo/run/fraud_detection")
         finally:
             app.dependency_overrides.pop(require_auth, None)
         assert r.status_code == 200
@@ -1301,7 +1301,7 @@ class TestDemo:
             async with AsyncClient(
                 transport=transport, base_url="http://test", headers=AUTH_HEADER
             ) as c:
-                r = await c.post("/demo/demo/run/nonexistent")
+                r = await c.post("/demo/run/nonexistent")
         finally:
             app.dependency_overrides.pop(require_auth, None)
         assert r.status_code == 404

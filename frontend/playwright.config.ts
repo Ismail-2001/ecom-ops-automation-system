@@ -5,7 +5,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // Dev-mode Next recompiles routes on first visit; high worker counts
+  // overwhelm the single dev server and cause flaky route-navigation
+  // timeouts. Two workers keeps the suite deterministic locally.
+  workers: process.env.CI ? 1 : 2,
   reporter: [['html', { open: 'never' }], ['list']],
   use: {
     baseURL: process.env.BASE_URL || 'http://localhost:3200',

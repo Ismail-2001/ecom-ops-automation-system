@@ -4,8 +4,9 @@ import { loginAs } from './helpers'
 const BASE = process.env.BASE_URL || 'http://localhost:3200'
 
 test.describe('Smoke: Health', () => {
-  test('BFF health proxy returns real backend status', async ({ request }) => {
-    const resp = await request.get(`${BASE}/api/v1/health`)
+  test('BFF health proxy returns real backend status', async ({ page }) => {
+    await loginAs(page)
+    const resp = await page.request.get(`${BASE}/api/v1/health`)
     expect(resp.ok()).toBeTruthy()
     const body = await resp.json()
     expect(body).toHaveProperty('status')

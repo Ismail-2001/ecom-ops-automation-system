@@ -4,10 +4,60 @@ from datetime import timedelta
 from sqlalchemy import select
 
 from ecommerce_ops.config import Environment, settings
-from ecommerce_ops.models.db import ApprovalAction, AuditEntry, async_session_factory
+from ecommerce_ops.models.db import (
+    AgentStatus,
+    ApprovalAction,
+    AuditEntry,
+    async_session_factory,
+)
 from ecommerce_ops.utils import utc_now
 
 logger = logging.getLogger("ecommerce_ops.seed")
+
+
+async def enrich_agent_fleet_demo_stats():
+    """Fill zeroed fleet rows with a realistic demo stats mix.
+
+    ``init_db`` inserts the canonical 7-agent fleet with zeroed counters.
+    This pass gives untouched rows (streak 0, zero decisions) a believable
+    demo history — mixed autonomy levels so the filter tabs mean something,
+    and one agent near the 50-streak graduation threshold. Rows with real
+    activity are never touched. No-op in production.
+    """
+    if settings.ENV == Environment.PRODUCTION:
+        return
+
+    # agent_id values must match AGENT_META keys on the agents page.
+    demo_stats = {
+        # agent_id: (autonomy, streak, decisions, approvals, rejections, confidence)
+        "FraudAgent": ("supervised", 38, 412, 361, 51, 0.91),
+        "InventoryAgent": ("autonomous", 62, 288, 265, 23, 0.94),
+        "PricingAgent": ("supervised", 21, 197, 160, 37, 0.88),
+        "ReviewsAgent": ("autonomous", 74, 530, 502, 28, 0.96),
+        "MarketingAgent": ("shadow", 9, 64, 41, 23, 0.83),
+        "CartRecoveryAgent": ("supervised", 44, 226, 198, 28, 0.90),
+        "SupportAgent": ("shadow", 3, 31, 18, 13, 0.79),
+    }
+
+    async with async_session_factory() as session:
+        rows = (await session.execute(select(AgentStatus))).scalars().all()
+        updated = 0
+        for row in rows:
+            stats = demo_stats.get(row.agent_id)
+            if stats is None or row.streak != 0 or row.total_decisions != 0:
+                continue
+            (
+                row.autonomy_level,
+                row.streak,
+                row.total_decisions,
+                row.total_approvals,
+                row.total_rejections,
+                row.avg_confidence,
+            ) = stats
+            updated += 1
+        if updated:
+            await session.commit()
+            logger.info("Enriched %d fleet rows with demo stats.", updated)
 
 
 async def seed_data_if_empty():

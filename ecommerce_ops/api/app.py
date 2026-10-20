@@ -41,6 +41,7 @@ from ecommerce_ops.models import (
     AuditEntry,
     StoreSettings,
     async_session_factory,
+    enrich_agent_fleet_demo_stats,
     get_db_session,
     init_db,
     seed_data_if_empty,
@@ -148,6 +149,7 @@ async def lifespan(app: FastAPI):
     try:
         await init_db()
         await seed_data_if_empty()
+        await enrich_agent_fleet_demo_stats()
         try:
             from ecommerce_ops.models import engine
 
@@ -235,6 +237,7 @@ OpsIQ is an autonomous multi-agent system that manages ecommerce operations incl
 - Input sanitization and security headers
     """,
     version="0.2.0",
+    lifespan=lifespan,
     docs_url="/docs" if app_settings.ENV == Environment.DEVELOPMENT else None,
     redoc_url="/redoc" if app_settings.ENV == Environment.DEVELOPMENT else None,
     openapi_url="/openapi.json" if app_settings.ENV == Environment.DEVELOPMENT else None,
@@ -433,9 +436,11 @@ async def health(operator: str = Depends(verify_auth_optional)):
     except Exception:
         deps["agents"] = "degraded"
 
-    status_code = 200 if all_ok else 503
+    # Liveness + detail endpoint for humans and dashboards: always 200 while
+    # the process can serve, with dependency truth in the body (status field).
+    # The strict gate is /ready — load balancers and k8s probes target that.
     return JSONResponse(
-        status_code=status_code,
+        status_code=200,
         content={
             "status": "ok" if all_ok else "degraded",
             "dependencies": deps,

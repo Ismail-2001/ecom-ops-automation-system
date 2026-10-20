@@ -870,11 +870,12 @@ async def v1_health(operator: str = Depends(verify_auth_optional)):
     except Exception:
         deps["agents"] = "degraded"
 
-    status_code = 200 if all_ok else 503
+    # Liveness + detail: always 200 while the process can serve; dependency
+    # truth lives in the body. /ready remains the strict readiness gate.
     from fastapi.responses import JSONResponse
 
     return JSONResponse(
-        status_code=status_code,
+        status_code=200,
         content={
             "status": "ok" if all_ok else "degraded",
             "dependencies": deps,

@@ -104,7 +104,7 @@ This matters more than any feature list. A system that automates the wrong decis
 ### Security & Compliance
 
 - **5-Role RBAC** — super_admin, admin, operator, viewer, api_only with **39 granular permissions across 15 categories**
-- **Middleware-Level RBAC Enforcement** — `RBACMiddleware` maps every route to a minimum access level (`public` → `viewer` → `operator` → `admin` → `super_admin`) and returns 403 before the handler runs — authorization is not left to individual endpoints
+- **Route-Level RBAC Enforcement** — every endpoint declares its permission via `require_permission()`/`require_role()` dependencies (39 permissions, 15 categories); `AuthenticationMiddleware` fails secure with 503 on auth-backend errors rather than proceeding unauthenticated
 - **Enterprise SSO** — Google OAuth 2.0 and Okta via Authlib with state/session lifecycle management (`/auth/sso/providers`, `/login`, `/callback`, `/logout`). SSO users are mapped onto the same 5-role RBAC model
 - **Immutable Audit Log** — Append-only `audit_log` table (migration `0015`) written by `AuditLogger`: actor, action, resource, outcome, risk level, confidence, IP, user-agent, session, request ID. No UPDATE or DELETE paths exist
 - **PBKDF2 API Key Management** — SHA-256 hashed keys with `eops_` prefix, 90-day expiry, usage tracking (Phase 1 hardening)
@@ -725,7 +725,7 @@ For a store doing **$200K/year** in revenue:
 - **5-Role RBAC**: `super_admin` → `admin` → `operator` → `viewer` → `api_only`
 - **39 Granular Permissions** across 15 categories: dashboard, agents, approvals, shopify, cart_recovery, cod, support, observability, memory, settings, users, roles, audit, api_keys, integrations
 - **Permission Dependencies**: `require_auth()`, `require_permission()`, `require_role()`, `require_admin()`
-- **Middleware-Level Enforcement**: `RBACMiddleware` (`security/rbac_middleware.py`) maps each path to a minimum `AccessLevel` and rejects insufficient roles with 403 before the handler executes — authorization is not opt-in per endpoint
+- **Route-Level Enforcement**: authorization is declared per endpoint via `require_permission()` dependencies (`security/auth.py`), regression-pinned by `tests/test_rbac_enforcement.py`; the earlier unmapped `RBACMiddleware` was deleted rather than shipped as unenforced dead code
 - **Fail-Secure Auth**: Returns 503 on DB errors, never silently proceeds unauthenticated (Phase 2 fix)
 
 ### Audit Trail

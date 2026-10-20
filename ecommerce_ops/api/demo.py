@@ -103,7 +103,7 @@ async def list_use_cases(_: User = Depends(require_permission(Permission.DASHBOA
 # ── Demo Environment ───────────────────────────────────────
 
 
-@router.get("/demo/status")
+@router.get("/status")
 async def demo_status(_: User = Depends(require_permission(Permission.DASHBOARD_VIEW))):
     """Get demo environment status."""
     import os
@@ -127,7 +127,7 @@ async def demo_status(_: User = Depends(require_permission(Permission.DASHBOARD_
     }
 
 
-@router.get("/demo/scenarios")
+@router.get("/scenarios")
 async def demo_scenarios(_: User = Depends(require_permission(Permission.DASHBOARD_VIEW))):
     """List demo scenarios."""
     return {
@@ -184,7 +184,7 @@ async def demo_scenarios(_: User = Depends(require_permission(Permission.DASHBOA
     }
 
 
-@router.post("/demo/run/{scenario_id}")
+@router.post("/run/{scenario_id}")
 async def run_demo_scenario(
     scenario_id: str,
     user: dict = Depends(require_auth),
@@ -240,7 +240,7 @@ async def run_demo_scenario(
     return scenarios[scenario_id]
 
 
-@router.post("/demo/seed")
+@router.post("/seed")
 async def seed_demo_data(user: User = Depends(require_admin)):
     """Seed the database with expanded demo data for a rich dashboard."""
     from ecommerce_ops.demo.seed_data import seed_expanded_demo

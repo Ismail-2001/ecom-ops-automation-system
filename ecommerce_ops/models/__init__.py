@@ -22,7 +22,7 @@ from ecommerce_ops.models.db import (
     get_db_session,
     init_db,
 )
-from ecommerce_ops.models.seed import seed_data_if_empty
+from ecommerce_ops.models.seed import enrich_agent_fleet_demo_stats, seed_data_if_empty
 
 __all__ = [
     "ABExperimentRun",
@@ -45,6 +45,7 @@ __all__ = [
     "StoreSettings",
     "async_session_factory",
     "engine",
+    "enrich_agent_fleet_demo_stats",
     "get_db_session",
     "init_db",
     "seed_data_if_empty",
