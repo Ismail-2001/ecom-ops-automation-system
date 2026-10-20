@@ -2,6 +2,7 @@
 Audit Logger Service
 Records all system actions to the immutable audit_log table.
 """
+
 import json
 import logging
 import uuid
@@ -74,7 +75,13 @@ class AuditLogger:
 
         logger.info(
             "AUDIT: %s %s %s/%s by %s (%s) - %s",
-            action, resource_type, resource_id, outcome, actor, actor_role, log_id,
+            action,
+            resource_type,
+            resource_id,
+            outcome,
+            actor,
+            actor_role,
+            log_id,
         )
 
         return log_id

@@ -245,14 +245,14 @@ class MetaCloudWhatsAppProvider:
 
     @property
     def endpoint(self) -> str:
-        return (
-            f"{self._base_url}/{self._api_version}/{self._phone_number_id}/messages"
-        )
+        return f"{self._base_url}/{self._api_version}/{self._phone_number_id}/messages"
 
     async def send(self, message: OutboundMessage) -> DeliveryResult:
         if not self.is_configured():
             return DeliveryResult(
-                delivered=False, provider=self.name, channel=message.channel,
+                delivered=False,
+                provider=self.name,
+                channel=message.channel,
                 error="not_configured",
             )
 
@@ -370,9 +370,7 @@ def build_provider(
     return LogProvider(channel)
 
 
-async def deliver(
-    message: OutboundMessage, config: Settings | None = None
-) -> DeliveryResult:
+async def deliver(message: OutboundMessage, config: Settings | None = None) -> DeliveryResult:
     """Resolve the provider for ``message.channel`` and send, recording metrics."""
     provider = build_provider(config, message.channel)
     result = await provider.send(message)

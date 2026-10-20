@@ -55,9 +55,7 @@ def get_otp_service() -> OTPService:
 
 class PhoneValidateRequest(BaseModel):
     phone: str = Field(..., description="Phone exactly as entered at checkout")
-    context: str | None = Field(
-        default=None, description="Where it was captured, e.g. 'checkout'"
-    )
+    context: str | None = Field(default=None, description="Where it was captured, e.g. 'checkout'")
 
 
 class OTPRequestPayload(BaseModel):
@@ -167,9 +165,7 @@ async def request_otp(
         purpose=req.purpose,
     )
     if not result.sent:
-        logger.info(
-            "OTP not issued reason=%s phone=%s", result.reason, result.phone
-        )
+        logger.info("OTP not issued reason=%s phone=%s", result.reason, result.phone)
     # OTPRequestResult.to_dict() intentionally excludes the code itself.
     return OTPRequestResponse(**result.to_dict())
 
@@ -184,9 +180,7 @@ async def verify_otp(
     otp: OTPService = Depends(get_otp_service),
     _: User = Depends(require_permission(Permission.COD_EXECUTE)),
 ) -> Dict[str, Any]:
-    result: OTPVerification = await otp.verify(
-        req.phone, req.code, purpose=req.purpose
-    )
+    result: OTPVerification = await otp.verify(req.phone, req.code, purpose=req.purpose)
     if not result.verified:
         logger.info(
             "OTP rejected reason=%s phone=%s attempts_left=%d",

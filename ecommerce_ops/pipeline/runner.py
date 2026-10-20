@@ -341,9 +341,7 @@ async def execute_shop_action(action: ApprovalAction) -> tuple[bool, str]:
     # executed against THAT store's OAuth credentials; they never silently
     # fall back to the env store (wrong-tenant execution would be a serious
     # bug).  Without a shop_domain the env-configured store is used.
-    scoped_shop = (
-        action.payload.get("shop_domain") if isinstance(action.payload, dict) else None
-    )
+    scoped_shop = action.payload.get("shop_domain") if isinstance(action.payload, dict) else None
     shop_domain, access_token = await _resolve_shop_credentials(scoped_shop)
     if scoped_shop and shop_domain is None:
         logger.warning(
@@ -352,9 +350,7 @@ async def execute_shop_action(action: ApprovalAction) -> tuple[bool, str]:
             action.id,
             scoped_shop,
         )
-        return False, (
-            f"execution requires an active credential for shop {scoped_shop}"
-        )
+        return False, (f"execution requires an active credential for shop {scoped_shop}")
     if not shop_domain or not access_token:
         logger.warning(
             "[LIVE] Cannot execute %s for %s: Shopify not configured",
@@ -560,7 +556,9 @@ async def update_agent_streak(agent_name: str, approved: bool, confidence: float
         )
 
 
-async def run_pipeline_task(run_id: str, db_settings: StoreSettings, shop_domain: Optional[str] = None):
+async def run_pipeline_task(
+    run_id: str, db_settings: StoreSettings, shop_domain: Optional[str] = None
+):
     # Locked batch guard: prevent re-running the same pipeline
     lock = _get_pipeline_lock(run_id)
     if lock.locked():

@@ -7,11 +7,7 @@ from typing import Any, Dict, Optional
 
 def adapt_input(state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Map inventory state to a single product dict for the LLM agent."""
-    items = [
-        i
-        for i in state.get("inventory_data", [])
-        if isinstance(i, dict) and i.get("sku")
-    ]
+    items = [i for i in state.get("inventory_data", []) if isinstance(i, dict) and i.get("sku")]
     if not items:
         return None
     item = min(items, key=lambda i: float(i.get("stock") or 0))
@@ -19,9 +15,7 @@ def adapt_input(state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if stock is None:
         stock = item.get("current_stock")
     return {
-        "product_id": str(
-            item.get("variant_id") or item.get("product_id") or item.get("sku")
-        ),
+        "product_id": str(item.get("variant_id") or item.get("product_id") or item.get("sku")),
         "sku": item.get("sku"),
         "name": item.get("name") or item.get("sku"),
         "current_stock": int(stock or 0),

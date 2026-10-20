@@ -16,7 +16,7 @@
 
 **10 AI Agents. 1 Dashboard. Human-in-the-loop by default.**
 
-`1,453 tests passing` · `16 migrations` · `43 Prometheus metrics` · `39 RBAC permissions`
+`1,447 tests passing` · `16 migrations` · `43 Prometheus metrics` · `39 RBAC permissions`
 
 [Getting Started](#getting-started) · [Architecture](#architecture) · [API Docs](#usage-examples) · [Deploy](#docker-production) · [Operations Runbook](#operations-runbook)
 
@@ -334,7 +334,7 @@ graph TD
 <tr>
 <td><strong>Testing</strong></td>
 <td>pytest, Vitest, Playwright, Locust</td>
-<td>1,453 tests (1,312 backend + 141 frontend), load tests, e2e integration</td>
+<td>1,447 tests (1,306 backend + 141 frontend), load tests, e2e integration</td>
 </tr>
 <tr>
 <td><strong>CI/CD</strong></td>
@@ -407,7 +407,7 @@ ecom-ops-automation-system/
 │   └── cli.py                  # Typer CLI (ops-agent run/pause)
 ├── frontend/                   # Next.js 14 dashboard (12 page routes)
 │   └── src/app/                # agents, analytics, orders, products, reviews, support, ...
-├── tests/                      # 66 test modules (1,312 tests)
+├── tests/                      # 65 test modules (1,306 tests)
 ├── monitoring/                 # Prometheus, Grafana, Tempo, Alertmanager (29 rules)
 ├── nginx/                      # Reverse proxy + TLS
 ├── scripts/                    # 18 operational scripts (deploy, backup, DR, secrets)
@@ -486,7 +486,7 @@ npm run dev
 ### Verify Your Install
 
 ```bash
-# Backend test suite — expect 1,312 passing
+# Backend test suite — expect 1,306 passing
 pytest tests/ -q -o addopts="" -p no:cacheprovider
 
 # Frontend test suite — expect 141 passing
@@ -802,9 +802,9 @@ Rotate API keys periodically or on suspected exposure:
 ### Current Status (verified)
 
 ```
-Backend    1,312 tests  ·  66 files  ·  pytest
+Backend    1,306 tests  ·  65 files  ·  pytest
 Frontend     141 tests  ·   12 files  ·  vitest
-Total      1,453 tests  ·  78 files
+Total      1,447 tests  ·  77 files
 ```
 
 ### Test Coverage
@@ -843,7 +843,7 @@ cd frontend && npx vitest run
 Every push runs:
 1. **Lint & Type Check** — Ruff check + format verification + mypy type checking
 2. **Migration Drift** — Alembic vs models divergence check
-3. **Unit Tests** — pytest with PostgreSQL + Redis services (1,312 tests)
+3. **Unit Tests** — pytest with PostgreSQL + Redis services (1,306 tests)
 4. **E2E Tests** — Full pipeline integration
 5. **Security Scan** — pip-audit + Bandit SAST
 6. **Docker Build** — Multi-stage build + Trivy CRITICAL severity scan
@@ -986,7 +986,7 @@ curl "http://localhost:8000/api/v1/security/audit/logs?resource_id=<id>" \
 
 ## Roadmap
 
-> **Current state (as of the COD verification feature):** 1,453 tests (1,312 backend + 141 frontend), 10 domain agents, 19 tables / 16 migrations, 43 metrics, 39 permissions, SSO + immutable audit log. Entries below are point-in-time records of how the project got here — test counts cited inside them reflect the state at that week, not today.
+> **Current state (as of the COD verification feature):** 1,447 tests (1,306 backend + 141 frontend), 10 domain agents, 19 tables / 16 migrations, 43 metrics, 39 permissions, SSO + immutable audit log. Entries below are point-in-time records of how the project got here — test counts cited inside them reflect the state at that week, not today.
 
 ### Completed — Foundation (Phases 1-6)
 

@@ -102,9 +102,7 @@ class DynamicPricingAgentLLM(BaseAgent):
             return guardrail_blocked(violations)
 
         system = SystemMessage(content=PRICING_SYSTEM_PROMPT)
-        human = HumanMessage(
-            content=self._build_prompt(product_data)
-        )
+        human = HumanMessage(content=self._build_prompt(product_data))
 
         try:
             response = await self.llm.ainvoke([system, human])
@@ -186,7 +184,9 @@ class DynamicPricingAgentLLM(BaseAgent):
         max_change = current_price * 0.20
         recommended = max(current_price - max_change, min(recommended, current_price + max_change))
 
-        change_pct = ((recommended - current_price) / current_price * 100) if current_price > 0 else 0
+        change_pct = (
+            ((recommended - current_price) / current_price * 100) if current_price > 0 else 0
+        )
 
         return {
             "recommended_price": round(recommended, 2),

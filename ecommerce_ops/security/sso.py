@@ -2,6 +2,7 @@
 Single Sign-On (SSO) Module
 Supports Google OAuth2 and Okta SAML for enterprise authentication.
 """
+
 import logging
 import secrets
 from typing import Optional

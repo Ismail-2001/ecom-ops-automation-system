@@ -359,9 +359,7 @@ async def _send_recovery_whatsapp(
         return False
 
     if not result.delivered:
-        logger.warning(
-            "Recovery WhatsApp not delivered to %s: %s", sanitized.e164, result.error
-        )
+        logger.warning("Recovery WhatsApp not delivered to %s: %s", sanitized.e164, result.error)
     return result.delivered
 
 
@@ -390,9 +388,7 @@ async def _execute_recovery(
         # 4. Schedule follow-ups
 
         if phone:
-            await _send_recovery_whatsapp(
-                phone, discount_code, checkout_url or "", language
-            )
+            await _send_recovery_whatsapp(phone, discount_code, checkout_url or "", language)
 
         logger.info("Recovery campaign completed for cart %s", cart_id)
 

@@ -133,9 +133,7 @@ METRIC_AGENT_RUN_DURATION = Histogram(
     ["agent"],
     buckets=(0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0),
 )
-METRIC_AGENT_RUNS_TOTAL = Counter(
-    "agent_runs_total", "Total agent runs", ["agent", "status"]
-)
+METRIC_AGENT_RUNS_TOTAL = Counter("agent_runs_total", "Total agent runs", ["agent", "status"])
 METRIC_AGENT_FALLBACK_TOTAL = Counter(
     "agent_fallback_total", "Agent LLM→rule-based fallbacks", ["agent"]
 )

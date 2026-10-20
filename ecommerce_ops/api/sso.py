@@ -1,6 +1,7 @@
 """
 SSO Authentication API Routes
 """
+
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request

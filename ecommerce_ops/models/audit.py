@@ -2,6 +2,7 @@
 Immutable Audit Log Model
 Append-only table for compliance and forensics.
 """
+
 from sqlalchemy import Column, DateTime, Float, String, Text
 
 from ecommerce_ops.models.db import Base
@@ -10,6 +11,7 @@ from ecommerce_ops.utils import utc_now
 
 class AuditLog(Base):
     """Append-only audit log. No UPDATE or DELETE operations allowed."""
+
     __tablename__ = "audit_log"
 
     id = Column(String, primary_key=True)

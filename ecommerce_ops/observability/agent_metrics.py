@@ -40,6 +40,7 @@ _RING_BUFFER_SIZE = 500  # last N executions per agent
 
 # ── Per-agent execution record ─────────────────────────────
 
+
 @dataclass
 class AgentExecutionRecord:
     """Immutable record of a single agent execution."""
@@ -75,6 +76,7 @@ class AgentExecutionRecord:
 
 # ── SLO check result ──────────────────────────────────────
 
+
 @dataclass
 class SLOResult:
     """Result of an SLO check for one agent."""
@@ -95,6 +97,7 @@ class SLOResult:
 
 # ── Prometheus counters (lazy import to avoid circular) ────
 
+
 def _emit_prometheus(agent: str, record: AgentExecutionRecord) -> None:
     """Emit Prometheus metrics for a completed execution."""
     try:
@@ -111,21 +114,13 @@ def _emit_prometheus(agent: str, record: AgentExecutionRecord) -> None:
         METRIC_AGENT_RUNS_TOTAL.labels(agent=agent, status=status).inc()
         if record.fallback_used:
             METRIC_AGENT_FALLBACK_TOTAL.labels(agent=agent).inc()
-        METRIC_AGENT_EXECUTION_ERRORS.labels(agent=agent).inc(
-            0 if record.success else 1
-        )
+        METRIC_AGENT_EXECUTION_ERRORS.labels(agent=agent).inc(0 if record.success else 1)
         if record.tokens_input > 0:
-            METRIC_LLM_TOKENS_INPUT.labels(agent=agent, model="").inc(
-                record.tokens_input
-            )
+            METRIC_LLM_TOKENS_INPUT.labels(agent=agent, model="").inc(record.tokens_input)
         if record.tokens_output > 0:
-            METRIC_LLM_TOKENS_OUTPUT.labels(agent=agent, model="").inc(
-                record.tokens_output
-            )
+            METRIC_LLM_TOKENS_OUTPUT.labels(agent=agent, model="").inc(record.tokens_output)
         if record.cost_usd > 0:
-            METRIC_LLM_COST_DOLLARS.labels(agent=agent, model="").inc(
-                record.cost_usd
-            )
+            METRIC_LLM_COST_DOLLARS.labels(agent=agent, model="").inc(record.cost_usd)
         # Log structured decision record
         logger.info(
             "AGENT_DECISION agent=%s status=%s latency_ms=%.1f "
@@ -147,6 +142,7 @@ def _emit_prometheus(agent: str, record: AgentExecutionRecord) -> None:
 
 # ── MetricsCollector (singleton) ───────────────────────────
 
+
 class MetricsCollector:
     """Collects per-agent execution metrics and computes SLOs.
 
@@ -157,9 +153,7 @@ class MetricsCollector:
         self._buffers: Dict[str, Deque[AgentExecutionRecord]] = {}
         self._slo_config: Dict[str, Dict[str, float]] = dict(DEFAULT_SLO)
 
-    def configure_slo(
-        self, agent: str, p95_latency_ms: float, min_success_rate: float
-    ) -> None:
+    def configure_slo(self, agent: str, p95_latency_ms: float, min_success_rate: float) -> None:
         """Override SLO thresholds for a specific agent at runtime."""
         self._slo_config[agent] = {
             "p95_latency_ms": p95_latency_ms,
@@ -220,14 +214,14 @@ class MetricsCollector:
             return SLOResult(
                 agent=agent,
                 p95_latency_ms=0.0,
-                slo_p95_latency_ms=self._slo_config.get(
-                    agent, self._slo_config["__default__"]
-                )["p95_latency_ms"],
+                slo_p95_latency_ms=self._slo_config.get(agent, self._slo_config["__default__"])[
+                    "p95_latency_ms"
+                ],
                 p95_ok=True,
                 success_rate=1.0,
-                slo_min_success_rate=self._slo_config.get(
-                    agent, self._slo_config["__default__"]
-                )["min_success_rate"],
+                slo_min_success_rate=self._slo_config.get(agent, self._slo_config["__default__"])[
+                    "min_success_rate"
+                ],
                 success_rate_ok=True,
                 sample_count=0,
             )
@@ -276,16 +270,8 @@ class MetricsCollector:
             "fallback_rate": round(fallbacks / n, 4) if n else 0.0,
             "latency_ms": {
                 "p50": round(latencies_sorted[n // 2], 2) if n else 0.0,
-                "p95": round(
-                    latencies_sorted[max(0, int(n * 0.95) - 1)], 2
-                )
-                if n
-                else 0.0,
-                "p99": round(
-                    latencies_sorted[max(0, int(n * 0.99) - 1)], 2
-                )
-                if n
-                else 0.0,
+                "p95": round(latencies_sorted[max(0, int(n * 0.95) - 1)], 2) if n else 0.0,
+                "p99": round(latencies_sorted[max(0, int(n * 0.99) - 1)], 2) if n else 0.0,
                 "mean": round(sum(latencies) / n, 2) if n else 0.0,
                 "max": round(max(latencies), 2) if n else 0.0,
             },

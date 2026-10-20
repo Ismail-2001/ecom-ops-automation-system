@@ -111,9 +111,7 @@ class AgentRegistry:
             try:
                 self._load_spec(spec_path)
             except Exception as exc:
-                self._load_errors.append(
-                    {"path": str(spec_path), "error": str(exc)[:200]}
-                )
+                self._load_errors.append({"path": str(spec_path), "error": str(exc)[:200]})
                 logger.warning("Failed to load agent spec %s: %s", spec_path, exc)
 
         logger.info(

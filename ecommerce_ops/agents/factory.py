@@ -68,12 +68,8 @@ class AgentFactory:
                 try:
                     self._agents[spec.agent_id] = self._build_unified(spec.agent_id)
                 except Exception as exc:
-                    logger.warning(
-                        "Failed to build agent %s: %s", spec.agent_id, exc
-                    )
-                    errors.append(
-                        {"agent_id": spec.agent_id, "error": str(exc)[:200]}
-                    )
+                    logger.warning("Failed to build agent %s: %s", spec.agent_id, exc)
+                    errors.append({"agent_id": spec.agent_id, "error": str(exc)[:200]})
         return {
             "loaded": loaded,
             "errors": errors,
@@ -99,8 +95,7 @@ class AgentFactory:
         spec = agent_registry.get(name)
         if spec is None:
             raise ValueError(
-                f"Unknown agent: '{name}'. "
-                f"Available: {list(agent_registry.specs.keys())}"
+                f"Unknown agent: '{name}'. Available: {list(agent_registry.specs.keys())}"
             )
         return _build_from_spec(spec)
 
@@ -178,9 +173,7 @@ class UnifiedAgent:
                     tokens_out = cost_data.get("tokens_output", 0)
                     cost_usd = cost_data.get("cost_usd", 0.0)
 
-                    adapted = (
-                        self.output_adapter(llm_result) if self.output_adapter else None
-                    )
+                    adapted = self.output_adapter(llm_result) if self.output_adapter else None
 
                     if adapted:
                         decision = self.rule_agent.create_decision(

@@ -178,9 +178,7 @@ async def shopify_webhook(
 async def sync_shopify_data(
     background_tasks: BackgroundTasks,
     full: bool = Query(False, description="Full sync or incremental"),
-    shop_domain: Optional[str] = Query(
-        None, description="Scope sync to an OAuth-installed store"
-    ),
+    shop_domain: Optional[str] = Query(None, description="Scope sync to an OAuth-installed store"),
     _: User = Depends(require_permission(Permission.SHOPIFY_SYNC)),
 ):
     """Trigger data synchronization from Shopify."""

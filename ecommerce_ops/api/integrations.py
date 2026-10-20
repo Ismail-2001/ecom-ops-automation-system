@@ -35,9 +35,7 @@ KNOWN_EVENTS = {
 class WebhookCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
     url: str = Field(..., description="HTTPS endpoint that receives the events")
-    events: List[str] = Field(
-        ..., description='Event types; use ["*"] to receive every event'
-    )
+    events: List[str] = Field(..., description='Event types; use ["*"] to receive every event')
     secret: Optional[str] = Field(
         None, max_length=256, description="HMAC signing secret (sent as X-Ecom-Ops-Signature)"
     )
@@ -156,9 +154,7 @@ async def create_webhook(
     db=Depends(get_db_session),
 ):
     """Register a new outbound webhook destination."""
-    existing = await db.execute(
-        select(OutboundWebhook).where(OutboundWebhook.name == req.name)
-    )
+    existing = await db.execute(select(OutboundWebhook).where(OutboundWebhook.name == req.name))
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail="A webhook with this name already exists")
 

@@ -82,9 +82,7 @@ async def dispatch_outbound_webhook(event_type: str, payload: Dict[str, Any]) ->
                 resp = await client.post(hook.url, content=body, headers=hook_headers)
                 if resp.status_code >= 300:
                     raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:200]}")
-                logger.info(
-                    "Outbound webhook %s delivered for event %s", hook.name, event_type
-                )
+                logger.info("Outbound webhook %s delivered for event %s", hook.name, event_type)
                 METRIC_OUTBOUND_WEBHOOKS.labels(event_type=event_type, result="sent").inc()
             except Exception as e:
                 logger.warning(
@@ -98,9 +96,7 @@ async def send_test_webhook(webhook_id: int) -> bool:
     from ecommerce_ops.models.db import OutboundWebhook, async_session_factory
 
     async with async_session_factory() as session:
-        res = await session.execute(
-            select(OutboundWebhook).where(OutboundWebhook.id == webhook_id)
-        )
+        res = await session.execute(select(OutboundWebhook).where(OutboundWebhook.id == webhook_id))
         hook = res.scalar_one_or_none()
     if hook is None:
         return False

@@ -389,7 +389,11 @@ async def rotate_api_key(
             resource_id=api_key.id,
             user_id=admin.id,
             success=True,
-            details={"previous_key_id": req.key_id, "name": api_key.name, "role": api_key.role.value},
+            details={
+                "previous_key_id": req.key_id,
+                "name": api_key.name,
+                "role": api_key.role.value,
+            },
         )
     )
 

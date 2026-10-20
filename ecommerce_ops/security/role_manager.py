@@ -300,9 +300,7 @@ class RoleManager:
         """
         async with async_session_factory() as session:
             existing = (
-                await session.execute(
-                    select(RBACUser).where(RBACUser.id == OPERATOR_USER_ID)
-                )
+                await session.execute(select(RBACUser).where(RBACUser.id == OPERATOR_USER_ID))
             ).scalar_one_or_none()
             if existing is not None:
                 return

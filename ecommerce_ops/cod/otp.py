@@ -474,12 +474,12 @@ class OTPService:
         if used > self.rate_max:
             await self._safe_decr(ratelimit_key(phone.normalized))
             remaining = await self._safe_ttl(ratelimit_key(phone.normalized))
-            return self._record_request(
-                _result(reason="rate_limited", resend_after=remaining)
-            )
+            return self._record_request(_result(reason="rate_limited", resend_after=remaining))
 
         code = generate_code(self.otp_length)
-        delivery = await self._sender(self._build_message(phone.e164, code, channel, language, purpose))
+        delivery = await self._sender(
+            self._build_message(phone.e164, code, channel, language, purpose)
+        )
 
         if not delivery.delivered:
             # Refund the reserved slot: an outage must not consume the
@@ -497,21 +497,15 @@ class OTPService:
 
         try:
             await self._store.set(code_key(purpose, phone.normalized), code, self.ttl_seconds)
-            await self._store.set(
-                attempts_key(purpose, phone.normalized), "0", self.ttl_seconds
-            )
-            await self._store.set(
-                cooldown_key(phone.normalized), request_id, self.cooldown_seconds
-            )
+            await self._store.set(attempts_key(purpose, phone.normalized), "0", self.ttl_seconds)
+            await self._store.set(cooldown_key(phone.normalized), request_id, self.cooldown_seconds)
         except OTPStorageError:
             logger.error(
                 "OTP issued but not persisted for %s (code %s...)",
                 phone.normalized,
                 code[:2],
             )
-            return self._record_request(
-                _result(reason="storage_error", provider=delivery.provider)
-            )
+            return self._record_request(_result(reason="storage_error", provider=delivery.provider))
 
         logger.info(
             "OTP issued for %s purpose=%s channel=%s provider=%s request_id=%s",
@@ -584,22 +578,14 @@ class OTPService:
             submitted = code or ""
             if hmac.compare_digest(stored, submitted):
                 await self._store.delete(c_key, a_key)
-                await self._store.set(
-                    verified_key(purpose, normalized), "1", self.verified_ttl
-                )
-                logger.info(
-                    "OTP verified for %s purpose=%s", normalized, purpose
-                )
-                return self._record_verify(
-                    _result(verified=True, attempts_remaining=0)
-                )
+                await self._store.set(verified_key(purpose, normalized), "1", self.verified_ttl)
+                logger.info("OTP verified for %s purpose=%s", normalized, purpose)
+                return self._record_verify(_result(verified=True, attempts_remaining=0))
 
             used = await self._store.incr(a_key, self.ttl_seconds)
             if used >= self.max_attempts:
                 await self._store.delete(c_key, a_key)
-                logger.warning(
-                    "OTP attempts exhausted for %s purpose=%s", normalized, purpose
-                )
+                logger.warning("OTP attempts exhausted for %s purpose=%s", normalized, purpose)
                 return self._record_verify(
                     _result(reason="too_many_attempts", attempts_remaining=0)
                 )
@@ -621,7 +607,10 @@ class OTPService:
         if not phone.is_valid:
             return False
         try:
-            return await self._store.get(verified_key(_purpose_key(purpose), phone.normalized)) is not None
+            return (
+                await self._store.get(verified_key(_purpose_key(purpose), phone.normalized))
+                is not None
+            )
         except OTPStorageError:
             return False
 
@@ -660,7 +649,9 @@ class OTPService:
             channel=channel,
             purpose=purpose,
             template_name=template_name,
-            template_language=self._config.WHATSAPP_OTP_TEMPLATE_LANGUAGE if template_name else None,
+            template_language=self._config.WHATSAPP_OTP_TEMPLATE_LANGUAGE
+            if template_name
+            else None,
             template_params=(code,) if template_name else (),
         )
 
