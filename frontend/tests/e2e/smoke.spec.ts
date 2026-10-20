@@ -53,6 +53,8 @@ test.describe('Smoke: Dashboard', () => {
   })
 
   test('shows backend health card status', async ({ page }) => {
-    await expect(page.locator('text=System Health')).toBeVisible()
+    // Heading only: `text=System Health` also matches the card's status copy
+    // ("System Healthy") and trips Playwright strict mode.
+    await expect(page.getByRole('heading', { name: 'System Health' })).toBeVisible()
   })
 })

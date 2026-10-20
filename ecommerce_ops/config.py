@@ -89,8 +89,40 @@ class Settings(BaseSettings):
     NOTIFY_EMAIL: Optional[str] = None
     NOTIFY_FROM_EMAIL: Optional[str] = None
 
+    # COD verification — WhatsApp (Meta Cloud API)
+    # When credentials are unset, deliveries fall back to the log-only
+    # provider: bodies are logged, never sent to a handset.
+    WHATSAPP_ACCESS_TOKEN: Optional[SecretStr] = None
+    WHATSAPP_PHONE_NUMBER_ID: Optional[str] = None
+    WHATSAPP_API_BASE_URL: str = "https://graph.facebook.com"
+    WHATSAPP_API_VERSION: str = "v21.0"
+    WHATSAPP_TIMEOUT_SECONDS: float = 10.0
+    # Pre-approved Meta template for OTP volume. None = free-form text inside
+    # the 24-hour customer-service window (development/testing path).
+    WHATSAPP_OTP_TEMPLATE_NAME: Optional[str] = None
+    WHATSAPP_OTP_TEMPLATE_LANGUAGE: str = "en_US"
+
+    # COD verification — OTP step-up challenge
+    OTP_LENGTH: int = Field(default=6, ge=4, le=10)
+    OTP_TTL_SECONDS: int = Field(default=300, gt=0)
+    OTP_RESEND_COOLDOWN_SECONDS: int = Field(default=60, gt=0)
+    OTP_MAX_ATTEMPTS: int = Field(default=5, ge=1)
+    OTP_RATE_LIMIT_WINDOW_SECONDS: int = Field(default=3600, gt=0)
+    # Per-phone hourly dispatch budget (soft abuse brake, refundable on
+    # provider failure so an outage never burns a customer's quota).
+    OTP_RATE_LIMIT_MAX_REQUESTS: int = Field(default=3, ge=1)
+    # How long a successful verification unlocks COD order creation.
+    OTP_VERIFIED_TTL_SECONDS: int = Field(default=900, gt=0)
+
     @model_validator(mode="after")
     def validate_production_settings(self):
+        # WhatsApp credentials always travel as a pair (any environment): a
+        # half pair would otherwise boot and silently resolve to LogProvider,
+        # turning the COD step-up challenge into a flow that only logs.
+        if bool(self.WHATSAPP_ACCESS_TOKEN) != bool(self.WHATSAPP_PHONE_NUMBER_ID):
+            raise ValueError(
+                "WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID must be set together"
+            )
         if self.ENV == Environment.PRODUCTION:
             if not self.API_KEY:
                 raise ValueError("API_KEY must be set in production")

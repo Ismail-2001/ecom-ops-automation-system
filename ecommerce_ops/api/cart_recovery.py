@@ -17,6 +17,9 @@ from ecommerce_ops.agents.cart_recovery.models import (
     RecoveryStrategy,
 )
 from ecommerce_ops.agents.cart_recovery.strategy import RecoveryStrategyEngine
+from ecommerce_ops.cod.messaging import Channel, OutboundMessage, deliver
+from ecommerce_ops.cod.phone import sanitize_phone
+from ecommerce_ops.cod.templates import Language, render_recovery
 from ecommerce_ops.config import settings
 from ecommerce_ops.security.auth import require_permission
 from ecommerce_ops.security.models import Permission, User
@@ -46,6 +49,9 @@ class RecoveryActionRequest(BaseModel):
     strategy: RecoveryStrategy
     discount_value: float = 0.0
     custom_message: Optional[str] = None
+    phone: Optional[str] = None
+    checkout_url: Optional[str] = None
+    language: Language = Language.ENGLISH
 
 
 class BatchRecoveryRequest(BaseModel):
@@ -176,6 +182,9 @@ async def trigger_recovery(
         strategy=req.strategy,
         discount_code=code,
         discount_value=req.discount_value,
+        phone=req.phone,
+        checkout_url=req.checkout_url,
+        language=req.language,
     )
 
     return {
@@ -320,11 +329,50 @@ async def cart_recovery_health():
 # ── Background Tasks ───────────────────────────────────────
 
 
+async def _send_recovery_whatsapp(
+    phone: str,
+    discount_code: str,
+    checkout_url: str,
+    language: Language = Language.ENGLISH,
+) -> bool:
+    """Send a WhatsApp recovery nudge for one cart.
+
+    Soft-fails by design: an invalid number, a provider outage, or a rendering
+    error all return ``False`` and never propagate — recovery is best-effort.
+    """
+    sanitized = sanitize_phone(phone)
+    if not sanitized.is_valid or not sanitized.e164:
+        logger.info("Skipping recovery WhatsApp: unusable phone %r", phone)
+        return False
+
+    body = render_recovery(discount_code, checkout_url, language)
+    message = OutboundMessage(
+        to=sanitized.e164,
+        body=body,
+        channel=Channel.WHATSAPP,
+        purpose="cart_recovery",
+    )
+    try:
+        result = await deliver(message)
+    except Exception as e:
+        logger.warning("Recovery WhatsApp raised for %s: %s", sanitized.e164, e)
+        return False
+
+    if not result.delivered:
+        logger.warning(
+            "Recovery WhatsApp not delivered to %s: %s", sanitized.e164, result.error
+        )
+    return result.delivered
+
+
 async def _execute_recovery(
     cart_id: str,
     strategy: RecoveryStrategy,
     discount_code: str,
     discount_value: float,
+    phone: Optional[str] = None,
+    checkout_url: Optional[str] = None,
+    language: Language = Language.ENGLISH,
 ):
     """Execute recovery campaign in background."""
     try:
@@ -340,6 +388,11 @@ async def _execute_recovery(
         # 2. Send email via Resend/SES
         # 3. Store recovery record
         # 4. Schedule follow-ups
+
+        if phone:
+            await _send_recovery_whatsapp(
+                phone, discount_code, checkout_url or "", language
+            )
 
         logger.info("Recovery campaign completed for cart %s", cart_id)
 

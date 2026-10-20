@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation"
 import { useState, useEffect } from "react"
 import {
   LayoutDashboard, Bot, ShoppingCart, Headphones, Package,
-  Star, BarChart3, Store, Shield, Settings, Zap, Plus, X
+  Star, BarChart3, Store, Shield, Settings, Zap, Plus, X, Smartphone
 } from "lucide-react"
 
 const navSections = [
@@ -20,6 +20,7 @@ const navSections = [
     items: [
       { href: "/orders", label: "Orders", icon: ShoppingCart },
       { href: "/cart-recovery", label: "Cart Recovery", icon: Package },
+      { href: "/cod-verification", label: "COD Verification", icon: Smartphone },
       { href: "/support", label: "Support", icon: Headphones },
     ],
   },

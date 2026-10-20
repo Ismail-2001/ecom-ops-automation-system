@@ -500,9 +500,17 @@ POST /api/cart-recovery/recover
 {
   "cart_id": "CART-001",
   "strategy": "discount_10_percent",
-  "channel": "email"
+  "channel": "email",
+  "phone": "03214567890",
+  "checkout_url": "https://shop.example/checkout/CART-001",
+  "language": "ur"
 }
 ```
+
+`phone`, `checkout_url`, and `language` are optional. When `phone` is present
+and sanitizes to a valid Pakistani number, a WhatsApp recovery nudge is sent
+(soft-fails: a provider outage never fails the request). `language` is `en`
+(default) or `ur` (Roman Urdu).
 
 **Response**:
 ```json
@@ -536,6 +544,143 @@ GET /api/cart-recovery/analytics
   ]
 }
 ```
+
+## COD Verification
+
+Pakistani COD (cash-on-delivery) step-up verification. Every endpoint is
+mounted twice: the legacy path shown here and a versioned twin under
+`/api/v1` (e.g. `/api/v1/cod/phone/validate`). Phone validation requires
+`cod:view`; OTP dispatch and verification require `cod:execute`.
+
+Design rule: suspicious input is **soft-flagged** (`action: "review"` /
+OTP step-up) — the API never hard-drops an order on phone grounds.
+
+### Validate a Phone Number
+
+```
+POST /cod/phone/validate
+```
+
+Normalizes a checkout phone number to E.164, detects the Pakistani operator
+(Jazz, Zong, Telenor, Ufone), and returns a recommended step-up action.
+
+**Request**:
+```json
+{
+  "phone": "03214567890",
+  "context": "checkout"
+}
+```
+
+**Response** (clean Jazz number):
+```json
+{
+  "raw": "03214567890",
+  "normalized": "03214567890",
+  "e164": "+923214567890",
+  "operator": "jazz",
+  "is_valid": true,
+  "risk_signals": [],
+  "action": "allow",
+  "risk_level": "low"
+}
+```
+
+A repeated-digit number (`03000000000`) returns `is_valid: true` with
+`risk_signals: ["all_same_digit", "low_entropy"]` and
+`action: "needs_otp_verification"`. Unparseable input returns
+`is_valid: false` and `action: "review"` (HTTP 200 — a soft flag, not an
+error).
+
+### Request an OTP
+
+```
+POST /cod/otp/request
+```
+
+Dispatches a 6-digit code over WhatsApp-first messaging (Meta Cloud API;
+log-only fallback when credentials are unset). Per phone: 60s resend
+cooldown, 3 codes/hour, 5-minute TTL, English or Roman Urdu template.
+
+**Request**:
+```json
+{
+  "phone": "03214567890",
+  "language": "ur"
+}
+```
+
+**Response**:
+```json
+{
+  "sent": true,
+  "reason": "ok",
+  "phone": "03214567890",
+  "channel": "whatsapp",
+  "provider": "log",
+  "expires_in": 300,
+  "resend_after": 60,
+  "attempts_allowed": 5,
+  "request_id": "..."
+}
+```
+
+`reason` is one of `ok`, `invalid_phone`, `cooldown_active`, `rate_limited`,
+`provider_error`, `storage_error`. The passcode is never returned by the API.
+
+### Verify an OTP
+
+```
+POST /cod/otp/verify
+```
+
+Single-use: the first correct code consumes it and writes a verified marker
+(15-minute unlock window). Wrong guesses decrement the attempt budget; at
+zero, the code is destroyed.
+
+**Request**:
+```json
+{
+  "phone": "03214567890",
+  "code": "123456"
+}
+```
+
+**Response**:
+```json
+{
+  "verified": true,
+  "reason": "ok",
+  "phone": "03214567890",
+  "attempts_remaining": 4
+}
+```
+
+`reason` is one of `ok`, `invalid_phone`, `not_found`, `invalid_code`,
+`too_many_attempts`.
+
+### COD Health
+
+```
+GET /cod/health
+```
+
+**Response**:
+```json
+{
+  "whatsapp_configured": false,
+  "provider": "log",
+  "channel": "whatsapp",
+  "otp_ttl_seconds": 300,
+  "otp_max_attempts": 5,
+  "otp_rate_limit_per_window": 3,
+  "storage_backend": "MemoryOTPStore"
+}
+```
+
+Outside `ENV=testing`, `storage_backend` is `RedisOTPStore` (keys
+`otp:code:*`, `otp:attempts:*`, `otp:cooldown:*`, `otp:ratelimit:*`,
+`otp:verified:*`).
 
 ## Customer Support
 

@@ -182,6 +182,7 @@ class AbandonedCartAgent(BaseAgent):
             customer = CustomerProfile(
                 id=c.get("id"),
                 email=c.get("email"),
+                phone=c.get("phone"),
                 first_name=c.get("first_name"),
                 last_name=c.get("last_name"),
                 total_orders=c.get("total_orders", 0),

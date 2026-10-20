@@ -22,5 +22,18 @@ export default defineConfig({
     url: 'http://localhost:3200',
     reuseExistingServer: true,
     timeout: 60_000,
+    // `src/lib/session.ts` falls back to a *random per-process* secret when
+    // SESSION_SECRET is unset. Next dev evaluates route handlers and client
+    // code in separate module graphs, so each graph generated a different
+    // key: the login cookie signed by one was rejected by the other and every
+    // authenticated navigation bounced back to /login (401 "Not
+    // authenticated"). Pin a deterministic dev-only secret so the whole E2E
+    // suite gets one shared key. Production still requires SESSION_SECRET and
+    // refuses to boot without it.
+    env: {
+      ...process.env,
+      SESSION_SECRET:
+        process.env.SESSION_SECRET || 'e2e-dev-session-secret-do-not-use-in-production',
+    },
   },
 })

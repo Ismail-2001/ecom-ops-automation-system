@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ecommerce_ops.api.auth import verify_auth, verify_auth_optional
 from ecommerce_ops.api.cart_recovery import router as cart_recovery_router
+from ecommerce_ops.api.cod import router as cod_router
 from ecommerce_ops.api.core_routes import router as core_router
 from ecommerce_ops.api.customer_support import router as customer_support_router
 from ecommerce_ops.api.demo import router as demo_router
@@ -287,6 +288,9 @@ app.include_router(sso_router)
 # Include Demo routes
 app.include_router(demo_router)
 
+# Include COD verification routes (Pakistani phone sanitizer + OTP step-up)
+app.include_router(cod_router)
+
 # Include Integration routes (outbound webhooks)
 app.include_router(integrations_router, prefix="/api")
 
@@ -304,6 +308,7 @@ v1_router = create_v1_router(
     demo_router,
     core_router,
     integrations_router=integrations_router,
+    cod_router=cod_router,
 )
 app.include_router(v1_router)
 app.add_middleware(APIVersionMiddleware)

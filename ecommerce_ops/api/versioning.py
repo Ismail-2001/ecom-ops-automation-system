@@ -41,23 +41,30 @@ def create_v1_router(
     demo_router,
     core_router=None,
     integrations_router=None,
+    cod_router=None,
 ) -> APIRouter:
     """Create a versioned API router with all v1 endpoints.
 
     Returns a router that mounts at /api/v1/ and includes all existing routers.
     Legacy /api/ routes remain for backward compatibility but include deprecation headers.
+
+    Feature routers already declare their own ``prefix`` (``/shopify``,
+    ``/cod``, ...), so they are included **bare** here — re-adding a prefix
+    would emit doubled segments like ``/api/v1/shopify/shopify/orders``.
     """
     v1 = APIRouter(prefix="/api/v1")
 
-    v1.include_router(shopify_router, prefix="/shopify", tags=["v1"])
-    v1.include_router(cart_recovery_router, prefix="/cart-recovery", tags=["v1"])
-    v1.include_router(customer_support_router, prefix="/support", tags=["v1"])
-    v1.include_router(observability_router, prefix="/observability", tags=["v1"])
-    v1.include_router(memory_router, prefix="/memory", tags=["v1"])
-    v1.include_router(security_router, prefix="/security", tags=["v1"])
-    v1.include_router(demo_router, prefix="/demo", tags=["v1"])
+    v1.include_router(shopify_router, tags=["v1"])
+    v1.include_router(cart_recovery_router, tags=["v1"])
+    v1.include_router(customer_support_router, tags=["v1"])
+    v1.include_router(observability_router, tags=["v1"])
+    v1.include_router(memory_router, tags=["v1"])
+    v1.include_router(security_router, tags=["v1"])
+    v1.include_router(demo_router, tags=["v1"])
     if integrations_router is not None:
-        v1.include_router(integrations_router, prefix="/integrations", tags=["v1"])
+        v1.include_router(integrations_router, tags=["v1"])
+    if cod_router is not None:
+        v1.include_router(cod_router, tags=["v1"])
     if core_router is not None:
         v1.include_router(core_router, tags=["v1"])
 

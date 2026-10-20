@@ -160,3 +160,20 @@ METRIC_SECRET_ROTATED = Counter(
     "Number of times a tracked secret was marked as rotated",
     ["secret_name"],
 )
+
+# ── COD verification (Pakistani phone sanitizer + OTP step-up) ──
+METRIC_COD_MESSAGES_SENT = Counter(
+    "cod_messages_sent_total",
+    "Outbound COD messages (WhatsApp/SMS OTP, recovery) by delivery outcome",
+    ["channel", "provider", "outcome"],
+)
+METRIC_COD_OTP_REQUESTS = Counter(
+    "cod_otp_requests_total",
+    "OTP dispatch attempts by reason (`ok`, `cooldown_active`, `rate_limited`, ...)",
+    ["outcome"],
+)
+METRIC_COD_OTP_VERIFICATIONS = Counter(
+    "cod_otp_verifications_total",
+    "OTP verification attempts by reason (`ok`, `invalid_code`, `not_found`, ...)",
+    ["outcome"],
+)

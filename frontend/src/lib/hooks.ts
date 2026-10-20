@@ -8,6 +8,7 @@ import {
   securityApi,
   supportApi,
   cartRecoveryApi,
+  codApi,
   shopifyApi,
   orderApi,
   productApi,
@@ -148,6 +149,14 @@ export function useCartRecoveryAnalytics(days = 7) {
   return useQuery({
     queryKey: ["cart-recovery", "analytics", days],
     queryFn: cartRecoveryApi.analytics,
+    staleTime: 60_000,
+  })
+}
+
+export function useCodHealth() {
+  return useQuery({
+    queryKey: ["cod", "health"],
+    queryFn: codApi.health,
     staleTime: 60_000,
   })
 }

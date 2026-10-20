@@ -46,7 +46,11 @@ test.describe('Error Boundaries', () => {
   test('login page handles invalid input gracefully', async ({ page }) => {
     await page.goto(`${BASE}/login`)
     const submit = page.locator('button:has-text("Access Command Center")')
-    await submit.click()
+    // With an empty key the submit stays disabled, so a plain click() would
+    // wait forever for "enabled". Graceful handling = the form refuses to fire.
+    await expect(submit).toBeDisabled()
+    await submit.click({ force: true })
     await expect(page.locator('input[type="password"]')).toBeVisible()
+    await expect(page).toHaveURL(/\/login/)
   })
 })

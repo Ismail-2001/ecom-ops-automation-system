@@ -3,6 +3,7 @@ from typing import Any, Dict, List
 import structlog
 
 from ecommerce_ops.agents._base import BaseAgent
+from ecommerce_ops.cod.phone import sanitize_phone
 
 logger = structlog.get_logger(__name__)
 
@@ -13,6 +14,42 @@ FRAUD_RULES = {
     },
     "o_high_value": {"score": 60, "factors": ["amount_above_threshold"]},
 }
+
+# COD phone-signal penalties (Phase 3). An unparseable number is the stronger
+# signal (checkout capture is broken or forged); a well-formed but risky number
+# only warrants an OTP step-up challenge.
+PHONE_INVALID_PENALTY = 40
+PHONE_STEP_UP_PENALTY = 25
+
+
+def _extract_phone(order: Dict[str, Any]) -> str | None:
+    """Find the checkout phone on the order, customer, or shipping address.
+
+    Blank/whitespace values count as absent so a missing field never penalises
+    an otherwise clean order.
+    """
+    customer = order.get("customer")
+    shipping = order.get("shipping_address")
+    for source in (order, customer, shipping):
+        if not isinstance(source, dict):
+            continue
+        raw = source.get("phone")
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+    return None
+
+
+def _phone_risk(phone: str) -> tuple[int, str | None]:
+    """Score a raw phone via the Pakistani sanitizer.
+
+    Returns ``(penalty, factor_name)`` — ``(0, None)`` for a clean number.
+    """
+    sanitized = sanitize_phone(phone)
+    if not sanitized.is_valid:
+        return PHONE_INVALID_PENALTY, "invalid_phone_number"
+    if sanitized.is_suspicious:
+        return PHONE_STEP_UP_PENALTY, "suspicious_phone_number"
+    return 0, None
 
 
 class FraudAgent(BaseAgent):
@@ -59,6 +96,12 @@ class FraudAgent(BaseAgent):
 
         base_score = 50
         factors = []
+        raw_phone = _extract_phone(order)
+        if raw_phone is not None:
+            penalty, factor = _phone_risk(raw_phone)
+            if factor is not None:
+                base_score += penalty
+                factors.append(factor)
         if order.get("order_total", 0) > 1000:
             base_score += 20
             factors.append("amount_above_threshold")

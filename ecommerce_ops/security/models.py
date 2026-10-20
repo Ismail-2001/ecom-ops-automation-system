@@ -40,6 +40,10 @@ class Permission(StrEnum):
     CART_RECOVERY_VIEW = "cart_recovery:view"
     CART_RECOVERY_EXECUTE = "cart_recovery:execute"
 
+    # COD Verification (Pakistani phone sanitizer + OTP step-up)
+    COD_VIEW = "cod:view"
+    COD_EXECUTE = "cod:execute"
+
     # Customer Support
     SUPPORT_VIEW = "support:view"
     SUPPORT_RESPOND = "support:respond"
@@ -223,6 +227,8 @@ DEFAULT_ROLES: Dict[Role, RoleDefinition] = {
             Permission.SHOPIFY_WEBHOOKS,
             Permission.CART_RECOVERY_VIEW,
             Permission.CART_RECOVERY_EXECUTE,
+            Permission.COD_VIEW,
+            Permission.COD_EXECUTE,
             Permission.SUPPORT_VIEW,
             Permission.SUPPORT_RESPOND,
             Permission.SUPPORT_ESCALATE,
@@ -260,6 +266,8 @@ DEFAULT_ROLES: Dict[Role, RoleDefinition] = {
             Permission.SHOPIFY_SYNC,
             Permission.CART_RECOVERY_VIEW,
             Permission.CART_RECOVERY_EXECUTE,
+            Permission.COD_VIEW,
+            Permission.COD_EXECUTE,
             Permission.SUPPORT_VIEW,
             Permission.SUPPORT_RESPOND,
             Permission.OBSERVABILITY_VIEW,
@@ -279,6 +287,7 @@ DEFAULT_ROLES: Dict[Role, RoleDefinition] = {
             Permission.APPROVALS_VIEW,
             Permission.SHOPIFY_VIEW,
             Permission.CART_RECOVERY_VIEW,
+            Permission.COD_VIEW,
             Permission.SUPPORT_VIEW,
             Permission.OBSERVABILITY_VIEW,
             Permission.SETTINGS_VIEW,
@@ -294,6 +303,7 @@ DEFAULT_ROLES: Dict[Role, RoleDefinition] = {
             Permission.SHOPIFY_SYNC,
             Permission.SHOPIFY_WEBHOOKS,
             Permission.CART_RECOVERY_EXECUTE,
+            Permission.COD_EXECUTE,
             Permission.SUPPORT_RESPOND,
         },
         is_system=True,

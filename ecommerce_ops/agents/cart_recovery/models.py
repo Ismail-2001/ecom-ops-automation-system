@@ -58,6 +58,7 @@ class CartItem(BaseModel):
 class CustomerProfile(BaseModel):
     id: int | None = None
     email: str | None = None
+    phone: str | None = None
     first_name: str | None = None
     last_name: str | None = None
     total_orders: int = 0

@@ -9,6 +9,8 @@ from typing import Any, Callable, Dict, List, Optional, Type
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
+from ecommerce_ops.cod.messaging import Channel, OutboundMessage, deliver
+
 logger = logging.getLogger("ecommerce_ops.tools.definitions")
 
 
@@ -160,10 +162,35 @@ async def _send_email(
 
 
 async def _send_sms(to: str, message: str, priority: str = "normal") -> Dict[str, Any]:
-    """Send SMS via Twilio."""
+    """Send SMS through the COD messaging provider (Meta/Twilio or log fallback)."""
     logger.info(f"Sending SMS to {to}: {message[:50]}...")
-    # In production, integrate with Twilio
-    return {"success": True, "message_id": f"sms_{hash(to)}", "to": to}
+    outbound = OutboundMessage(
+        to=to,
+        body=message,
+        channel=Channel.SMS,
+        purpose="transactional",
+    )
+    try:
+        result = await deliver(outbound)
+    except Exception as e:
+        logger.error("SMS delivery failed for %s: %s", to, e)
+        return {
+            "success": False,
+            "channel": "sms",
+            "outcome": "failed",
+            "error": str(e),
+        }
+
+    payload: Dict[str, Any] = {
+        "success": result.delivered,
+        "channel": "sms",
+        "outcome": result.outcome,
+        "provider": result.provider,
+        "message_id": result.message_id,
+    }
+    if result.error:
+        payload["error"] = result.error
+    return payload
 
 
 async def _update_shopify_price(

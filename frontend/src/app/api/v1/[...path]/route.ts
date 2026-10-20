@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getBackendUrl, readSessionFromRequest } from "@/lib/server-helpers"
 import { applyTraceContext } from "@/lib/trace-context"
+import { translatePath } from "@/lib/bff-paths"
 
 export const runtime = "nodejs"
 
@@ -12,55 +13,9 @@ export const runtime = "nodejs"
  *  2. Injects `Authorization: Bearer <apiKey>` server-side.
  *  3. Forwards to the backend, translating frontend paths to backend paths.
  *
- * Known path translations (backend mounts some routers under /api/v1 and
- * core endpoints directly under /api):
+ * Path translation and the default-deny allowlist live in `@/lib/bff-paths`
+ * so the rules are unit-testable without booting Next.js.
  */
-/** Core endpoints mounted under /api/<resource> (no /v1) on the backend. */
-const CORE_RESOURCES = new Set([
-  "agents",
-  "approvals",
-  "analytics",
-  "settings",
-  "audit",
-  "run",
-  "tasks",
-  "ws",
-])
-
-/** Endpoints exposed under /api/v1/<resource> on the backend. */
-const V1_RESOURCES = new Set([
-  "shopify",
-  "cart-recovery",
-  "support",
-  "observability",
-  "memory",
-  "security",
-  "demo",
-  "version",
-])
-
-/**
- * Translate a frontend path to the backend path, or `null` when the path is
- * not in the allowlist. Default-deny: unknown resources are never forwarded,
- * so the catch-all proxy cannot reach arbitrary internal backend paths.
- */
-function translatePath(pathname: string): string | null {
-  // /health is mounted at the app root (not under /api)
-  if (pathname === "/api/v1/health") {
-    return "/health"
-  }
-  const m = pathname.match(/^\/api\/v1\/([^/]+)(.*)$/)
-  if (!m) return null
-  const resource = m[1]
-  const rest = m[2] || ""
-  if (CORE_RESOURCES.has(resource)) {
-    return `/api/${resource}${rest}`
-  }
-  if (V1_RESOURCES.has(resource)) {
-    return pathname
-  }
-  return null
-}
 
 async function proxy(request: NextRequest) {
   const session = await readSessionFromRequest(request)

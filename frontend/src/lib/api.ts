@@ -165,6 +165,25 @@ export const cartRecoveryApi = {
   analytics: () => request<CartRecoveryAnalytics>(`${API_PREFIX}/cart-recovery/analytics`),
 }
 
+export const codApi = {
+  validatePhone: (phone: string) =>
+    request<PhoneValidation>(`${API_PREFIX}/cod/phone/validate`, {
+      method: "POST",
+      body: JSON.stringify({ phone }),
+    }),
+  requestOtp: (phone: string, language: "en" | "ur" = "en") =>
+    request<OtpRequestResult>(`${API_PREFIX}/cod/otp/request`, {
+      method: "POST",
+      body: JSON.stringify({ phone, language }),
+    }),
+  verifyOtp: (phone: string, code: string) =>
+    request<OtpVerification>(`${API_PREFIX}/cod/otp/verify`, {
+      method: "POST",
+      body: JSON.stringify({ phone, code }),
+    }),
+  health: () => request<CodHealth>(`${API_PREFIX}/cod/health`),
+}
+
 export const reviewApi = {
   list: (params?: { sentiment?: string }) => {
     const qs = params?.sentiment ? `?sentiment=${params.sentiment}` : ""
@@ -306,6 +325,56 @@ export interface CartRecoveryAnalytics {
   average_recovery_time_hours: number
   top_recovery_strategy: string
   risk_distribution?: Record<string, number>
+}
+
+/** Sanitizer verdict for a checkout phone number (`cod/phone.py`). */
+export interface PhoneValidation {
+  raw: string
+  normalized: string
+  e164: string
+  operator: string
+  is_valid: boolean
+  risk_signals: string[]
+  risk_level: string
+  action: "allow" | "needs_otp_verification" | "review"
+}
+
+/**
+ * Result of an OTP dispatch. `sent: false` with a reason (`cooldown_active`,
+ * `rate_limited`, `invalid_phone`, `provider_error`, `storage_error`) means no
+ * code was persisted. The passcode itself is never returned by the backend.
+ */
+export interface OtpRequestResult {
+  sent: boolean
+  phone: string
+  channel: string
+  provider: string
+  purpose: string
+  expires_in: number
+  resend_after: number
+  attempts_allowed: number
+  reason: string
+  request_id: string
+}
+
+/** Outcome of a code submission; `reason` is `ok` only when `verified`. */
+export interface OtpVerification {
+  verified: boolean
+  phone: string
+  purpose: string
+  attempts_remaining: number
+  reason: string
+}
+
+/** Live messaging/OTP configuration behind `GET /api/v1/cod/health`. */
+export interface CodHealth {
+  whatsapp_configured: boolean
+  provider: string
+  channel: string
+  otp_ttl_seconds: number
+  otp_max_attempts: number
+  otp_rate_limit_per_window: number
+  storage_backend: string
 }
 
 export interface Review {

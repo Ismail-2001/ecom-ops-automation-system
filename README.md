@@ -16,7 +16,7 @@
 
 **10 AI Agents. 1 Dashboard. Human-in-the-loop by default.**
 
-`1,157 tests passing` · `16 migrations` · `40 Prometheus metrics` · `37 RBAC permissions`
+`1,453 tests passing` · `16 migrations` · `43 Prometheus metrics` · `39 RBAC permissions`
 
 [Getting Started](#getting-started) · [Architecture](#architecture) · [API Docs](#usage-examples) · [Deploy](#docker-production) · [Operations Runbook](#operations-runbook)
 
@@ -92,6 +92,8 @@ This matters more than any feature list. A system that automates the wrong decis
 - **Inter-Agent Communication** — Built-in message bus with 18 predefined topics (fraud.alert, inventory.low, cart.abandoned, etc.) enables agents to coordinate without tight coupling. *Process-local today:* the bus is asyncio in-memory, so horizontal scaling past one API/worker replica requires a Redis pub/sub backing (see `ecommerce_ops/agents/message_bus.py`)
 - **Cost Tracking & SLO Monitoring** — Per-agent LLM token usage and cost monitoring, plus per-agent SLO checks (p95 latency, success rate) backed by a bounded ring-buffer metrics collector with Prometheus emission
 
+- **Pakistani COD Verification** — Phone sanitizer (`ecommerce_ops/cod/phone.py`) normalizes checkout numbers to E.164 with operator detection (Jazz/Zong/Telenor/Ufone) and soft-flag risk signals (never a hard drop); Redis-backed, single-use OTP step-up issued WhatsApp-first (Meta Cloud API with log fallback) in English + Roman Urdu. Endpoints `/cod/*` gated by `cod:view` / `cod:execute`, fraud signals wired into `FraudAgent`, and a dashboard page at `/cod-verification`
+
 ### Human-in-the-Loop
 
 - **Shadow Mode by Default** — Every decision requires human approval until the agent earns autonomy through a streak-based graduation system (50+ consecutive high-confidence approvals)
@@ -101,7 +103,7 @@ This matters more than any feature list. A system that automates the wrong decis
 
 ### Security & Compliance
 
-- **5-Role RBAC** — super_admin, admin, operator, viewer, api_only with **37 granular permissions across 14 categories**
+- **5-Role RBAC** — super_admin, admin, operator, viewer, api_only with **39 granular permissions across 15 categories**
 - **Middleware-Level RBAC Enforcement** — `RBACMiddleware` maps every route to a minimum access level (`public` → `viewer` → `operator` → `admin` → `super_admin`) and returns 403 before the handler runs — authorization is not left to individual endpoints
 - **Enterprise SSO** — Google OAuth 2.0 and Okta via Authlib with state/session lifecycle management (`/auth/sso/providers`, `/login`, `/callback`, `/logout`). SSO users are mapped onto the same 5-role RBAC model
 - **Immutable Audit Log** — Append-only `audit_log` table (migration `0015`) written by `AuditLogger`: actor, action, resource, outcome, risk level, confidence, IP, user-agent, session, request ID. No UPDATE or DELETE paths exist
@@ -120,7 +122,7 @@ This matters more than any feature list. A system that automates the wrong decis
 
 ### Observability
 
-- **40 Prometheus Metrics** — Request rates, agent decisions, LLM costs, queue depths, financial impact, cache ratios, LLM cache hits/misses, DB connection pool, live shop executions, outbox dead letters, outbound webhook deliveries, A/B experiments, legacy-key usage, dropped audit events
+- **43 Prometheus Metrics** — Request rates, agent decisions, LLM costs, queue depths, financial impact, cache ratios, LLM cache hits/misses, DB connection pool, live shop executions, outbox dead letters, outbound webhook deliveries, A/B experiments, legacy-key usage, dropped audit events, COD message delivery + OTP request/verify counters
 - **29 Alert Rules** — API errors, latency spikes, agent failures, Redis/PostgreSQL down, LLM budget exceeded, missing backups, shop-execution failures, outbox growth, A/B divergence
 - **OpenTelemetry Tracing** — Distributed traces via OTLP to Grafana Tempo with 10% sampling
 - **Langfuse Integration** — LLM-specific observability: traces, evaluations, cost breakdowns per model
@@ -170,7 +172,7 @@ graph TB
     subgraph "API Layer"
         API["FastAPI Server<br/>11 Middleware Layers"]
         WS["WebSocket<br/>Real-time Events"]
-        AUTH["RBAC Auth<br/>5 Roles · 37 Permissions"]
+        AUTH["RBAC Auth<br/>5 Roles · 39 Permissions"]
         SSO["SSO<br/>Google · Okta"]
     end
 
@@ -332,7 +334,7 @@ graph TD
 <tr>
 <td><strong>Testing</strong></td>
 <td>pytest, Vitest, Playwright, Locust</td>
-<td>1,157 tests (1,042 backend + 115 frontend), load tests, e2e integration</td>
+<td>1,453 tests (1,312 backend + 141 frontend), load tests, e2e integration</td>
 </tr>
 <tr>
 <td><strong>CI/CD</strong></td>
@@ -347,7 +349,7 @@ graph TD
 <tr>
 <td><strong>Security</strong></td>
 <td>RBAC, PBKDF2 API keys, Authlib SSO, Bandit SAST, pip-audit</td>
-<td>5 roles, 37 permissions, Google/Okta SSO, input sanitization, audit logging</td>
+<td>5 roles, 39 permissions, Google/Okta SSO, input sanitization, audit logging</td>
 </tr>
 </table>
 
@@ -368,7 +370,7 @@ ecom-ops-automation-system/
 │   │   ├── integrations.py     # Outbound webhooks CRUD + test
 │   │   ├── middleware.py       # 11-layer middleware stack
 │   │   ├── ws.py               # WebSocket with auth + rate limiting
-│   │   └── metrics.py          # 40 Prometheus metrics
+│   │   └── metrics.py          # 43 Prometheus metrics
 │   ├── agents/                 # 10 AI agents + infrastructure
 │   │   ├── _base.py            # Base agent with LLM + memory
 │   │   ├── factory.py          # Registry-driven AgentFactory
@@ -394,7 +396,7 @@ ecom-ops-automation-system/
 │   │   ├── rbac_middleware.py  # Route-level access-level enforcement
 │   │   ├── sso.py              # Google OAuth2 + Okta via Authlib
 │   │   ├── audit_logger.py     # Immutable audit log writer
-│   │   └── role_manager.py     # 5 roles, 37 permissions
+│   │   └── role_manager.py     # 5 roles, 39 permissions
 │   ├── memory/                 # Redis cache, agent memory, pgvector store
 │   ├── observability/          # Langfuse, OTel, agent SLO metrics, A/B framework
 │   ├── infra/                  # Circuit breaker, rate limiter, retry, task queue
@@ -405,7 +407,7 @@ ecom-ops-automation-system/
 │   └── cli.py                  # Typer CLI (ops-agent run/pause)
 ├── frontend/                   # Next.js 14 dashboard (12 page routes)
 │   └── src/app/                # agents, analytics, orders, products, reviews, support, ...
-├── tests/                      # 61 test modules (1,042 tests)
+├── tests/                      # 66 test modules (1,312 tests)
 ├── monitoring/                 # Prometheus, Grafana, Tempo, Alertmanager (29 rules)
 ├── nginx/                      # Reverse proxy + TLS
 ├── scripts/                    # 18 operational scripts (deploy, backup, DR, secrets)
@@ -484,10 +486,10 @@ npm run dev
 ### Verify Your Install
 
 ```bash
-# Backend test suite — expect 1,042 passing
+# Backend test suite — expect 1,312 passing
 pytest tests/ -q -o addopts="" -p no:cacheprovider
 
-# Frontend test suite — expect 115 passing
+# Frontend test suite — expect 141 passing
 cd frontend && npx vitest run
 
 # Lint — expect clean
@@ -585,6 +587,28 @@ curl -X POST http://localhost:8000/cart-recovery/analyze \
     "items": [{"product_id": "prod-1", "title": "Sneakers", "price": 89.99, "quantity": 1}],
     "total": 89.99
   }'
+```
+
+### Validate a COD Phone Number
+
+```bash
+curl -X POST http://localhost:8000/cod/phone/validate \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"phone": "03214567890", "context": "checkout"}'
+
+# {"action": "allow", "e164": "+923214567890", "operator": "jazz", "is_valid": true, "risk_signals": []}
+```
+
+### Request a COD OTP Step-Up
+
+```bash
+curl -X POST http://localhost:8000/cod/otp/request \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"phone": "03001112233", "language": "ur"}'
+
+# {"sent": true, "reason": "ok", "channel": "whatsapp", "expires_in": 300, "resend_after": 60}
 ```
 
 ### Create a Support Ticket
@@ -699,7 +723,7 @@ For a store doing **$200K/year** in revenue:
 - **API Key Auth**: PBKDF2 hashed keys with `eops_` prefix, 90-day expiry, usage tracking (Phase 1 hardening)
 - **Enterprise SSO**: Google OAuth 2.0 and Okta via Authlib (`ecommerce_ops/security/sso.py`) with PKCE-style state/session lifecycle — `GET /auth/sso/providers` → `POST /auth/sso/login` → `POST /auth/sso/callback` → `POST /auth/sso/logout`. SSO identities map onto the same RBAC roles; unconfigured providers return a clean 400 rather than a 500
 - **5-Role RBAC**: `super_admin` → `admin` → `operator` → `viewer` → `api_only`
-- **37 Granular Permissions** across 14 categories: dashboard, agents, approvals, shopify, cart_recovery, support, observability, memory, settings, users, roles, audit, api_keys, integrations
+- **39 Granular Permissions** across 15 categories: dashboard, agents, approvals, shopify, cart_recovery, cod, support, observability, memory, settings, users, roles, audit, api_keys, integrations
 - **Permission Dependencies**: `require_auth()`, `require_permission()`, `require_role()`, `require_admin()`
 - **Middleware-Level Enforcement**: `RBACMiddleware` (`security/rbac_middleware.py`) maps each path to a minimum `AccessLevel` and rejects insufficient roles with 403 before the handler executes — authorization is not opt-in per endpoint
 - **Fail-Secure Auth**: Returns 503 on DB errors, never silently proceeds unauthenticated (Phase 2 fix)
@@ -778,9 +802,9 @@ Rotate API keys periodically or on suspected exposure:
 ### Current Status (verified)
 
 ```
-Backend    1,042 tests  ·  61 files  ·  pytest
-Frontend     115 tests  ·   9 files  ·  vitest
-Total      1,157 tests  ·  70 files
+Backend    1,312 tests  ·  66 files  ·  pytest
+Frontend     141 tests  ·   12 files  ·  vitest
+Total      1,453 tests  ·  78 files
 ```
 
 ### Test Coverage
@@ -819,7 +843,7 @@ cd frontend && npx vitest run
 Every push runs:
 1. **Lint & Type Check** — Ruff check + format verification + mypy type checking
 2. **Migration Drift** — Alembic vs models divergence check
-3. **Unit Tests** — pytest with PostgreSQL + Redis services (1,042 tests)
+3. **Unit Tests** — pytest with PostgreSQL + Redis services (1,312 tests)
 4. **E2E Tests** — Full pipeline integration
 5. **Security Scan** — pip-audit + Bandit SAST
 6. **Docker Build** — Multi-stage build + Trivy CRITICAL severity scan
@@ -962,7 +986,7 @@ curl "http://localhost:8000/api/v1/security/audit/logs?resource_id=<id>" \
 
 ## Roadmap
 
-> **Current state (as of `e513623`):** 1,157 tests (1,042 backend + 115 frontend), 10 domain agents, 19 tables / 16 migrations, 40 metrics, 37 permissions, SSO + immutable audit log. Entries below are point-in-time records of how the project got here — test counts cited inside them reflect the state at that week, not today.
+> **Current state (as of the COD verification feature):** 1,453 tests (1,312 backend + 141 frontend), 10 domain agents, 19 tables / 16 migrations, 43 metrics, 39 permissions, SSO + immutable audit log. Entries below are point-in-time records of how the project got here — test counts cited inside them reflect the state at that week, not today.
 
 ### Completed — Foundation (Phases 1-6)
 
