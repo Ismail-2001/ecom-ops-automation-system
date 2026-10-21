@@ -1,0 +1,21 @@
+# Normalize line endings: LF in the repository for every text file on every
+# platform. These attributes override the local core.autocrlf setting that
+# otherwise produces "LF will be replaced by CRLF" advisory noise on Windows.
+* text=auto eol=lf
+
+# Binary files must never be converted.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tgz binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.db binary
+*.sqlite3 binary

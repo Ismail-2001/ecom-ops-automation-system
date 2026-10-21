@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-4F46E5.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-3776AB.svg)](https://python.org)
 [![Next.js 14](https://img.shields.io/badge/Next.js-14-000000.svg)](https://nextjs.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688.svg)](https://fastapi.tiangolo.com)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.156-009688.svg)](https://fastapi.tiangolo.com)
 [![LangGraph](https://img.shields.io/badge/LangGraph-0.2-1437EB.svg)](https://langchain-ai.github.io/langgraph)
 [![Docker](https://img.shields.io/badge/Docker-24-2496ED.svg)](https://docker.com)
 [![CI/CD](https://img.shields.io/badge/GitHub%20Actions-CI%2FCD-2088FF.svg)](.github/workflows)
@@ -16,7 +16,9 @@
 
 **10 AI Agents. 1 Dashboard. Human-in-the-loop by default.**
 
-`1,447 tests passing` · `16 migrations` · `43 Prometheus metrics` · `39 RBAC permissions`
+`1,447 tests passing` · `17 migrations` · `43 Prometheus metrics` · `39 RBAC permissions`
+
+> **CV / resume one-liner:** Built OpsIQ — an agentic AI operations platform for e-commerce (FastAPI + LangGraph multi-agent graph + Next.js) with 1,447 tests, a 9-job GitHub Actions pipeline running green (unit/integration/benchmarks/migration-drift/security/secret-scan/Docker-Trivy), zero known dependency CVEs via pip-audit, RBAC + audit trail + OpenTelemetry/Prometheus observability, and a hardened multi-stage Docker build.
 
 [Getting Started](#getting-started) · [Architecture](#architecture) · [API Docs](#usage-examples) · [Deploy](#docker-production) · [Operations Runbook](#operations-runbook)
 
