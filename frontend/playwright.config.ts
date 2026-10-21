@@ -6,10 +6,9 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   // CI: 2 retries absorb rare webkit/browser-process crashes; local: 1.
   retries: process.env.CI ? 2 : 1,
-  // Dev-mode Next recompiles routes on first visit; high worker counts
-  // overwhelm the single dev server and cause flaky route-navigation
-  // timeouts. Two workers keeps the suite deterministic locally.
-  workers: process.env.CI ? 1 : 2,
+  // Two workers: 1 makes CI's single-worker run exceed any sane job timeout
+  // (132 tests took >42min at workers:1); >2 overwhelms the dev server.
+  workers: 2,
   expect: { timeout: 10_000 },
   reporter: [['html', { open: 'never' }], ['list']],
   use: {
