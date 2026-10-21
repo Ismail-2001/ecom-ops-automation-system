@@ -88,10 +88,12 @@ if [ -f .git/hooks/pre-push ]; then
   say_pass "pre-push hook present"
 else
   if [ -n "$CI" ]; then
-    say_fail "pre-push hook not installed in this clone (expected; CI gates remain active)"
+    # CI clones never have local hooks; protection is enforced server-side.
+    say_pass "pre-push hook not applicable in CI clone (server-side gates active)"
   else
-    echo -e "\033[1;33m⚠ pre-push hook not installed. Run:  pre-commit install --hook-type pre-push\033[0m"
+    echo -e "\033[1;33m(!) pre-push hook not installed. Run:  pre-commit install --hook-type pre-push\033[0m"
   fi
+fi
 fi
 
 echo ""
