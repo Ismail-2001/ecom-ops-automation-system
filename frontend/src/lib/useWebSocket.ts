@@ -7,6 +7,11 @@ const RECONNECT_BASE_MS = 1_000
 const RECONNECT_MAX_MS = 30_000
 const PING_INTERVAL_MS = 30_000
 const TICKET_TTL_MARGIN_MS = 5_000
+// If no frame (pong or event) arrives within ping interval + grace, the
+// connection is presumed half-open/dead (sleep, captive portal, network
+// switch) and is force-closed so the normal reconnect path takes over.
+const PONG_TIMEOUT_MS = PING_INTERVAL_MS + 20_000
+const WATCHDOG_INTERVAL_MS = 15_000
 
 // WebSocket close codes matching backend
 const CLOSE_AUTH_FAILED = 4001
@@ -61,9 +66,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pingTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const watchdogTimer = useRef<ReturnType<typeof setInterval> | null>(null)
   const attemptRef = useRef(0)
   const authFailedRef = useRef(false)
   const ticketExpiryRef = useRef(0)
+  const lastMessageAtRef = useRef(0)
+  const connectingRef = useRef(false)
 
   // Use refs for all callbacks to avoid stale closures and circular deps
   const onEventRef = useRef(onEvent)
@@ -90,6 +98,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       clearInterval(pingTimer.current)
       pingTimer.current = null
     }
+    if (watchdogTimer.current) {
+      clearInterval(watchdogTimer.current)
+      watchdogTimer.current = null
+    }
     if (reconnectTimer.current) {
       clearTimeout(reconnectTimer.current)
       reconnectTimer.current = null
@@ -113,8 +125,16 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const connect = useCallback(async () => {
     if (!enabledRef.current) return
     if (wsRef.current?.readyState === WebSocket.OPEN) return
+    if (wsRef.current?.readyState === WebSocket.CONNECTING) return
+    if (connectingRef.current) return // ticket-mint window before the socket exists
     if (authFailedRef.current) return
 
+    // A pending backoff is superseded by this attempt (it re-arms on failure).
+    if (reconnectTimer.current) {
+      clearTimeout(reconnectTimer.current)
+      reconnectTimer.current = null
+    }
+    connectingRef.current = true
     setState((s) => ({ ...s, isConnecting: true }))
 
     try {
@@ -129,6 +149,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       ws.onopen = () => {
         attemptRef.current = 0
         authFailedRef.current = false
+        lastMessageAtRef.current = Date.now()
         setState((s) => ({
           ...s,
           isConnected: true,
@@ -143,9 +164,18 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
             ws.send(JSON.stringify({ type: "ping" }))
           }
         }, PING_INTERVAL_MS)
+
+        // Force-close a half-open socket so onclose drives a clean reconnect.
+        watchdogTimer.current = setInterval(() => {
+          if (ws.readyState !== WebSocket.OPEN) return
+          if (Date.now() - lastMessageAtRef.current > PONG_TIMEOUT_MS) {
+            ws.close(4000, "pong timeout")
+          }
+        }, WATCHDOG_INTERVAL_MS)
       }
 
       ws.onmessage = (msg) => {
+        lastMessageAtRef.current = Date.now()
         try {
           const event: WSEvent = JSON.parse(msg.data)
           if (event.type === "pong") return
@@ -193,6 +223,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     } catch {
       setState((s) => ({ ...s, isConnecting: false }))
       scheduleReconnect()
+    } finally {
+      connectingRef.current = false
     }
   }, [cleanup, scheduleReconnect])
 
@@ -225,7 +257,27 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
   useEffect(() => {
     connect()
+
+    // Network restored or tab visible again: recover immediately instead of
+    // waiting out the current backoff (which can be up to 30s).
+    const recover = () => {
+      if (!enabledRef.current || authFailedRef.current) return
+      if (wsRef.current?.readyState === WebSocket.OPEN) return
+      if (wsRef.current?.readyState === WebSocket.CONNECTING) return
+      if (connectingRef.current) return
+      attemptRef.current = 0
+      connectRef.current?.()
+    }
+    const onOnline = () => recover()
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") recover()
+    }
+    window.addEventListener("online", onOnline)
+    document.addEventListener("visibilitychange", onVisibility)
+
     return () => {
+      window.removeEventListener("online", onOnline)
+      document.removeEventListener("visibilitychange", onVisibility)
       cleanup()
       wsRef.current?.close()
     }
