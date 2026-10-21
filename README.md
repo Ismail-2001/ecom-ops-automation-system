@@ -441,7 +441,7 @@ cd ecom-ops-automation-system
 
 # 2. Create your environment file
 cp .env.example .env          # local/dev
-# or: cp .env.docker .env      # production (matches deploy.sh preflight)
+# or: cp .env.docker.example .env      # production (matches deploy.sh preflight)
 
 # 3. Edit .env — minimum required keys:
 #    API_KEY=$(openssl rand -hex 32)

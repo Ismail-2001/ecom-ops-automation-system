@@ -103,9 +103,9 @@ shell-api: ## Shell into API container
 shell-db: ## Shell into PostgreSQL
 	docker compose exec postgres psql -U postgres ecommerce_ops
 
-seed-demo: ## Seed database with demo data
+seed-demo: ## Seed database with demo data (requires OPSIQ_API_KEY in env)
 	curl -s -X POST http://localhost:8000/api/demo/seed \
-		-H "Authorization: Bearer opsiq-dev-key-2024" | python -m json.tool
+		-H "Authorization: Bearer $(OPSIQ_API_KEY)" | python -m json.tool
 
 # ── Staging ────────────────────────────────────────────────
 

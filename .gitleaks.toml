@@ -11,6 +11,7 @@ useDefault = true
 description = "Known test/placeholder secrets, example templates, and fixture data"
 paths = [
   '''(?i)\.env\.example$''',
+  '''(?i)\.env\.docker\.example$''',
   '''(?i)fixtures/''',
   '''(?i)demo_data/''',
   '''(?i)package-lock\.json$''',
@@ -28,4 +29,10 @@ regexes = [
   '''(?i)fake''',
   '''(?i)xxxx''',
   '''(?i)REPLACE''',
+  # Documented local-dev API key (never valid outside localhost dev setups;
+  # appears as the default in test helpers and local curl recipes).
+  '''(?i)opsiq-dev-key''',
+  # Historical fake example key (commit 29f4931b, removed since): the tail is
+  # a hand-typed alphabet walk, never a real Google credential.
+  '''xK9mNpQrStUvWxYz''',
 ]

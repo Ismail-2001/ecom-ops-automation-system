@@ -39,7 +39,7 @@
 
 ### Full Stack Recovery
 1. Clone repo on fresh host
-2. Copy `.env.docker` and `docker-compose.yml`
+2. Copy `.env.docker.example` (to `.env.docker`) and `docker-compose.yml`
 3. Run `./scripts/deploy.sh up`
 4. Restore database from offsite backup if needed
 5. Verify all services healthy

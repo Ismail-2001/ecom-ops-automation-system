@@ -143,7 +143,7 @@ For production, use one of:
 
 Never put real secrets in:
 - `.env` (untracked; locally generated from `.env.example`)
-- `.env.docker` (tracked as placeholders only — fill real values via env)
+- `.env.docker.example` (tracked template; copy to ignored `.env.docker` for real values)
 - `.env.production` (tracked as placeholders only)
 - Source code files
 - Docker Compose files
