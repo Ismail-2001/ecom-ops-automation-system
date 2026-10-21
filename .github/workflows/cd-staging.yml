@@ -2,9 +2,14 @@
 # Deploys to staging on push to main, runs DR checks, then optional prod deploy
 name: CD Staging Deploy
 
+# Manual-only until a staging server exists. The previous push-to-main
+# trigger could never succeed (STAGING_HOST / STAGING_SSH_KEY /
+# PROD_SSH_KEY secrets are not configured) and produced a guaranteed-red
+# run on every commit. Re-add:
+#   push:
+#     branches: [main]
+# once the staging infrastructure and secrets are provisioned.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       skip_tests:
