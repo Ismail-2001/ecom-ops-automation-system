@@ -280,6 +280,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test-unit, test-e2e, security]
     if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      security-events: write  # required by Trivy SARIF upload
     steps:
       - uses: actions/checkout@v4
 
@@ -316,7 +319,7 @@ jobs:
 
       - name: Upload Trivy SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-image-results.sarif
 
