@@ -23,7 +23,14 @@ test.describe('Smoke: Login flow', () => {
     const submit = page.locator('button:has-text("Access Command Center")')
     await expect(submit).toBeDisabled()
 
-    await page.locator('input[type="password"]').fill('x')
+    // WebKit can drop the first fill before React hydration (shell input is
+    // replaced) -> refill until React's submit state reacts to it.
+    const input = page.locator('input[type="password"]')
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await input.fill('x')
+      if ((await input.inputValue()) === 'x' && (await submit.isEnabled())) break
+    }
+    await expect(input).toHaveValue('x')
     await expect(submit).toBeEnabled()
   })
 

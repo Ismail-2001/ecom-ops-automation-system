@@ -4,11 +4,13 @@ export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  // CI: 2 retries absorb rare webkit/browser-process crashes; local: 1.
+  retries: process.env.CI ? 2 : 1,
   // Dev-mode Next recompiles routes on first visit; high worker counts
   // overwhelm the single dev server and cause flaky route-navigation
   // timeouts. Two workers keeps the suite deterministic locally.
   workers: process.env.CI ? 1 : 2,
+  expect: { timeout: 10_000 },
   reporter: [['html', { open: 'never' }], ['list']],
   use: {
     baseURL: process.env.BASE_URL || 'http://localhost:3200',

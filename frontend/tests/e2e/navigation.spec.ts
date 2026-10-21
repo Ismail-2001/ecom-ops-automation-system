@@ -51,7 +51,6 @@ test.describe('Navigation', () => {
   })
 
   test('navigates to agents page', async ({ page }) => {
-    await page.goto(`${BASE}/`)
     await page.waitForSelector('nav a', { timeout: 10000 })
     await page.getByRole('link', { name: 'Agents', exact: true }).click()
     await page.waitForURL('**/agents', { timeout: 20000 })
@@ -60,7 +59,6 @@ test.describe('Navigation', () => {
   })
 
   test('navigates to orders page', async ({ page }) => {
-    await page.goto(`${BASE}/`)
     await page.waitForSelector('nav a', { timeout: 10000 })
     await page.getByRole('link', { name: 'Orders', exact: true }).click()
     await page.waitForURL('**/orders', { timeout: 20000 })
@@ -68,7 +66,6 @@ test.describe('Navigation', () => {
   })
 
   test('navigates to analytics page', async ({ page }) => {
-    await page.goto(`${BASE}/`)
     await page.waitForSelector('nav a', { timeout: 10000 })
     await page.getByRole('link', { name: 'Analytics', exact: true }).click()
     await page.waitForURL('**/analytics', { timeout: 20000 })
@@ -77,7 +74,6 @@ test.describe('Navigation', () => {
   })
 
   test('navigates to products page', async ({ page }) => {
-    await page.goto(`${BASE}/`)
     await page.waitForSelector('nav a', { timeout: 10000 })
     await page.getByRole('link', { name: 'Products', exact: true }).click()
     await page.waitForURL('**/products', { timeout: 20000 })
@@ -86,7 +82,6 @@ test.describe('Navigation', () => {
   })
 
   test('navigates to security page', async ({ page }) => {
-    await page.goto(`${BASE}/`)
     await page.waitForSelector('nav a', { timeout: 10000 })
     await page.getByRole('link', { name: 'Security', exact: true }).click()
     await page.waitForURL('**/security', { timeout: 20000 })
@@ -95,7 +90,6 @@ test.describe('Navigation', () => {
   })
 
   test('navigates to settings page', async ({ page }) => {
-    await page.goto(`${BASE}/`)
     await page.waitForSelector('nav a', { timeout: 10000 })
     await page.getByRole('link', { name: 'Settings', exact: true }).click()
     await page.waitForURL('**/settings', { timeout: 20000 })
@@ -104,7 +98,6 @@ test.describe('Navigation', () => {
   })
 
   test('navigates to cart recovery page', async ({ page }) => {
-    await page.goto(`${BASE}/`)
     await page.waitForSelector('nav a', { timeout: 10000 })
     await page.getByRole('link', { name: 'Cart Recovery', exact: true }).click()
     await page.waitForURL('**/cart-recovery', { timeout: 20000 })
@@ -112,7 +105,6 @@ test.describe('Navigation', () => {
   })
 
   test('navigates to support page', async ({ page }) => {
-    await page.goto(`${BASE}/`)
     await page.waitForSelector('nav a', { timeout: 10000 })
     await page.getByRole('link', { name: 'Support', exact: true }).click()
     await page.waitForURL('**/support', { timeout: 20000 })
@@ -120,7 +112,6 @@ test.describe('Navigation', () => {
   })
 
   test('navigates to reviews page', async ({ page }) => {
-    await page.goto(`${BASE}/`)
     await page.waitForSelector('nav a', { timeout: 10000 })
     await page.getByRole('link', { name: 'Reviews', exact: true }).click()
     await page.waitForURL('**/reviews', { timeout: 20000 })
