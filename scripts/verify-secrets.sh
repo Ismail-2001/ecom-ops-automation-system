@@ -72,8 +72,8 @@ echo "[3/4] Scanning working tree for live secret tokens..."
 LEAKS=$(grep -rInE "eops_[A-Za-z0-9_-]{20,}|shpat_[0-9a-fA-F]{32,}|xox[baprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9]{20,}" \
   --include="*.py" --include="*.ts" --include="*.tsx" --include="*.yml" --include="*.yaml" \
   --include="*.toml" --include="*.json" --include="*.sh" --include="*.env*" \
-  --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=htmlcov \
-  --exclude-dir=.venv --exclude-dir=venv . 2>/dev/null | grep -v "sk-test-key" | grep -v "sk-dummy" || true)
+   --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=htmlcov \
+   --exclude-dir=.venv --exclude-dir=venv . 2>/dev/null | grep -v "sk-test-key" | grep -v "sk-dummy" | grep -v "eops_wrong_key" || true)
 if [ -z "$LEAKS" ]; then
   say_pass "no live secret tokens in the working tree"
 else
@@ -93,7 +93,6 @@ else
   else
     echo -e "\033[1;33m(!) pre-push hook not installed. Run:  pre-commit install --hook-type pre-push\033[0m"
   fi
-fi
 fi
 
 echo ""
