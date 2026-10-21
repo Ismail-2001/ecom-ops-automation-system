@@ -51,6 +51,15 @@ Issues = "https://github.com/Ismail-2001/ecom-ops-automation-system/issues"
 [project.scripts]
 ops-agent = "ecommerce_ops.cli:app"
 
+[project.optional-dependencies]
+# CI installs these via `pip install -e ".[test]"`. Versions pinned to the
+# set verified by the full local suite (1,306 tests).
+test = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "pytest-cov==7.1.0",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

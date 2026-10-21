@@ -84,20 +84,20 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install -e .
+          pip install -e ".[test]"
 
       - name: Run migrations
         run: alembic upgrade head
 
       - name: Check for drift
         run: |
-          alembic revision --autogenerate -m "ci_drift_check" --sql > /tmp/drift.sql 2>&1 || true
-          if grep -q "No changes detected" /tmp/drift.sql 2>/dev/null || [ ! -s /tmp/drift.sql ]; then
-            echo "✓ No migration drift detected"
+          # alembic check exits 1 when models diverge from migration state.
+          # (The old autogenerate --sql approach was invalid: alembic rejects
+          # --sql with --autogenerate, so this gate could never pass.)
+          if alembic check; then
+            echo "No migration drift detected"
           else
-            echo "✗ Migration drift detected! Models diverge from migrations."
-            echo "Generated SQL diff:"
-            cat /tmp/drift.sql
+            echo "::error title=migration drift::Models diverge from alembic migrations. Run 'alembic revision --autogenerate -m <msg>' locally and commit the new revision."
             exit 1
           fi
 
@@ -145,14 +145,14 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install -e .
+          pip install -e ".[test]"
 
       - name: Run unit tests
         run: |
+          mkdir -p test-results
           python -m pytest tests/ \
             -v \
             --tb=short \
-            -x \
             -m "not slow" \
             -k "not test_e2e" \
             --junitxml=test-results/unit-tests.xml \
@@ -212,14 +212,15 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install -e .
+          pip install -e ".[test]"
 
       - name: Run E2E tests
         run: |
+          mkdir -p test-results
           python -m pytest tests/test_e2e_integration.py \
             -v \
             --tb=short \
-            -x \
+            --no-cov \
             --junitxml=test-results/e2e-tests.xml \
             || { python scripts/pytest_annotations.py test-results/e2e-tests.xml; exit 1; }
 
@@ -409,7 +410,7 @@ jobs:
       - name: Install backend dependencies
         run: |
           pip install -r requirements.txt
-          pip install -e .
+          pip install -e ".[test]"
 
       - name: Apply migrations
         run: alembic upgrade head
@@ -479,11 +480,15 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install -e .
+          pip install -e ".[test]"
 
       - name: Run benchmarks
         run: |
+          mkdir -p test-results
           python -m pytest tests/test_performance.py \
             -v \
             -s \
-            --tb=short
+            --tb=short \
+            --no-cov \
+            --junitxml=test-results/bench-tests.xml \
+            || { python scripts/pytest_annotations.py test-results/bench-tests.xml; exit 1; }
