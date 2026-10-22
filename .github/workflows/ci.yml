@@ -130,7 +130,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/ecommerce_ops_test
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/ecommerce_ops_e2e
       REDIS_URL: redis://localhost:6379/0
       ENV: testing
       DEEPSEEK_API_KEY: sk-test-key
@@ -387,6 +387,10 @@ jobs:
       REDIS_URL: redis://localhost:6379/0
       ENV: testing
       DEEPSEEK_API_KEY: sk-test-key
+      # POST /api/auth/login rejects EVERYTHING when API_KEY is unset
+      # (app.py: valid_key="" -> 401), and the E2E helper logs in as
+      # opsiq-dev-key-2024 -> every Playwright test would fail on login.
+      API_KEY: opsiq-dev-key-2024
     steps:
       - uses: actions/checkout@v4
 
@@ -434,6 +438,16 @@ jobs:
       - name: Run E2E tests
         working-directory: frontend
         run: npx playwright test
+
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-e2e-results
+          path: |
+            frontend/test-results
+            frontend/playwright-report
+          retention-days: 7
 
   # ── Performance Benchmarks ────────────────────────────────
   benchmark:
