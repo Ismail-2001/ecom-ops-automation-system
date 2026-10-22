@@ -463,17 +463,24 @@ async def health(operator: str = Depends(verify_auth_optional)):
 
 
 @app.websocket("/ws/queue")
-async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
+async def websocket_endpoint(
+    websocket: WebSocket,
+    token: Optional[str] = None,
+    ticket: Optional[str] = None,
+):
     """Authenticated WebSocket endpoint for real-time events.
 
-    Auth: Pass API key as query param ?token=<api-key>
-    Browser WS API cannot send custom headers, so query param is the standard approach.
+    Auth: BFF-issued single-use ticket as ?ticket=<ticket> (preferred), or
+    raw API key as ?token=<api-key> (legacy/dev). Browser WS API cannot send
+    custom headers, so query params are the standard approach. The frontend
+    sends ?ticket=; accepting only ?token= silently dropped the ticket and
+    rejected every browser connection with 4001.
     """
     from ecommerce_ops.api.ws import (
         CLOSE_RATE_LIMITED,
     )
 
-    conn = await ws_manager.connect(websocket, token=token)
+    conn = await ws_manager.connect(websocket, token=token or ticket)
     if conn is None:
         # Connection was rejected (auth failed, rate limited, or at capacity)
         return

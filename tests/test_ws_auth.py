@@ -333,3 +333,104 @@ async def test_stats_no_sensitive_data():
         # Should NOT contain operator names, IPs, etc.
         assert "operator" not in stats
         assert "ip" not in stats
+
+
+# ── Ticket Auth (store + route param) ──────────────────────
+
+
+class FakeRedis:
+    """Dict-backed async Redis stand-in for WSTicketStore."""
+
+    def __init__(self):
+        self.store: dict[str, str] = {}
+
+    async def setex(self, key: str, ttl: int, value: str) -> None:
+        self.store[key] = value
+
+    async def getdel(self, key: str):
+        return self.store.pop(key, None)
+
+
+@pytest.mark.asyncio
+async def test_connect_accepts_single_use_ticket():
+    """A ticket stored by WSTicketStore must authenticate exactly once."""
+    from ecommerce_ops.api import ws as ws_mod
+
+    fake = FakeRedis()
+    previous = ws_mod.ws_ticket_store._redis
+    ws_mod.ws_ticket_store._redis = fake
+    try:
+        ticket = await ws_mod.ws_ticket_store.issue("ticket-operator")
+        assert f"{ws_mod.ws_ticket_store.TICKET_PREFIX}{ticket}" in fake.store
+
+        cm = ConnectionManager()
+        with patch("ecommerce_ops.api.ws.settings") as mock_settings:
+            from pydantic import SecretStr
+
+            # API key set (strict mode) — the ticket must still win.
+            mock_settings.API_KEY = SecretStr("real-key")
+            mock_settings.ENV = "production"
+
+            ws = FakeWebSocket()
+            conn = await cm.connect(ws, token=ticket)
+            assert conn is not None
+            assert conn.operator == "ticket-operator"
+
+            # Single-use: the same ticket must be rejected on reuse.
+            ws2 = FakeWebSocket()
+            reuse = await cm.connect(ws2, token=ticket)
+            assert reuse is None
+            assert ws2._close_code == CLOSE_AUTH_FAILED
+    finally:
+        ws_mod.ws_ticket_store._redis = previous
+
+
+def test_route_websocket_accepts_ticket_query_param():
+    """Regression: the browser sends ?ticket=; the route must honour it.
+
+    The route historically accepted only ?token=, so the BFF-issued ticket
+    was silently dropped and every browser WS connection was rejected
+    with 4001 (dashboard showed WebSocket DISCONNECTED forever).
+    """
+    from fastapi.testclient import TestClient
+
+    from ecommerce_ops.api import ws as ws_mod
+    from ecommerce_ops.api.app import app
+
+    fake = FakeRedis()
+    previous = ws_mod.ws_ticket_store._redis
+    ws_mod.ws_ticket_store._redis = fake
+    try:
+        ticket = "route-test-ticket-abc123"
+        fake.store[f"{ws_mod.ws_ticket_store.TICKET_PREFIX}{ticket}"] = "route-operator"
+
+        client = TestClient(app)
+        with client.websocket_connect(f"/ws/queue?ticket={ticket}") as ws:
+            ws.send_json({"type": "ping"})
+            assert ws.receive_json() == {"type": "pong"}
+
+        # Single-use enforced at the route too.
+        from starlette.websockets import WebSocketDisconnect
+
+        with pytest.raises(WebSocketDisconnect), client.websocket_connect(
+            f"/ws/queue?ticket={ticket}"
+        ) as ws2:
+            ws2.receive_json()
+    finally:
+        ws_mod.ws_ticket_store._redis = previous
+
+
+def test_route_websocket_accepts_legacy_token_param():
+    """Regression: ?token=<api-key> must keep working alongside ?ticket=."""
+    from fastapi.testclient import TestClient
+
+    from ecommerce_ops.api.app import app
+    from ecommerce_ops.config import settings
+
+    # Use the live configured key: settings is a singleton whose env was
+    # captured at first import (test-file import order varies under pytest).
+    api_key = settings.API_KEY.get_secret_value() if settings.API_KEY else "test-ws-key-2024"
+    client = TestClient(app)
+    with client.websocket_connect(f"/ws/queue?token={api_key}") as ws:
+        ws.send_json({"type": "ping"})
+        assert ws.receive_json() == {"type": "pong"}

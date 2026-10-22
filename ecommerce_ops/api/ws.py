@@ -168,8 +168,14 @@ class ConnectionManager:
                 pubsub = self._redis.pubsub()
                 await pubsub.subscribe(PUBSUB_CHANNEL)
                 logger.info("WS pubsub listener connected (channel=%s)", PUBSUB_CHANNEL)
-                async for message in pubsub.listen():
-                    if message["type"] != "message":
+                # get_message(timeout=1) instead of listen(): the shared cache
+                # client has socket_timeout=5, and listen() blocks indefinitely
+                # waiting for the next message — redis-py then times out the
+                # read every 5s and the listener flaps reconnect forever.
+                # A 1s poll stays well under the socket timeout.
+                while self._redis is not None:
+                    message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                    if message is None:
                         continue
                     try:
                         data = json.loads(message["data"])

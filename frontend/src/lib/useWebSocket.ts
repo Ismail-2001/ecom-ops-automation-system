@@ -255,6 +255,18 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     connect()
   }, [connect])
 
+  // The mount effect below only ever runs connect() once — with deps
+  // [connect, cleanup] it would never re-fire when `enabled` flips
+  // false→true after login, so the socket was never attempted for the
+  // whole session. Watch `enabled` explicitly.
+  useEffect(() => {
+    if (enabled) {
+      connectRef.current?.()
+    } else {
+      disconnect()
+    }
+  }, [enabled, disconnect])
+
   useEffect(() => {
     connect()
 

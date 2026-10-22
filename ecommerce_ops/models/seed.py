@@ -522,7 +522,12 @@ async def seed_data_if_empty():
                 details={"sku": "MUG-WHITE", "old_price": 12.00, "new_price": 12.20},
             ),
             AuditEntry(
-                action_id="a1b2c3d4-0009-4000-8000-000000000009",
+                # No matching ApprovalAction row for this historic rejection
+                # (mock_actions only defines ...-0001..0008). Postgres enforces
+                # the audit_entries.action_id -> approval_actions.id foreign
+                # key, so a dangling id rolls back the entire seed transaction
+                # (sqlite never enforced it, which hid the bug).
+                action_id=None,
                 timestamp=now - timedelta(hours=12),
                 agent="InventoryAgent",
                 action_type="purchase_order",
