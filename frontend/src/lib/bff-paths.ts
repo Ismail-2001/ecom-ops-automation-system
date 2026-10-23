@@ -20,6 +20,9 @@ export const CORE_RESOURCES = new Set([
   "run",
   "tasks",
   "ws",
+  "orders",
+  "products",
+  "reviews",
 ])
 
 /** Endpoints exposed under `/api/v1/<resource>` on the backend. */

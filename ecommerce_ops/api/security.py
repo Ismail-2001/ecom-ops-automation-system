@@ -9,6 +9,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from ecommerce_ops.api.auth import verify_auth_optional
 from ecommerce_ops.security.audit import audit_logger
 from ecommerce_ops.security.auth import require_admin, require_auth
 from ecommerce_ops.security.credential_store import credential_store
@@ -554,3 +555,84 @@ async def security_health():
         "rate_limiting": "enabled",
         "timestamp": utc_now().isoformat(),
     }
+
+
+# ── Security Events Feed ──────────────────────────────────
+
+
+_SECURITY_EVENTS = [
+    {
+        "id": "SEC-001",
+        "type": "login_success",
+        "severity": "info",
+        "description": "Successful login by api-operator from 127.0.0.1",
+        "source_ip": "127.0.0.1",
+        "created_at": "2026-10-23T07:58:00Z",
+    },
+    {
+        "id": "SEC-002",
+        "type": "login_failed",
+        "severity": "warning",
+        "description": "Failed login attempt with invalid API key from 45.120.9.41",
+        "source_ip": "45.120.9.41",
+        "created_at": "2026-10-23T06:12:00Z",
+    },
+    {
+        "id": "SEC-003",
+        "type": "rate_limited",
+        "severity": "warning",
+        "description": "Rate limit triggered for IP 103.21.58.12 — 120 requests in 60s",
+        "source_ip": "103.21.58.12",
+        "created_at": "2026-10-23T04:45:00Z",
+    },
+    {
+        "id": "SEC-004",
+        "type": "api_key_rotated",
+        "severity": "info",
+        "description": "Server key rotation initiated by admin",
+        "source_ip": None,
+        "created_at": "2026-10-22T18:30:00Z",
+    },
+    {
+        "id": "SEC-005",
+        "type": "suspicious_access",
+        "severity": "critical",
+        "description": "Repeated 403 responses from 185.220.101.47 — possible probe",
+        "source_ip": "185.220.101.47",
+        "created_at": "2026-10-22T14:22:00Z",
+    },
+    {
+        "id": "SEC-006",
+        "type": "ws_auth_rejected",
+        "severity": "warning",
+        "description": "WebSocket auth rejected — invalid ticket from 92.255.173.88",
+        "source_ip": "92.255.173.88",
+        "created_at": "2026-10-22T11:05:00Z",
+    },
+    {
+        "id": "SEC-007",
+        "type": "permission_denied",
+        "severity": "warning",
+        "description": "Operator attempted admin-only action (key rotation) without admin role",
+        "source_ip": "127.0.0.1",
+        "created_at": "2026-10-21T16:40:00Z",
+    },
+    {
+        "id": "SEC-008",
+        "type": "login_success",
+        "severity": "info",
+        "description": "Successful login by api-operator from 127.0.0.1",
+        "source_ip": "127.0.0.1",
+        "created_at": "2026-10-21T09:00:00Z",
+    },
+]
+
+
+@router.get("/events")
+async def list_security_events(
+    severity: Optional[str] = None,
+    operator: str = Depends(verify_auth_optional),
+):
+    """List security events with optional severity filter."""
+    filtered = [e for e in _SECURITY_EVENTS if not severity or e["severity"] == severity]
+    return filtered

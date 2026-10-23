@@ -895,3 +895,324 @@ async def v1_health(operator: str = Depends(verify_auth_optional)):
             },
         },
     )
+
+
+# ── Catalog: Orders / Products / Reviews ────────────────────────────────
+# In-memory demo catalog backing the Orders, Products, and Reviews pages.
+# These pages were built frontend-first; the data below is realistic PK
+# e-commerce seed so the demo never shows empty or error states.
+
+_CATALOG_ORDERS = [
+    {
+        "id": "ORD-2026-0412",
+        "customer": "Ahmed Raza",
+        "total": 12500,
+        "status": "delivered",
+        "fraud_score": 0.08,
+        "created_at": "2026-10-18T09:14:00Z",
+    },
+    {
+        "id": "ORD-2026-0413",
+        "customer": "Fatima Khan",
+        "total": 4800,
+        "status": "shipped",
+        "fraud_score": 0.12,
+        "created_at": "2026-10-19T11:30:00Z",
+    },
+    {
+        "id": "ORD-2026-0414",
+        "customer": "Bilal Ahmed",
+        "total": 23900,
+        "status": "confirmed",
+        "fraud_score": 0.31,
+        "created_at": "2026-10-20T14:02:00Z",
+    },
+    {
+        "id": "ORD-2026-0415",
+        "customer": "Ayesha Siddiqui",
+        "total": 7200,
+        "status": "pending",
+        "fraud_score": 0.67,
+        "created_at": "2026-10-21T08:45:00Z",
+    },
+    {
+        "id": "ORD-2026-0416",
+        "customer": "Usman Tariq",
+        "total": 15600,
+        "status": "rto",
+        "fraud_score": 0.82,
+        "created_at": "2026-10-21T16:22:00Z",
+    },
+    {
+        "id": "ORD-2026-0417",
+        "customer": "Zainab Malik",
+        "total": 3400,
+        "status": "delivered",
+        "fraud_score": 0.05,
+        "created_at": "2026-10-19T10:11:00Z",
+    },
+    {
+        "id": "ORD-2026-0418",
+        "customer": "Hassan Ali",
+        "total": 8900,
+        "status": "shipped",
+        "fraud_score": 0.18,
+        "created_at": "2026-10-20T13:55:00Z",
+    },
+    {
+        "id": "ORD-2026-0419",
+        "customer": "Maryam Noor",
+        "total": 31200,
+        "status": "confirmed",
+        "fraud_score": 0.22,
+        "created_at": "2026-10-21T09:33:00Z",
+    },
+    {
+        "id": "ORD-2026-0420",
+        "customer": "Kamran Sheikh",
+        "total": 5600,
+        "status": "pending",
+        "fraud_score": 0.74,
+        "created_at": "2026-10-22T07:18:00Z",
+    },
+    {
+        "id": "ORD-2026-0421",
+        "customer": "Sana Javed",
+        "total": 19800,
+        "status": "delivered",
+        "fraud_score": 0.09,
+        "created_at": "2026-10-17T15:40:00Z",
+    },
+    {
+        "id": "ORD-2026-0422",
+        "customer": "Danish Iqbal",
+        "total": 6700,
+        "status": "rto",
+        "fraud_score": 0.91,
+        "created_at": "2026-10-20T11:05:00Z",
+    },
+    {
+        "id": "ORD-2026-0423",
+        "customer": "Hina Shah",
+        "total": 11300,
+        "status": "shipped",
+        "fraud_score": 0.15,
+        "created_at": "2026-10-21T12:27:00Z",
+    },
+]
+
+_CATALOG_PRODUCTS = [
+    {
+        "id": "PRD-001",
+        "title": "Samsung Galaxy A25 5G (128GB)",
+        "price": 54999,
+        "stock": 23,
+        "status": "active",
+    },
+    {
+        "id": "PRD-002",
+        "title": "Infinix Hot 40i (128GB)",
+        "price": 32999,
+        "stock": 41,
+        "status": "active",
+    },
+    {
+        "id": "PRD-003",
+        "title": "Xiaomi Redmi 13C (256GB)",
+        "price": 41500,
+        "stock": 17,
+        "status": "active",
+    },
+    {
+        "id": "PRD-004",
+        "title": "Audionic Airbud 500 Wireless Earbuds",
+        "price": 4299,
+        "stock": 120,
+        "status": "active",
+    },
+    {
+        "id": "PRD-005",
+        "title": "Dawlance Split AC 1.5 Ton Inverter",
+        "price": 168000,
+        "stock": 8,
+        "status": "active",
+    },
+    {
+        "id": "PRD-006",
+        "title": "Service Canvas Shoes (White)",
+        "price": 3850,
+        "stock": 0,
+        "status": "out_of_stock",
+    },
+    {
+        "id": "PRD-007",
+        "title": "Nexus Power Bank 20000mAh",
+        "price": 5999,
+        "stock": 64,
+        "status": "active",
+    },
+    {
+        "id": "PRD-008",
+        "title": "J. Junaid Jamshed Kameez Shalwar (L)",
+        "price": 4750,
+        "stock": 35,
+        "status": "active",
+    },
+    {
+        "id": "PRD-009",
+        "title": "Dyson V8 Absolute Cordless Vacuum",
+        "price": 89900,
+        "stock": 3,
+        "status": "low_stock",
+    },
+    {
+        "id": "PRD-010",
+        "title": "Apple iPhone 15 (128GB) PTA Approved",
+        "price": 385000,
+        "stock": 5,
+        "status": "active",
+    },
+    {
+        "id": "PRD-011",
+        "title": "Philips Air Fryer XXL HD9650",
+        "price": 47500,
+        "stock": 12,
+        "status": "active",
+    },
+    {
+        "id": "PRD-012",
+        "title": "Bata Kids School Shoes (Pack of 2)",
+        "price": 2999,
+        "stock": 88,
+        "status": "active",
+    },
+]
+
+_CATALOG_REVIEWS = [
+    {
+        "id": "REV-001",
+        "author": "Ahmed Raza",
+        "rating": 5,
+        "content": "Excellent phone, delivery was quick. PTA approved and seal packed. Highly recommend for COD orders.",
+        "sentiment": "positive",
+        "created_at": "2026-10-19T10:00:00Z",
+    },
+    {
+        "id": "REV-002",
+        "author": "Fatima Khan",
+        "rating": 4,
+        "content": "Good earbuds for the price. Bass is decent, battery lasts about 4 hours. Packaging could be better.",
+        "sentiment": "positive",
+        "created_at": "2026-10-20T14:30:00Z",
+    },
+    {
+        "id": "REV-003",
+        "author": "Bilal Ahmed",
+        "rating": 2,
+        "content": "AC cooling is okay but the installation team took 3 days to arrive. Not happy with the service delay.",
+        "sentiment": "negative",
+        "created_at": "2026-10-21T09:15:00Z",
+    },
+    {
+        "id": "REV-004",
+        "author": "Ayesha Siddiqui",
+        "rating": 5,
+        "content": "Beautiful kameez shalwar, fabric quality is top notch. J. never disappoints. Fast delivery too!",
+        "sentiment": "positive",
+        "created_at": "2026-10-20T16:45:00Z",
+    },
+    {
+        "id": "REV-005",
+        "author": "Usman Tariq",
+        "rating": 1,
+        "content": "Received a used product with scratches on the screen. Trying to get a refund but no response from support.",
+        "sentiment": "negative",
+        "created_at": "2026-10-21T11:20:00Z",
+    },
+    {
+        "id": "REV-006",
+        "author": "Zainab Malik",
+        "rating": 4,
+        "content": "Shoes are comfortable and true to size. Colour is slightly different from the photos but overall good.",
+        "sentiment": "positive",
+        "created_at": "2026-10-19T13:00:00Z",
+    },
+    {
+        "id": "REV-007",
+        "author": "Hassan Ali",
+        "rating": 3,
+        "content": "Power bank works fine but charging speed is slow. Expected faster charging for 20000mAh.",
+        "sentiment": "neutral",
+        "created_at": "2026-10-20T10:30:00Z",
+    },
+    {
+        "id": "REV-008",
+        "author": "Maryam Noor",
+        "rating": 5,
+        "content": "iPhone arrived in perfect condition, PTA approved as promised. Best online shopping experience in Pakistan.",
+        "sentiment": "positive",
+        "created_at": "2026-10-22T08:00:00Z",
+    },
+    {
+        "id": "REV-009",
+        "author": "Kamran Sheikh",
+        "rating": 2,
+        "content": "Vacuum cleaner stopped working after 2 weeks. Warranty claim process is complicated and slow.",
+        "sentiment": "negative",
+        "created_at": "2026-10-21T15:45:00Z",
+    },
+    {
+        "id": "REV-010",
+        "author": "Sana Javed",
+        "rating": 4,
+        "content": "Air fryer is great, healthy cooking made easy. Slightly noisy but the results are worth it.",
+        "sentiment": "positive",
+        "created_at": "2026-10-18T12:15:00Z",
+    },
+]
+
+
+@router.get("/orders")
+async def list_orders(
+    page: int = 1,
+    limit: int = 20,
+    status: Optional[str] = None,
+    operator: str = Depends(verify_auth_optional),
+):
+    """List orders with optional status filter and pagination."""
+    filtered = [o for o in _CATALOG_ORDERS if not status or o["status"] == status]
+    total = len(filtered)
+    start = (page - 1) * limit
+    end = start + limit
+    return {
+        "orders": filtered[start:end],
+        "total": total,
+        "page": page,
+        "limit": limit,
+    }
+
+
+@router.get("/products")
+async def list_products(
+    page: int = 1,
+    limit: int = 20,
+    operator: str = Depends(verify_auth_optional),
+):
+    """List products with pagination."""
+    total = len(_CATALOG_PRODUCTS)
+    start = (page - 1) * limit
+    end = start + limit
+    return {
+        "products": _CATALOG_PRODUCTS[start:end],
+        "total": total,
+    }
+
+
+@router.get("/reviews")
+async def list_reviews(
+    sentiment: Optional[str] = None,
+    operator: str = Depends(verify_auth_optional),
+):
+    """List reviews with optional sentiment filter."""
+    filtered = [r for r in _CATALOG_REVIEWS if not sentiment or r["sentiment"] == sentiment]
+    return filtered
